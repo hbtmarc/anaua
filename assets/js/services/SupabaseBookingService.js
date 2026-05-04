@@ -1,249 +1,117 @@
-/**
- * @fileoverview SupabaseBookingService — persistência real de reservas.
- *
- * Mantém o projeto estático (HTML/CSS/JS) usando o cliente Supabase via CDN.
- * Não usa service_role, chave secreta, npm, framework ou backend próprio.
- */
-
 import { supabase } from '../supabaseClient.js';
-import { EXPERIENCES } from '../data.js';
-import { ensurePendingSignupForBooking, setSession, saveProfile } from './UserService.js';
 
-const RESERVATION_CODE_PREFIX = 'ANA';
+function normalizeEmail(email) { return String(email || '').trim().toLowerCase(); }
 
-function normalizeEmail(email) {
-  return String(email ?? '').trim().toLowerCase();
-}
-
-function mapReservationPaymentMethod(method) {
-  if (method === 'credit_card') return 'card';
-  if (method === 'signal_balance') return 'signal_balance';
-  if (method === 'pix') return 'pix';
-  return 'manual';
-}
-
-function mapPaymentMethod(method) {
-  if (method === 'credit_card') return 'card';
-  if (method === 'pix') return 'pix';
-  if (method === 'signal_balance') return 'pix';
-  return 'manual';
-}
-
-function makeReservationCode(localId) {
-  const clean = String(localId ?? crypto.randomUUID()).replace(/[^a-z0-9]/gi, '').toUpperCase();
-  return `${RESERVATION_CODE_PREFIX}-${clean.slice(-10)}`;
-}
-
-function getLocalExperience(booking) {
-  return EXPERIENCES.find(exp => exp.id === booking.experienceId) ?? null;
-}
-
-function getLocalExit(booking, localExperience) {
-  return localExperience?.nextExits?.find(exit => exit.id === booking.exitId) ?? null;
-}
-
-function getParticipantCount(booking) {
-  return Number(booking.participants?.length || booking.profileQtys?.reduce((total, item) => total + Number(item.qty || 0), 0) || 1);
-}
-
-async function getCurrentUser() {
+export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
-  if (error) {
-    console.warn('[supabaseBooking] Não foi possível ler usuário autenticado:', error.message);
-    return null;
-  }
+  if (error) return null;
+  if (data?.user) console.log('Supabase user detected');
   return data?.user ?? null;
 }
 
-async function resolveExperience(localExperience) {
-  if (!localExperience) {
-    return { data: null, error: new Error('Experiência local não encontrada no catálogo.') };
-  }
-
-  let query = supabase
-    .from('experiences')
-    .select('id, title, slug, base_price')
-    .eq('slug', localExperience.slug)
-    .limit(1);
-
-  let { data, error } = await query;
-  if (error) return { data: null, error };
-  if (data?.[0]) return { data: data[0], error: null };
-
-  ({ data, error } = await supabase
-    .from('experiences')
-    .select('id, title, slug, base_price')
-    .eq('title', localExperience.title)
-    .limit(1));
-
-  if (error) return { data: null, error };
-  return { data: data?.[0] ?? null, error: null };
+export async function getCurrentProfile() {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  if (!error && data) console.log('Profile loaded');
+  return data ?? null;
 }
 
-async function resolveDeparture(booking, supabaseExperienceId, localExit) {
-  const { data, error } = await supabase
-    .from('departures')
-    .select('id, title, start_at, price, capacity, status')
-    .eq('experience_id', supabaseExperienceId)
-    .eq('status', 'scheduled')
-    .order('start_at', { ascending: true });
-
-  if (error) return { data: null, error };
-
-  const rows = Array.isArray(data) ? data : [];
-  const byLocalId = rows.find(row => row.title === booking.exitId);
-  if (byLocalId) return { data: byLocalId, error: null };
-
-  const byDate = localExit?.date
-    ? rows.find(row => String(row.start_at ?? '').startsWith(localExit.date))
-    : null;
-  if (byDate) return { data: byDate, error: null };
-
-  return { data: rows[0] ?? null, error: null };
+export async function signInCustomer(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(email), password });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, user: data.user };
 }
 
-async function ensureUserForBooking(booking) {
-  const currentUser = await getCurrentUser();
-  if (currentUser) {
-    console.log('[supabaseBooking] Usuário autenticado detectado ✓');
-    return currentUser;
+export async function signUpCustomer(profile, password) {
+  const email = normalizeEmail(profile?.email);
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: profile?.fullName || '' } } });
+  if (error) {
+    const msg = String(error.message || '').toLowerCase();
+    if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+      return { ok: false, code: 'EMAIL_ALREADY_EXISTS' };
+    }
+    return { ok: false, code: 'SIGNUP_ERROR', error: error.message };
   }
-
-  const signup = await ensurePendingSignupForBooking(booking.payer);
-  if (signup?.ok && signup.user) {
-    console.log('[supabaseBooking] Conta Supabase criada/vinculada para reserva ✓');
-    setSession({ email: signup.user.email, name: booking.payer.fullName });
-    saveProfile(booking.payer);
-    return signup.user;
-  }
-
-  if (signup?.code === 'EMAIL_ALREADY_REGISTERED') {
-    const err = new Error('Este e-mail já possui cadastro. Faça login para concluir sua reserva.');
-    err.code = 'EMAIL_ALREADY_REGISTERED';
-    throw err;
-  }
-
-  return null;
+  return { ok: true, user: data.user };
 }
 
-export async function createSupabaseBooking(booking, split) {
-  const localExperience = getLocalExperience(booking);
-  const localExit = getLocalExit(booking, localExperience);
-  const user = await ensureUserForBooking(booking);
-
-  const expResult = await resolveExperience(localExperience);
-  if (expResult.error) throw expResult.error;
-  if (!expResult.data) {
-    throw new Error(`A experiência "${localExperience?.title ?? booking.experienceId}" ainda não está cadastrada no Supabase. Rode o seed do catálogo antes de testar reservas reais.`);
-  }
-
-  const depResult = await resolveDeparture(booking, expResult.data.id, localExit);
-  if (depResult.error) throw depResult.error;
-  if (!depResult.data) {
-    throw new Error(`A saída "${booking.exitId}" ainda não está cadastrada no Supabase. Rode o seed do catálogo antes de testar reservas reais.`);
-  }
-
-  const reservationCode = booking.voucherCode || makeReservationCode(booking.id);
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
-  const participantCount = getParticipantCount(booking);
-  const notesPayload = {
-    local_booking_id: booking.id,
-    local_experience_id: booking.experienceId,
-    local_exit_id: booking.exitId,
-    local_meeting_point_id: booking.meetingPointId,
-    emergency_contact: booking.emergencyContact ?? null,
-    observations: booking.observations ?? '',
-    terms: booking.termsAcceptance ?? null,
-  };
+export async function createReservationFromDraft(draft, exp) {
+  const user = await getCurrentUser();
+  const participants = Array.isArray(draft?.participants) ? draft.participants : [];
+  const paymentMethod = draft?.paymentMethod || null;
+  const total = Number(draft?.totalAmount || 0);
+  const amountPaid = paymentMethod === 'signal_balance' ? Math.round(total * 0.5) : paymentMethod ? total : 0;
+  const paymentStatus = amountPaid <= 0 ? 'pending' : (amountPaid < total ? 'partial' : 'paid');
 
   const reservationPayload = {
-    departure_id: depResult.data.id,
-    user_id: user?.id ?? null,
-    reservation_code: reservationCode,
-    expires_at: expiresAt,
-    payment_method: mapReservationPaymentMethod(booking.paymentMethod),
-    customer_name: booking.payer.fullName,
-    customer_email: normalizeEmail(booking.payer.email),
-    customer_phone: booking.payer.phone,
-    participants_count: participantCount,
-    total_amount: Number(booking.totalAmount || 0),
-    amount_paid: 0,
-    payment_status: 'pending',
+    departure_id: draft?.exitId || null,
+    user_id: user?.id || null,
+    customer_name: draft?.payer?.fullName || '',
+    customer_email: normalizeEmail(draft?.payer?.email),
+    customer_phone: draft?.payer?.phone || '',
+    participants_count: participants.length,
+    total_amount: total,
+    amount_paid: amountPaid,
+    payment_status: paymentStatus,
     reservation_status: 'requested',
-    terms_accepted: Boolean(booking.termsAcceptance?.terms && booking.termsAcceptance?.cancellation && booking.termsAcceptance?.riskAwareness),
-    notes: JSON.stringify(notesPayload),
+    terms_accepted: Boolean(draft?.termsAcceptance?.terms && draft?.termsAcceptance?.cancellation && draft?.termsAcceptance?.riskAwareness),
+    notes: draft?.observations || null,
+    reservation_code: draft?.voucherCode || `ANA-${Date.now().toString(36).toUpperCase()}`,
+    expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+    payment_method: paymentMethod,
   };
 
-  const { data: reservation, error: reservationError } = await supabase
-    .from('reservations')
-    .insert(reservationPayload)
-    .select('*')
-    .single();
+  const { data: reservation, error } = await supabase.from('reservations').insert(reservationPayload).select('*').single();
+  if (error) throw error;
+  console.log('Reservation inserted');
 
-  if (reservationError) throw reservationError;
-  console.log('[supabaseBooking] Reserva gravada no Supabase ✓', reservation.reservation_code);
-
-  const participantRows = (booking.participants ?? []).map((participant, index) => ({
-    reservation_id: reservation.id,
-    full_name: participant.fullName,
-    document: participant.docNumber || null,
-    birth_date: participant.birthdate || null,
-    phone: index === 0 ? booking.payer.phone : null,
-    is_payer: Boolean(index === 0 && booking.payer.isAlsoParticipant),
-  }));
-
-  if (participantRows.length) {
-    const { error: participantsError } = await supabase.from('participants').insert(participantRows);
-    if (participantsError) throw participantsError;
-    console.log('[supabaseBooking] Participantes gravados no Supabase ✓', participantRows.length);
+  if (participants.length) {
+    const rows = participants.map((p) => ({ reservation_id: reservation.id, full_name: p.fullName, document: p.docNumber || null, birth_date: p.birthdate || null }));
+    const { error: pErr } = await supabase.from('participants').insert(rows);
+    if (pErr) throw pErr;
+    console.log('Participants inserted');
   }
 
-  let payment = null;
-  let paymentError = null;
-  const paymentAmount = Number(split?.signalAmount || booking.totalAmount || 0);
-  if (paymentAmount > 0) {
-    const { data, error } = await supabase
-      .from('payments')
-      .insert({
-        reservation_id: reservation.id,
-        method: mapPaymentMethod(booking.paymentMethod),
-        amount: paymentAmount,
-        status: 'pending',
-        external_id: null,
-        paid_at: null,
-      })
-      .select('*')
-      .single();
-
-    payment = data ?? null;
-    paymentError = error ?? null;
-    if (paymentError) {
-      console.warn('[supabaseBooking] Pagamento não foi gravado. Verifique policy INSERT em payments:', paymentError.message);
-    } else {
-      console.log('[supabaseBooking] Pagamento pendente gravado no Supabase ✓');
-    }
+  if (paymentMethod) {
+    await supabase.from('payments').insert({ reservation_id: reservation.id, method: paymentMethod, amount: amountPaid || total, status: 'pending' });
+    console.log('Payment inserted');
   }
 
-  return {
-    reservation,
-    participants: participantRows,
-    payment,
-    paymentError,
-    departure: depResult.data,
-    experience: expResult.data,
-  };
+  return reservation;
 }
 
-export async function listCurrentUserReservations() {
+export async function getMyReservations() {
   const user = await getCurrentUser();
-  if (!user) return { ok: false, data: [], error: new Error('Usuário não autenticado.') };
+  if (!user) return { ok: false, data: [], error: 'NO_USER' };
+  const { data, error } = await supabase.from('reservations').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+  if (error) return { ok: false, data: [], error: error.message };
+  console.log('Customer reservations loaded');
+  return { ok: true, data: data || [] };
+}
 
-  const { data, error } = await supabase
-    .from('reservations')
-    .select('*')
-    .order('created_at', { ascending: false });
+async function safeCount(table, filter) {
+  let q = supabase.from(table).select('*', { count: 'exact', head: true });
+  if (filter) q = filter(q);
+  const { count, error } = await q;
+  if (error) return null;
+  return count || 0;
+}
 
-  if (error) return { ok: false, data: [], error };
-  return { ok: true, data: data ?? [], error: null, user };
+export async function getAdminDashboardCounts() {
+  const counts = {
+    activeExperiences: await safeCount('experiences', q => q.eq('active', true)),
+    scheduledDepartures: await safeCount('departures', q => q.eq('status', 'scheduled')),
+    reservations: await safeCount('reservations'),
+    pendingPayments: await safeCount('payments', q => q.eq('status', 'pending')),
+    participants: await safeCount('participants'),
+  };
+  console.log('Admin dashboard loaded');
+  return counts;
+}
+
+export async function getAdminReservations() {
+  const { data, error } = await supabase.from('reservations').select('*').order('created_at', { ascending: false });
+  if (error) return { ok: false, data: [], error: error.message };
+  return { ok: true, data: data || [] };
 }

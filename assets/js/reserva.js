@@ -15,8 +15,9 @@
 
 import { initPage, renderBreadcrumb, showToast, maskPhone, maskCPF } from './components.js';
 import {
-  getSession, isLoggedIn, createAccount, saveProfile, loadProfile, updateAccountProfile,
+  getSession, isLoggedIn, saveProfile, loadProfile, updateAccountProfile,
 } from './services/UserService.js';
+import { getCurrentUser, signUpCustomer, createReservationFromDraft } from './services/SupabaseBookingService.js';
 import { EXPERIENCES, formatBRL, formatDate } from './data.js';
 import {
   PROFILES, PAYMENT_LABEL, TERMS_VERSION,
@@ -485,13 +486,18 @@ $('next-4').addEventListener('click', async () => {
     }
     if (hasErr) { showError('Corrija os campos destacados.'); return; }
 
-    const result = createAccount(payer, pwd);
-    if (!result.ok) {
-      setInlineError('account-password', result.error);
-      showError(result.error);
+    const result = await signUpCustomer(payer, pwd);
+    if (!result.ok && result.code === 'EMAIL_ALREADY_EXISTS') {
+      sessionStorage.setItem('anaua_booking_resume', JSON.stringify(draft));
+      sessionStorage.setItem('anaua_booking_message', 'Este e-mail já possui cadastro. Faça login para continuar sua reserva.');
+      location.href = 'cliente.html?resume=1';
       return;
     }
-    showToast('Conta criada com sucesso! Bem-vindo(a) à Anauá.');
+    if (!result.ok) {
+      showError('Não foi possível criar sua conta agora. Tente novamente.');
+      return;
+    }
+    showToast('Conta criada com sucesso!');
   } else if (isLoggedIn()) {
     // Logged in — update profile with any changes made
     const session = getSession();
@@ -817,16 +823,12 @@ $('next-8').addEventListener('click', async () => {
 
   setProcessing(true);
   try {
-    const { booking, paymentResult, split } = await submitBooking(
-      /** @type {any} */ (draft),
-      { signalPct, cardToken, installments },
-    );
-
-    if (!paymentResult.success) {
-      setProcessing(false);
-      showError(paymentResult.errorMsg ?? 'Pagamento recusado. Tente novamente.');
-      return;
-    }
+    const user = await getCurrentUser();
+    if (!user && !draft.payer) { throw new Error('Usuário não autenticado'); }
+    const reservation = await createReservationFromDraft(draft, exp);
+    const split = computeSplit(draft.totalAmount, draft.paymentMethod, signalPct);
+    const booking = { ...draft, id: reservation.id, voucherCode: reservation.reservation_code, status: reservation.reservation_status || 'requested', pendingAmount: Number(reservation.total_amount||0)-Number(reservation.amount_paid||0) };
+    const paymentResult = { success: true };
 
     setProcessing(false);
     goTo(9);
