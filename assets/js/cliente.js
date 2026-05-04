@@ -1,17 +1,32 @@
 /**
  * @fileoverview Área do Cliente — Anauá Ecoturismo
- * Mock login + dashboard with reservations.
+ * Login + dashboard with reservations.
  */
 import { initPage, validateField, VALIDATORS, showToast } from './components.js';
 import { EXPERIENCES, formatBRL, formatDate } from './data.js';
+import {
+  getSession, clearSession, login,
+  createAccount,
+} from './services/UserService.js';
 
 initPage('cliente.html');
 
-/* ── Mock credentials (demo only) ──────────────────────── */
-const MOCK_USERS = [
-  { email: 'demo@anaua.com.br', password: '12345678', name: 'Maria Fernanda' },
-  { email: 'test@test.com',     password: 'password',  name: 'João Silva' },
-];
+/* ── Seed demo accounts (only if they don’t exist yet) ───────────────────
+   So the demo credentials always work on a fresh localStorage. */
+(function seedDemoAccounts() {
+  const demos = [
+    { profile: { fullName: 'Maria Fernanda', email: 'demo@anaua.com.br', cpf: '', phone: '', birthdate: '' }, password: '12345678' },
+    { profile: { fullName: 'João Silva',     email: 'test@test.com',         cpf: '', phone: '', birthdate: '' }, password: 'password'  },
+  ];
+  const existing = JSON.parse(localStorage.getItem('anaua_accounts') ?? '[]');
+  demos.forEach(d => {
+    if (!existing.find(a => a.email === d.profile.email)) {
+      createAccount(d.profile, d.password);
+      clearSession(); // seedeing should not start a session
+    }
+  });
+})();
+
 
 /* ── Mock reservations ───────────────────────────────────── */
 function buildMockReservations(userName) {
@@ -94,20 +109,7 @@ function renderReservations(userName) {
 }
 
 /* ── Auth state ───────────────────────────────────────────── */
-const SESSION_KEY = 'anaua_user';
-
-function getSession() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null'); }
-  catch { return null; }
-}
-
-function setSession(user) {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
-}
-
-function clearSession() {
-  sessionStorage.removeItem(SESSION_KEY);
-}
+// getSession / setSession / clearSession imported from UserService
 
 function showDashboard(user) {
   document.getElementById('login-view').style.display     = 'none';
@@ -147,19 +149,17 @@ form?.addEventListener('submit', async (e) => {
 
   await new Promise(r => setTimeout(r, 800));
 
-  const match = MOCK_USERS.find(
-    u => u.email === emailEl.value.trim().toLowerCase() && u.password === passEl.value
-  );
+  const result = login(emailEl.value.trim(), passEl.value);
 
-  if (!match) {
-    if (globalErr) { globalErr.textContent = 'E-mail ou senha incorretos.'; globalErr.style.display = 'flex'; }
+  if (!result.ok) {
+    if (globalErr) { globalErr.textContent = result.error; globalErr.style.display = 'flex'; }
     if (loginBtn) { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; }
     return;
   }
 
-  setSession(match);
-  showToast(`Bem-vinda(o), ${match.name.split(' ')[0]}!`, 'success');
-  showDashboard(match);
+  const { user } = result;
+  showToast(`Bem-vinda(o), ${user.name.split(' ')[0]}!`, 'success');
+  showDashboard(user);
   if (loginBtn) { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; }
 });
 

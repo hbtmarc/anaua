@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Testes — Anauá Booking</title>
+  <style>
+    body { font-family: monospace; padding: 24px; background: #0e1117; color: #cdd6f4; margin: 0; }
+    h1   { color: #cba6f7; margin-block-end: 8px; }
+    .sub { color: #a6adc8; margin-block-end: 32px; font-size: 13px; }
+    .suite { color: #89b4fa; font-weight: bold; margin-block-start: 20px; font-size: 14px; }
+    .pass  { color: #a6e3a1; }
+    .fail  { color: #f38ba8; }
+    .error { color: #fab387; font-size: 12px; margin-inline-start: 20px; }
+    .summary { margin-block-start: 32px; border-top: 1px solid #313244; padding-block-start: 16px; font-size: 16px; }
+    .summary .ok  { color: #a6e3a1; }
+    .summary .bad { color: #f38ba8; }
+    #output { line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Booking Tests</h1>
+  <p class="sub">Anauá Ecoturismo — regras de negócio de reserva</p>
+  <div id="output"><em style="color:#6c7086">Executando testes…</em></div>
+
+  <script type="module">
+    import { main } from '../assets/js/tests/booking.test.js';
+
+    const out = document.getElementById('output');
+
+    try {
+      const { results, passed, failed } = await main();
+      out.innerHTML = '';
+
+      results.forEach(r => {
+        if (r.type === 'suite') {
+          out.innerHTML += `<p class="suite">▶ ${r.label}</p>`;
+        } else if (r.type === 'pass') {
+          out.innerHTML += `<p class="pass">  ✓ ${r.label}</p>`;
+        } else if (r.type === 'fail') {
+          out.innerHTML += `<p class="fail">  ✗ ${r.label}</p><p class="error">${r.error}</p>`;
+        }
+      });
+
+      out.innerHTML += `
+        <div class="summary">
+          <span class="ok">${passed} passed</span>  ·  <span class="${failed ? 'bad' : 'ok'}">${failed} failed</span>
+        </div>`;
+    } catch (err) {
+      out.innerHTML = `<p class="fail">Erro ao carregar testes: ${err.message}</p>`;
+      console.error(err);
+    }
+  </script>
+</body>
+</html>

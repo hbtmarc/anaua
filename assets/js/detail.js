@@ -438,8 +438,7 @@ function renderBookingBox(exp) {
     document.getElementById('modal-cancel-btn')?.addEventListener('click', close);
     document.getElementById('modal-confirm-btn')?.addEventListener('click', () => {
       close();
-      showToast('Reserva pré-confirmada! Você será redirecionado para o checkout.', 'success');
-      // Em produção: location.href = `checkout.html?exp=${exp.id}&exit=${exitId}&pax=${pax}`
+      location.href = `reserva.html?id=${exp.id}`;
     });
   });
 

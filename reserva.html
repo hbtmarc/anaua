@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reservar experiência — Anauá Ecoturismo</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/reserva.css" />
+</head>
+<body>
+  <header id="site-header"></header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <nav id="breadcrumb" aria-label="Localização"></nav>
+
+        <div class="wizard-wrap" id="wizard-wrap">
+
+          <!-- Progress steps -->
+          <nav class="wizard-progress" aria-label="Etapas da reserva" id="wizard-progress"></nav>
+
+          <!-- Experience context bar -->
+          <div class="booking-context" id="booking-context" style="display:none"></div>
+
+          <!-- Error banner -->
+          <div class="wiz-error-banner" id="wiz-error" role="alert"></div>
+
+          <!-- ── STEP 1: Escolha a saída ── -->
+          <div class="wiz-panel" id="panel-1" data-step="1">
+            <h2 class="wiz-panel__title">Escolha a saída</h2>
+            <p class="wiz-panel__desc">Selecione a data da experiência.</p>
+            <div class="exit-cards" id="exit-cards"></div>
+            <div class="wiz-nav">
+              <span></span>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-1">Próximo →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 2: Ponto de Encontro ── -->
+          <div class="wiz-panel" id="panel-2" data-step="2">
+            <h2 class="wiz-panel__title">Ponto de encontro</h2>
+            <p class="wiz-panel__desc">Escolha onde você vai se encontrar com o grupo.</p>
+            <div class="mp-cards" id="mp-cards"></div>
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-2">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-2">Próximo →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 3: Participantes por perfil ── -->
+          <div class="wiz-panel" id="panel-3" data-step="3">
+            <h2 class="wiz-panel__title">Quantos participantes?</h2>
+            <p class="wiz-panel__desc">Selecione as quantidades por categoria. Preços por pessoa.</p>
+            <div class="profile-rows" id="profile-rows"></div>
+            <div class="price-summary" id="price-summary-3"></div>
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-3">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-3">Próximo →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 4: Responsável / Pagador ── -->
+          <div class="wiz-panel" id="panel-4" data-step="4">
+            <h2 class="wiz-panel__title">Dados do responsável</h2>
+            <p class="wiz-panel__desc">Quem vai realizar o pagamento e assinar pela reserva.</p>
+            <form id="payer-form" class="form" novalidate>
+              <div class="participant-card">
+                <div class="participant-card__header">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Responsável / Pagador
+                </div>
+                <div class="participant-card__body">
+                  <div class="field" style="grid-column:1/-1">
+                    <label class="label" for="payer-name">Nome completo *</label>
+                    <input class="input" type="text" id="payer-name" autocomplete="name" placeholder="Como no documento" />
+                    <span class="field-error" id="payer-name-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="payer-cpf">CPF *</label>
+                    <input class="input" type="text" id="payer-cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" />
+                    <span class="field-error" id="payer-cpf-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="payer-birthdate">Data de nascimento *</label>
+                    <input class="input" type="date" id="payer-birthdate" />
+                    <span class="field-error" id="payer-birthdate-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="payer-email">E-mail *</label>
+                    <input class="input" type="email" id="payer-email" autocomplete="email" placeholder="confirmação será enviada aqui" />
+                    <span class="field-error" id="payer-email-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="payer-phone">Telefone / WhatsApp *</label>
+                    <input class="input" type="tel" id="payer-phone" inputmode="numeric" placeholder="(00) 00000-0000" maxlength="15" />
+                    <span class="field-error" id="payer-phone-err" role="alert"></span>
+                  </div>
+                  <div class="field" style="grid-column:1/-1">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:var(--text-sm)">
+                      <input type="checkbox" id="payer-is-participant" style="width:16px;height:16px;accent-color:var(--color-forest)" />
+                      Sou um dos participantes da experiência
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            <!-- ── Aviso: usuário já logado ── -->
+            <div class="account-notice account-notice--logged" id="account-logged-notice" style="display:none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <div>
+                <strong id="account-logged-name">Você está logado</strong>
+                <span> — dados preenchidos automaticamente a partir da sua conta.</span>
+              </div>
+            </div>
+
+            <!-- ── Seção: criar conta (só aparece se não estiver logado) ── -->
+            <div class="account-create-section" id="account-create-section">
+              <label class="account-create-toggle">
+                <input type="checkbox" id="account-create-cb" />
+                <span class="account-create-toggle__box"></span>
+                <span>
+                  <strong>Criar conta e salvar meus dados</strong>
+                  <small>Na próxima reserva seus dados serão preenchidos automaticamente.</small>
+                </span>
+              </label>
+
+              <div class="account-create-fields" id="account-create-fields">
+                <div class="form" style="margin-top:var(--sp-4)">
+                  <div class="field">
+                    <label class="label" for="account-password">Senha *</label>
+                    <div class="input-password-wrap">
+                      <input class="input" type="password" id="account-password" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
+                      <button type="button" class="input-password-toggle" id="toggle-pwd" aria-label="Mostrar/ocultar senha" tabindex="-1">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                    <span class="field-error" id="account-password-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="account-password-confirm">Confirmar senha *</label>
+                    <div class="input-password-wrap">
+                      <input class="input" type="password" id="account-password-confirm" autocomplete="new-password" placeholder="Repita a senha" />
+                      <button type="button" class="input-password-toggle" id="toggle-pwd-confirm" aria-label="Mostrar/ocultar senha" tabindex="-1">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                    <span class="field-error" id="account-password-confirm-err" role="alert"></span>
+                  </div>
+                </div>
+                <p class="account-create-hint">
+                  Sua conta será criada com o e-mail acima. Você poderá acessar suas reservas em
+                  <a href="cliente.html">Minha Conta</a>.
+                </p>
+              </div>
+            </div>
+
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-4">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-4">Próximo →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 5: Participantes ── -->
+          <div class="wiz-panel" id="panel-5" data-step="5">
+            <h2 class="wiz-panel__title">Dados dos participantes</h2>
+            <p class="wiz-panel__desc">Preencha os dados de todos que vão na experiência.</p>
+            <div class="participant-cards" id="participant-cards"></div>
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-5">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-5">Próximo →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 6: Emergência + Observações ── -->
+          <div class="wiz-panel" id="panel-6" data-step="6">
+            <h2 class="wiz-panel__title">Contato de emergência</h2>
+            <p class="wiz-panel__desc">Alguém que possamos contatar caso necessário.</p>
+            <form id="emergency-form" class="form" novalidate>
+              <div class="participant-card">
+                <div class="participant-card__header">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3.08 5.18 2 2 0 0 1 5.06 3h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.69 2.81a2 2 0 0 1-.45 2.11L9.09 10.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.33 1.85.56 2.81.69A2 2 0 0 1 22 17z"/></svg>
+                  Contato de emergência
+                </div>
+                <div class="participant-card__body">
+                  <div class="field" style="grid-column:1/-1">
+                    <label class="label" for="ec-name">Nome completo *</label>
+                    <input class="input" type="text" id="ec-name" placeholder="Nome do contato" />
+                    <span class="field-error" id="ec-name-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="ec-phone">Telefone *</label>
+                    <input class="input" type="tel" id="ec-phone" inputmode="numeric" placeholder="(00) 00000-0000" maxlength="15" />
+                    <span class="field-error" id="ec-phone-err" role="alert"></span>
+                  </div>
+                  <div class="field">
+                    <label class="label" for="ec-relationship">Parentesco / relação *</label>
+                    <input class="input" type="text" id="ec-relationship" placeholder="Ex: esposa, pai, amigo" />
+                    <span class="field-error" id="ec-relationship-err" role="alert"></span>
+                  </div>
+                  <div class="field" style="grid-column:1/-1">
+                    <label class="label" for="observations">Observações gerais</label>
+                    <textarea class="textarea" id="observations" rows="3" placeholder="Restrições alimentares, alergias, necessidades especiais…"></textarea>
+                  </div>
+                </div>
+              </div>
+            </form>
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-6">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-6">Próximo →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 7: Termos ── -->
+          <div class="wiz-panel" id="panel-7" data-step="7">
+            <h2 class="wiz-panel__title">Termos e declarações</h2>
+            <p class="wiz-panel__desc">Leia e aceite os itens abaixo para continuar.</p>
+            <div class="terms-list" id="terms-list"></div>
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-7">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-7">Ir para pagamento →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 8: Pagamento ── -->
+          <div class="wiz-panel" id="panel-8" data-step="8">
+            <h2 class="wiz-panel__title">Forma de pagamento</h2>
+            <p class="wiz-panel__desc">Escolha como deseja pagar.</p>
+            <div class="price-summary" id="price-summary-8"></div>
+            <div class="payment-methods" id="payment-methods"></div>
+            <div class="wiz-nav">
+              <button class="wiz-nav__back" id="back-8">← Voltar</button>
+              <div class="wiz-nav__right">
+                <button class="btn btn--primary" id="next-8">Confirmar reserva</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── STEP 9: Comprovante ── -->
+          <div class="wiz-panel" id="panel-9" data-step="9">
+            <h2 class="wiz-panel__title" style="text-align:center;color:var(--color-forest)">
+              ✓ Reserva realizada!
+            </h2>
+            <p class="wiz-panel__desc" style="text-align:center">
+              Guarde o código abaixo e verifique seu e-mail.
+            </p>
+            <div id="voucher-wrap"></div>
+          </div>
+
+        </div><!-- /.wizard-wrap -->
+      </div><!-- /.container -->
+    </section>
+  </main>
+
+  <!-- Processing overlay -->
+  <div class="processing-overlay" id="processing-overlay" aria-live="polite">
+    <div class="spinner"></div>
+    <span id="processing-msg">Processando pagamento…</span>
+  </div>
+
+  <footer id="site-footer"></footer>
+
+  <script type="module" src="assets/js/reserva.js"></script>
+</body>
+</html>

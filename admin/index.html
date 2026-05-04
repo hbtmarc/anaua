@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backoffice — Anauá Ecoturismo</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="adm-sidebar" id="adm-sidebar">
+    <div class="adm-logo">
+      <div class="adm-logo__mark">A</div>
+      <div class="adm-logo__text">
+        <span class="adm-logo__name">Anauá</span>
+        <span class="adm-logo__sub">Backoffice</span>
+      </div>
+    </div>
+
+    <nav class="adm-nav" aria-label="Módulos">
+      <a class="adm-nav__item" href="#dashboard" data-module="dashboard">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a class="adm-nav__item" href="#agenda" data-module="agenda">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Agenda
+      </a>
+
+      <div class="adm-nav__group">Cadastros</div>
+      <a class="adm-nav__item" href="#experiencias" data-module="experiencias">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        Experiências
+      </a>
+      <a class="adm-nav__item" href="#saidas" data-module="saidas">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Saídas
+      </a>
+      <a class="adm-nav__item" href="#reservas" data-module="reservas">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Reservas
+      </a>
+      <a class="adm-nav__item" href="#participantes" data-module="participantes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Participantes
+      </a>
+
+      <div class="adm-nav__group">Operação</div>
+      <a class="adm-nav__item" href="#financeiro" data-module="financeiro">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Financeiro
+      </a>
+      <a class="adm-nav__item" href="#configuracoes" data-module="configuracoes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 1.41 1.41M4.93 4.93A10 10 0 0 0 3.52 6.34M19.07 19.07a10 10 0 0 0 1.41-1.41M4.93 19.07a10 10 0 0 1-1.41-1.41M22 12h-2M4 12H2M12 22v-2M12 4V2"/></svg>
+        Configurações
+      </a>
+    </nav>
+
+    <div class="adm-user">
+      <div class="adm-user__avatar">CA</div>
+      <div class="adm-user__info">
+        <span class="adm-user__name">Camila Nogueira</span>
+        <span class="adm-user__role">Administradora</span>
+      </div>
+      <a href="../index.html" class="adm-user__exit" title="Sair do backoffice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ── Main shell ──────────────────────────────────────────── -->
+  <div class="adm-shell">
+    <header class="adm-topbar" id="adm-topbar">
+      <button class="adm-topbar__toggle" id="sidebar-toggle" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="adm-topbar__left">
+        <h1 class="adm-topbar__title" id="adm-title">Dashboard</h1>
+        <div class="adm-breadcrumb" id="adm-breadcrumb"></div>
+      </div>
+      <div class="adm-topbar__right">
+        <div class="adm-search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" class="adm-search" id="adm-global-search" placeholder="Buscar reserva, participante…" />
+        </div>
+        <button class="adm-btn adm-btn--primary" id="adm-primary-action" style="display:none"></button>
+        <div class="adm-notif" id="adm-notif-btn" aria-label="Notificações">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="adm-notif__dot" id="adm-notif-dot"></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="adm-main" id="adm-main">
+      <div class="adm-loading" id="adm-loading">
+        <div class="adm-spinner"></div>
+        <span>Carregando…</span>
+      </div>
+    </main>
+  </div>
+
+  <!-- ── Detail Drawer ───────────────────────────────────────── -->
+  <div class="adm-drawer-overlay" id="adm-drawer-overlay"></div>
+  <aside class="adm-drawer" id="adm-drawer" aria-hidden="true">
+    <div class="adm-drawer__header">
+      <div class="adm-drawer__title" id="adm-drawer-title"></div>
+      <button class="adm-drawer__close" id="adm-drawer-close" aria-label="Fechar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="adm-drawer__body" id="adm-drawer-body"></div>
+  </aside>
+
+  <!-- ── Modal ───────────────────────────────────────────────── -->
+  <div class="adm-modal-overlay" id="adm-modal-overlay"></div>
+  <div class="adm-modal" id="adm-modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="adm-modal__header">
+      <h2 class="adm-modal__title" id="adm-modal-title"></h2>
+      <button class="adm-drawer__close" id="adm-modal-close" aria-label="Fechar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="adm-modal__body" id="adm-modal-body"></div>
+    <div class="adm-modal__footer" id="adm-modal-footer"></div>
+  </div>
+
+  <!-- ── Toast ───────────────────────────────────────────────── -->
+  <div class="adm-toast-stack" id="adm-toasts" aria-live="polite"></div>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
