@@ -33,10 +33,48 @@ if (!exp) {
 
 /* ── Main render ─────────────────────────────────────────── */
 function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp) {
-  // Meta
+  const BASE_URL = 'https://www.anaua.com.br';
+
+  // ── <title> & description
   document.title = `${exp.title} — Anauá Ecoturismo`;
   const descMeta = document.getElementById('page-desc-meta');
   if (descMeta) descMeta.setAttribute('content', exp.subtitle);
+
+  // ── Open Graph (IDs injected in experiencia.html)
+  const setMeta = (id, value) => { const el = document.getElementById(id); if (el && value) el.setAttribute('content', value); };
+  const pageUrl = `${BASE_URL}/experiencia.html?id=${encodeURIComponent(exp.id)}`;
+  setMeta('og-title', `${exp.title} — Anauá Ecoturismo`);
+  setMeta('og-desc',  exp.subtitle);
+  setMeta('og-url',   pageUrl);
+  setMeta('og-image', exp.coverImage?.startsWith('http') ? exp.coverImage : `${BASE_URL}/${exp.coverImage}`);
+  setMeta('tw-title', `${exp.title} — Anauá Ecoturismo`);
+  setMeta('tw-image', exp.coverImage?.startsWith('http') ? exp.coverImage : `${BASE_URL}/${exp.coverImage}`);
+
+  // ── Canonical
+  const canonical = document.getElementById('canonical');
+  if (canonical) canonical.setAttribute('href', pageUrl);
+
+  // ── Structured data (TouristAttraction)
+  const sd = document.createElement('script');
+  sd.type = 'application/ld+json';
+  sd.textContent = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'TouristAttraction',
+    name: exp.title,
+    description: exp.subtitle,
+    url: pageUrl,
+    image: exp.coverImage,
+    touristType: exp.category,
+    geo: { '@type': 'GeoCoordinates' },
+    offers: {
+      '@type': 'Offer',
+      price: exp.pricePerPerson,
+      priceCurrency: 'BRL',
+      availability: exp.status === 'active' ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+      url: `${BASE_URL}/reserva.html?id=${encodeURIComponent(exp.id)}`,
+    },
+  });
+  document.head.appendChild(sd);
 
   // Breadcrumb
   const bc = document.getElementById('breadcrumb-container');

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Login — Backoffice Anauá</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --forest:  #1c3a1f;
+      --forest-2:#254b29;
+      --gold:    #c5882a;
+      --cream:   #faf8f5;
+      --border:  #d6d0c6;
+      --muted:   #6b6b62;
+      --red:     #dc2626;
+    }
+    html { font-size: 16px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--cream);
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .login-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.06);
+    }
+    .login-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .login-logo__mark {
+      width: 36px; height: 36px;
+      background: var(--forest);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .login-logo__text { font-weight: 600; font-size: 15px; line-height: 1.3; color: var(--forest); }
+    .login-logo__sub { font-weight: 400; font-size: 12px; color: var(--muted); }
+    h1 { font-size: 20px; font-weight: 700; color: var(--forest); margin-bottom: 6px; }
+    .login-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; font-weight: 500; color: var(--forest); margin-bottom: 5px; }
+    input {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1.5px solid var(--border);
+      border-radius: 7px;
+      font-size: 14px;
+      color: var(--forest);
+      background: var(--cream);
+      transition: border-color .15s;
+      min-height: 44px;
+    }
+    input:focus { outline: none; border-color: var(--forest); background: #fff; }
+    input.is-error { border-color: var(--red); }
+    .error-msg {
+      display: none;
+      font-size: 12px;
+      color: var(--red);
+      margin-top: 5px;
+    }
+    .error-msg.is-visible { display: block; }
+    .btn {
+      width: 100%;
+      min-height: 44px;
+      background: var(--forest);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background .15s;
+    }
+    .btn:hover  { background: var(--forest-2); }
+    .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .demo-hint {
+      margin-top: 20px;
+      padding: 12px;
+      background: #f0f7f0;
+      border-radius: 7px;
+      border: 1px solid #c8e0ca;
+      font-size: 12px;
+      color: var(--forest);
+      line-height: 1.6;
+    }
+    .demo-hint strong { display: block; margin-bottom: 4px; }
+    @media (max-width: 400px) {
+      .login-card { padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="login-card" role="main">
+      <div class="login-logo" aria-hidden="true">
+        <div class="login-logo__mark">A</div>
+        <div class="login-logo__text">
+          Anauá
+          <div class="login-logo__sub">Ecoturismo</div>
+        </div>
+      </div>
+
+      <h1>Acesso restrito</h1>
+      <p class="login-subtitle">Painel administrativo — insira suas credenciais.</p>
+
+      <form id="login-form" novalidate>
+        <div class="field">
+          <label for="admin-email">E-mail</label>
+          <input
+            type="email"
+            id="admin-email"
+            name="email"
+            autocomplete="email"
+            placeholder="seu@email.com"
+            required
+            aria-describedby="email-err"
+          />
+          <div id="email-err" class="error-msg" role="alert"></div>
+        </div>
+
+        <div class="field">
+          <label for="admin-password">Senha</label>
+          <input
+            type="password"
+            id="admin-password"
+            name="password"
+            autocomplete="current-password"
+            placeholder="••••••••"
+            required
+            aria-describedby="pwd-err"
+          />
+          <div id="pwd-err" class="error-msg" role="alert"></div>
+        </div>
+
+        <div id="form-err" class="error-msg" style="margin-top:4px" role="alert"></div>
+
+        <button type="submit" class="btn" id="login-btn">Entrar no backoffice</button>
+      </form>
+
+      <div class="demo-hint" aria-label="Credenciais de demonstração">
+        <strong>Demo</strong>
+        E-mail: <code>admin@anaua.com.br</code><br>
+        Senha: <code>admin2026</code>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    // ─── Admin credentials (demo — replace with server-side auth in production)
+    const ADMIN_EMAIL    = 'admin@anaua.com.br';
+    const ADMIN_PASSWORD = 'admin2026';
+    const SESSION_KEY    = 'anaua_admin_session';
+
+    // If already logged in, go straight to dashboard
+    if (sessionStorage.getItem(SESSION_KEY)) {
+      location.replace('index.html');
+    }
+
+    const form    = document.getElementById('login-form');
+    const emailEl = document.getElementById('admin-email');
+    const pwdEl   = document.getElementById('admin-password');
+    const formErr = document.getElementById('form-err');
+    const btn     = document.getElementById('login-btn');
+
+    function setErr(el, msg) {
+      el.textContent = msg;
+      el.classList.toggle('is-visible', Boolean(msg));
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      // Reset
+      setErr(document.getElementById('email-err'), '');
+      setErr(document.getElementById('pwd-err'), '');
+      setErr(formErr, '');
+      emailEl.classList.remove('is-error');
+      pwdEl.classList.remove('is-error');
+
+      const email = emailEl.value.trim();
+      const pwd   = pwdEl.value;
+
+      let valid = true;
+      if (!email) {
+        setErr(document.getElementById('email-err'), 'E-mail obrigatório.');
+        emailEl.classList.add('is-error');
+        valid = false;
+      }
+      if (!pwd) {
+        setErr(document.getElementById('pwd-err'), 'Senha obrigatória.');
+        pwdEl.classList.add('is-error');
+        valid = false;
+      }
+      if (!valid) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Verificando…';
+
+      // Simulate async check
+      setTimeout(() => {
+        if (email === ADMIN_EMAIL && pwd === ADMIN_PASSWORD) {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+            email,
+            loginAt: new Date().toISOString(),
+          }));
+          location.replace('index.html');
+        } else {
+          setErr(formErr, 'Credenciais inválidas. Verifique e-mail e senha.');
+          btn.disabled = false;
+          btn.textContent = 'Entrar no backoffice';
+          pwdEl.value = '';
+          pwdEl.focus();
+        }
+      }, 400);
+    });
+  </script>
+</body>
+</html>

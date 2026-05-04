@@ -33,24 +33,32 @@ async function renderFeatured() {
 
   grid.innerHTML = renderSkeletonCards(3);
 
-  // Simula latência de API
-  await new Promise(r => setTimeout(r, 600));
+  try {
+    const featured = EXPERIENCES.filter(e => e.isFeatured).slice(0, 3);
+    grid.setAttribute('aria-busy', 'false');
 
-  const featured = EXPERIENCES.filter(e => e.isFeatured).slice(0, 3);
-  grid.setAttribute('aria-busy', 'false');
+    if (!featured.length) {
+      grid.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1">
+          <svg class="empty-state__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/></svg>
+          <h3 class="empty-state__title">Nenhuma experiência disponível</h3>
+          <p class="empty-state__desc">Volte em breve — nossa agenda está sendo atualizada.</p>
+        </div>
+      `;
+      return;
+    }
 
-  if (!featured.length) {
+    grid.innerHTML = featured.map(renderExperienceCard).join('');
+  } catch (err) {
+    console.error('[home] Erro ao renderizar experiências em destaque:', err);
+    grid.setAttribute('aria-busy', 'false');
     grid.innerHTML = `
       <div class="empty-state" style="grid-column:1/-1">
-        <svg class="empty-state__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/></svg>
-        <h3 class="empty-state__title">Nenhuma experiência disponível</h3>
-        <p class="empty-state__desc">Volte em breve — nossa agenda está sendo atualizada.</p>
+        <h3 class="empty-state__title">Não foi possível carregar</h3>
+        <p class="empty-state__desc">Tente recarregar a página.</p>
       </div>
     `;
-    return;
   }
-
-  grid.innerHTML = featured.map(renderExperienceCard).join('');
 }
 
 /* ── Category grid ───────────────────────────────────────── */

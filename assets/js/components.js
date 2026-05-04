@@ -76,7 +76,7 @@ export function renderHeader(activePage = '') {
         </div>
       </div>
     </header>
-    <nav class="nav-drawer" id="nav-drawer" aria-label="Menu mobile">
+    <nav class="nav-drawer" id="nav-drawer" aria-label="Menu mobile" aria-hidden="true">
       ${drawerLinks}
     </nav>
   `;
@@ -106,16 +106,33 @@ function initHeader() {
   // Burger toggle
   burgerBtn?.addEventListener('click', () => {
     const expanded = burgerBtn.getAttribute('aria-expanded') === 'true';
-    burgerBtn.setAttribute('aria-expanded', String(!expanded));
-    navDrawer?.classList.toggle('is-open', !expanded);
-    document.body.style.overflow = expanded ? '' : 'hidden';
+    const open = !expanded;
+    burgerBtn.setAttribute('aria-expanded', String(open));
+    burgerBtn.setAttribute('aria-label', open ? 'Fechar menu' : 'Abrir menu');
+    navDrawer?.classList.toggle('is-open', open);
+    navDrawer?.setAttribute('aria-hidden', String(!open));
+    document.body.style.overflow = open ? 'hidden' : '';
+  });
+
+  // Close drawer on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && burgerBtn?.getAttribute('aria-expanded') === 'true') {
+      burgerBtn.setAttribute('aria-expanded', 'false');
+      burgerBtn.setAttribute('aria-label', 'Abrir menu');
+      navDrawer?.classList.remove('is-open');
+      navDrawer?.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      burgerBtn.focus();
+    }
   });
 
   // Close drawer on link click
   navDrawer?.querySelectorAll('a').forEach(link => {
     link.addEventListener('click', () => {
       burgerBtn?.setAttribute('aria-expanded', 'false');
+      burgerBtn?.setAttribute('aria-label', 'Abrir menu');
       navDrawer.classList.remove('is-open');
+      navDrawer.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
     });
   });
@@ -204,11 +221,11 @@ export function renderExperienceCard(exp) {
   const categoryLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category;
 
   return `
-    <article class="card ${isSoldOut ? 'card--sold-out' : ''}" aria-label="${exp.title}">
+    <article class="card ${isSoldOut ? 'card--sold-out' : ''}">
       <a href="experiencia.html?id=${exp.id}" class="card__thumb" tabindex="-1" aria-hidden="true">
         <img
           src="${exp.coverImage}"
-          alt="${exp.title}"
+          alt=""
           loading="lazy"
           onerror="this.src='assets/img/placeholder.svg'"
         />
@@ -491,6 +508,6 @@ export function renderBreadcrumb(crumbs) {
 }
 
 /* ── PLACEHOLDER IMG ─────────────────────────────────────── */
-export function createPlaceholderSVG(w = 800, h = 500, label = '') {
-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect fill="#e2ddd4" width="${w}" height="${h}"/><text fill="#6b6b62" font-family="sans-serif" font-size="18" text-anchor="middle" x="${w/2}" y="${h/2}">${label}</text></svg>`)}`;
-}
+// NOTE: createPlaceholderSVG removed — was exported but never used.
+// If needed in the future, generate inline SVG data URIs at call site.
+

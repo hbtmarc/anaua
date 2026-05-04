@@ -485,8 +485,10 @@
   align-items: center;
   gap: var(--sp-3);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  padding-block: var(--sp-1); /* prevent chip box-shadow clip */
 }
 
 .filters__inner::-webkit-scrollbar { display: none; }
@@ -496,6 +498,7 @@
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-4);
+  min-height: 44px;   /* WCAG 2.5.8 touch target */
   border-radius: var(--radius-full);
   border: 1.5px solid var(--color-stone);
   background: white;

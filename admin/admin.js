@@ -17,7 +17,27 @@ import {
   listBookings, saveBooking, getBooking, transitionStatus, recordPayment,
 } from '../assets/js/services/ReservationStore.js';
 
-// ─── Seed mock bookings on first run ─────────────────────────────────────────
+// ─── Admin auth guard ─────────────────────────────────────────────────────────
+// Must run before any DOM manipulation. Imports are hoisted, but the guard
+// executes before the code below touches the DOM.
+const ADMIN_SESSION_KEY = 'anaua_admin_session';
+if (!sessionStorage.getItem(ADMIN_SESSION_KEY)) {
+  console.warn('[admin] Acesso negado — sessão não encontrada. Redirecionando para /admin/login.html');
+  location.replace('login.html');
+  // Prevent the rest of the module from executing
+  throw new Error('[admin] Unauthenticated — halting module execution.');
+}
+
+/** @type {{ email: string, loginAt: string }} */
+const adminSession = JSON.parse(sessionStorage.getItem(ADMIN_SESSION_KEY));
+
+// ─── Logout helper ────────────────────────────────────────────────────────────
+function adminLogout() {
+  sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  location.replace('login.html');
+}
+
+
 
 function seedMockBookings() {
   const existing = listBookings();
@@ -1356,5 +1376,22 @@ $('adm-global-search').addEventListener('keydown', e => {
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 seedMockBookings();
+
+// Populate session user info
+const userNameEl   = $('adm-user-name');
+const userAvatarEl = $('adm-user-avatar');
+if (userNameEl && adminSession?.email) {
+  const emailPrefix = adminSession.email.split('@')[0];
+  userNameEl.textContent = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+}
+if (userAvatarEl && adminSession?.email) {
+  userAvatarEl.textContent = adminSession.email[0].toUpperCase();
+}
+
+// Logout
+$('admin-logout-btn')?.addEventListener('click', () => {
+  if (confirm('Deseja sair do backoffice?')) adminLogout();
+});
+
 $('adm-notif-dot').classList.add('is-visible');
 navigate(location.hash || '#dashboard');

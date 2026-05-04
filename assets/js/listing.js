@@ -110,7 +110,15 @@ async function render() {
 
   await new Promise(r => setTimeout(r, 350));
 
-  const filtered = getFiltered();
+  let filtered;
+  try {
+    filtered = getFiltered();
+  } catch (err) {
+    console.error('[listing] Erro ao filtrar experiências:', err);
+    grid.setAttribute('aria-busy', 'false');
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p class="empty-state__desc">Erro ao carregar experiências. Tente recarregar a página.</p></div>`;
+    return;
+  }
   const total    = filtered.length;
   const page     = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
