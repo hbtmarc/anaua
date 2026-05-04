@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sobre — Anauá Ecoturismo</title>
+  <meta name="description" content="Conheça a história, missão, valores e a equipe da Anauá Ecoturismo." />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/sobre.css" />
+</head>
+<body class="is-loading">
+  <div id="header-placeholder"></div>
+
+  <header class="page-header" aria-labelledby="page-title">
+    <div class="container">
+      <p class="page-header__eyebrow">Nossa história</p>
+      <h1 class="page-header__title" id="page-title">Sobre a Anauá</h1>
+      <p class="page-header__desc">
+        Um coletivo de guias, naturalistas e apaixonados por natureza que acredita
+        que turismo de verdade é aquele que transforma quem vive e quem recebe.
+      </p>
+    </div>
+  </header>
+
+  <!-- MISSÃO -->
+  <section class="section" id="missao" aria-labelledby="mission-heading">
+    <div class="container">
+      <div class="about-split" data-animate>
+        <div class="about-split__visual">
+          <img src="assets/img/about-mission.jpg" alt="Guia na floresta" loading="lazy" onerror="this.src='assets/img/placeholder.svg'" />
+        </div>
+        <div class="about-split__text">
+          <p class="section-header__eyebrow">Missão</p>
+          <h2 class="section-header__title" id="mission-heading">
+            Conectar pessoas à natureza de forma autêntica e responsável
+          </h2>
+          <p style="color:var(--color-muted);line-height:var(--leading-loose);margin-top:var(--sp-5)">
+            Fundada em 2018 por Camila Nogueira, a Anauá nasceu da frustração com o turismo de massa que 
+            trata a natureza como pano de fundo. Começamos com uma trilha por semana na Serra da Mantiqueira 
+            e hoje operamos em 12 destinos por todo o Brasil.
+          </p>
+          <p style="color:var(--color-muted);line-height:var(--leading-loose);margin-top:var(--sp-3)">
+            Cada roteiro é criado junto às comunidades locais, revisado por biólogos e testado por nossa 
+            equipe antes de chegar até você. Nada de templates. Tudo feito do zero, com amor e ciência.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VALORES -->
+  <section class="section section--sm" style="background:var(--color-offwhite)" aria-labelledby="values-heading">
+    <div class="container">
+      <div class="section-header section-header--center" data-animate>
+        <p class="section-header__eyebrow">O que nos guia</p>
+        <h2 class="section-header__title" id="values-heading">Nossos valores</h2>
+      </div>
+      <div class="values-grid" id="values-grid">
+        <!-- JS injeta -->
+      </div>
+    </div>
+  </section>
+
+  <!-- NÚMEROS -->
+  <div class="stats-strip" aria-label="Números da Anauá">
+    <div class="container">
+      <div class="stats-strip__grid" id="stats-grid"></div>
+    </div>
+  </div>
+
+  <!-- EQUIPE -->
+  <section class="section" id="equipe" aria-labelledby="team-heading">
+    <div class="container">
+      <div class="section-header section-header--center" data-animate>
+        <p class="section-header__eyebrow">Quem faz acontecer</p>
+        <h2 class="section-header__title" id="team-heading">Nossa equipe</h2>
+        <p class="section-header__desc">
+          Cada membro da equipe é um especialista apaixonado — não um vendedor de pacotes.
+        </p>
+      </div>
+      <div class="team-grid" id="team-grid"></div>
+    </div>
+  </section>
+
+  <!-- PARCEIROS / CERTIFICAÇÕES -->
+  <section class="section section--sm" style="background:var(--color-offwhite)" aria-labelledby="certs-heading">
+    <div class="container">
+      <div class="section-header section-header--center" data-animate>
+        <p class="section-header__eyebrow">Reconhecimentos</p>
+        <h2 class="section-header__title" id="certs-heading">Certificações e parcerias</h2>
+      </div>
+      <div class="certs-row">
+        <div class="cert-item">🏅 Ministério do Turismo — Cadastur</div>
+        <div class="cert-item">🌿 Instituto Chico Mendes — Parceiro</div>
+        <div class="cert-item">🦋 Biosphere Tourism — Membro</div>
+        <div class="cert-item">📷 WWF Brasil — Parceiro de Observação</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section home-cta-banner" aria-labelledby="about-cta-heading">
+    <div class="container">
+      <div class="home-cta-banner__inner" data-animate>
+        <h2 class="home-cta-banner__title" id="about-cta-heading">
+          Venha fazer parte<br/><em>desta história.</em>
+        </h2>
+        <p class="home-cta-banner__desc">
+          Cada experiência que reserva financia a conservação dos destinos que visitamos.
+        </p>
+        <div style="display:flex;flex-wrap:wrap;gap:var(--sp-3);justify-content:center">
+          <a href="experiencias.html" class="btn btn--primary btn--lg">Ver experiências</a>
+          <a href="contato.html" class="btn btn--ghost-light btn--lg">Falar conosco</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="footer-placeholder"></div>
+  <script type="module" src="assets/js/sobre.js"></script>
+</body>
+</html>

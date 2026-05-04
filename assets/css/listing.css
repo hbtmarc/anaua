@@ -1,0 +1,43 @@
+/* =========================================================
+   ANAUÁ — Listing page styles
+   ========================================================= */
+
+.listing-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-8);
+}
+
+.listing-count {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.listing-pagination {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: center;
+  margin-top: var(--sp-12);
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  border: 1.5px solid var(--color-stone);
+  color: var(--color-ink);
+  background: white;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.page-btn:hover { border-color: var(--color-forest); color: var(--color-forest); }
+.page-btn.is-active { background: var(--color-forest); border-color: var(--color-forest); color: white; }

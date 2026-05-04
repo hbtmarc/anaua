@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <rect width="800" height="500" fill="#e8e4da"/>
+  <rect x="0" y="340" width="800" height="160" fill="#c5d8c1"/>
+  <!-- Stylised tree -->
+  <ellipse cx="400" cy="200" rx="120" ry="100" fill="#a8c5a0"/>
+  <ellipse cx="340" cy="230" rx="80" ry="70" fill="#8faf87"/>
+  <ellipse cx="460" cy="215" rx="90" ry="75" fill="#8faf87"/>
+  <rect x="390" y="285" width="20" height="60" fill="#8b6914"/>
+  <!-- Sun -->
+  <circle cx="650" cy="100" r="50" fill="#f0c55a" opacity=".6"/>
+  <!-- Text -->
+  <text x="400" y="440" text-anchor="middle" font-family="Georgia,serif" font-size="22" fill="#3a5a30" opacity=".6">Anauã Ecoturismo</text>
+</svg>

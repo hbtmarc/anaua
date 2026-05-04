@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Termos de Uso — Anauá Ecoturismo</title>
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <meta name="description" content="Leia os termos e condições para uso do site e contratação de experiências Anauá." />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/legal.css" />
+</head>
+<body>
+  <header id="site-header"></header>
+
+  <main>
+    <section class="page-header page-header--sm">
+      <div class="container">
+        <nav id="breadcrumb" aria-label="Localização"></nav>
+        <h1 class="page-header__title">Termos de Uso</h1>
+        <p class="page-header__desc">Última atualização: Janeiro de 2025</p>
+      </div>
+    </section>
+
+    <section class="legal-body section">
+      <div class="container container--narrow">
+
+        <p class="legal-intro">
+          Ao utilizar o site e contratar experiências da Anauá Ecoturismo, você concorda com os termos
+          descritos abaixo. Leia com atenção antes de realizar uma reserva.
+        </p>
+
+        <article class="legal-section animate-fade-in-up stagger-1">
+          <h2>1. Aceitação dos termos</h2>
+          <p>
+            O acesso e uso deste site implicam a aceitação integral dos presentes Termos de Uso.
+            Caso não concorde com alguma disposição, por favor, não utilize o site ou os serviços.
+          </p>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-2">
+          <h2>2. Reservas e pagamentos</h2>
+          <ul>
+            <li>Reservas são confirmadas somente após o pagamento integral ou da entrada combinada.</li>
+            <li>Preços são expressos em Reais (BRL) e incluem os itens listados em cada experiência.</li>
+            <li>O pagamento é processado por gateway certificado PCI-DSS; não armazenamos dados de cartão.</li>
+            <li>Em caso de falha no pagamento, a vaga não é garantida.</li>
+          </ul>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-3">
+          <h2>3. Cancelamentos e reembolsos</h2>
+          <p>A política de cancelamento é específica para cada experiência:</p>
+          <ul>
+            <li><strong>Mais de 72h antes:</strong> reembolso integral.</li>
+            <li><strong>Entre 48h e 72h:</strong> reembolso de 50%.</li>
+            <li><strong>Menos de 48h:</strong> sem reembolso (exceto por condições climáticas adversas).</li>
+          </ul>
+          <p>
+            Em caso de cancelamento por parte da Anauá (condições climáticas, força maior), o cliente
+            recebe crédito integral para usar em outra data ou reembolso total.
+          </p>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-4">
+          <h2>4. Responsabilidades do cliente</h2>
+          <ul>
+            <li>Informar corretamente dados pessoais e de saúde relevantes no ato da reserva.</li>
+            <li>Chegar no horário e local de encontro indicados.</li>
+            <li>Seguir as orientações dos guias durante toda a experiência.</li>
+            <li>Trazer os itens indicados na lista "O que levar" de cada experiência.</li>
+            <li>Respeitar o meio ambiente, a fauna, a flora e as comunidades locais.</li>
+          </ul>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-1">
+          <h2>5. Responsabilidade da Anauá</h2>
+          <p>
+            A Anauá se responsabiliza pela qualidade dos serviços prestados por seus guias certificados.
+            Não nos responsabilizamos por acidentes decorrentes de desobediência às orientações do guia,
+            condições climáticas imprevisíveis ou problemas de saúde preexistentes não informados.
+          </p>
+          <p>
+            Recomendamos fortemente a contratação de seguro de viagem/acidentes pessoais.
+          </p>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-2">
+          <h2>6. Propriedade intelectual</h2>
+          <p>
+            Todo o conteúdo deste site — textos, imagens, vídeos, marca e logotipo — é de propriedade
+            exclusiva da Anauá Ecoturismo. É proibida a reprodução sem autorização prévia por escrito.
+          </p>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-3">
+          <h2>7. Uso aceitável</h2>
+          <p>É proibido utilizar este site para:</p>
+          <ul>
+            <li>Atividades ilegais ou fraudulentas.</li>
+            <li>Transmitir vírus ou qualquer código malicioso.</li>
+            <li>Coletar dados de outros usuários sem consentimento.</li>
+            <li>Sobrecarregar intencionalmente a infraestrutura do site.</li>
+          </ul>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-4">
+          <h2>8. Foro</h2>
+          <p>
+            Fica eleito o foro da Comarca de Alto Paraíso de Goiás — GO para dirimir quaisquer
+            controvérsias decorrentes destes Termos, com renúncia expressa a qualquer outro.
+          </p>
+        </article>
+
+        <article class="legal-section animate-fade-in-up stagger-1">
+          <h2>9. Contato</h2>
+          <p>
+            Dúvidas sobre estes Termos? Fale conosco em
+            <a href="mailto:reservas@anaua.com.br">reservas@anaua.com.br</a> ou acesse nossa
+            <a href="contato.html">página de contato</a>.
+          </p>
+        </article>
+
+      </div>
+    </section>
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script type="module">
+    import { initPage, renderBreadcrumb, observeAnimations } from './assets/js/components.js';
+    initPage('termos.html');
+    renderBreadcrumb([
+      { label: 'Início',     href: 'index.html' },
+      { label: 'Termos de Uso' },
+    ]);
+    observeAnimations();
+  </script>
+</body>
+</html>

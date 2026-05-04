@@ -1,0 +1,113 @@
+/* =========================================================
+   ANAUÁ ECOTURISMO — Design Tokens
+   ========================================================= */
+
+:root {
+  /* ── Palette ─────────────────────────────────────────── */
+  --color-forest:       #1b3d2a;   /* verde floresta escuro   */
+  --color-deep:         #0e2219;   /* verde profundo          */
+  --color-earth:        #c8912a;   /* dourado-terra           */
+  --color-earth-light:  #e6b55a;   /* dourado claro           */
+  --color-sage:         #4a7c5a;   /* verde médio             */
+  --color-sage-light:   #6fa882;   /* verde claro             */
+  --color-offwhite:     #f4f0e6;   /* off-white principal     */
+  --color-cream:        #faf7f1;   /* fundo claro             */
+  --color-stone:        #e2ddd4;   /* borda / divisor         */
+  --color-ink:          #1c1c1a;   /* texto principal         */
+  --color-muted:        #6b6b62;   /* texto secundário        */
+  --color-shadow:       rgba(14, 34, 25, 0.12);
+  --color-overlay:      rgba(14, 34, 25, 0.55);
+
+  /* Status */
+  --color-success:      #2d7a4f;
+  --color-warning:      #c07c1a;
+  --color-danger:       #b83232;
+  --color-info:         #2e6a9e;
+
+  /* Badge níveis */
+  --badge-iniciante:    #3a7d5c;
+  --badge-moderado:     #c8912a;
+  --badge-aventura:     #8b3a2a;
+  --badge-kids:         #4a7fa8;
+
+  /* ── Typography ──────────────────────────────────────── */
+  --font-serif:   "Playfair Display", "Georgia", serif;
+  --font-sans:    "Inter", "Segoe UI", system-ui, sans-serif;
+
+  --text-xs:    0.75rem;    /* 12px */
+  --text-sm:    0.875rem;   /* 14px */
+  --text-base:  1rem;       /* 16px */
+  --text-md:    1.125rem;   /* 18px */
+  --text-lg:    1.25rem;    /* 20px */
+  --text-xl:    1.5rem;     /* 24px */
+  --text-2xl:   1.875rem;   /* 30px */
+  --text-3xl:   2.25rem;    /* 36px */
+  --text-4xl:   3rem;       /* 48px */
+  --text-5xl:   3.75rem;    /* 60px */
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semi:    600;
+  --weight-bold:    700;
+
+  --leading-tight:  1.2;
+  --leading-snug:   1.35;
+  --leading-normal: 1.6;
+  --leading-loose:  1.8;
+
+  --tracking-tight: -0.02em;
+  --tracking-wide:   0.04em;
+  --tracking-wider:  0.1em;
+
+  /* ── Spacing ─────────────────────────────────────────── */
+  --sp-1:   0.25rem;   /* 4px  */
+  --sp-2:   0.5rem;    /* 8px  */
+  --sp-3:   0.75rem;   /* 12px */
+  --sp-4:   1rem;      /* 16px */
+  --sp-5:   1.25rem;   /* 20px */
+  --sp-6:   1.5rem;    /* 24px */
+  --sp-8:   2rem;      /* 32px */
+  --sp-10:  2.5rem;    /* 40px */
+  --sp-12:  3rem;      /* 48px */
+  --sp-16:  4rem;      /* 64px */
+  --sp-20:  5rem;      /* 80px */
+  --sp-24:  6rem;      /* 96px */
+
+  /* ── Layout ──────────────────────────────────────────── */
+  --container-sm:   640px;
+  --container-md:   768px;
+  --container-lg:   1024px;
+  --container-xl:   1280px;
+  --container-2xl:  1440px;
+
+  --header-h:   64px;
+  --sidebar-w:  260px;
+
+  /* ── Radius ──────────────────────────────────────────── */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ─────────────────────────────────────────── */
+  --shadow-xs:  0 1px 3px var(--color-shadow);
+  --shadow-sm:  0 2px 8px var(--color-shadow);
+  --shadow-md:  0 4px 20px var(--color-shadow);
+  --shadow-lg:  0 8px 40px rgba(14, 34, 25, 0.18);
+  --shadow-xl:  0 16px 64px rgba(14, 34, 25, 0.22);
+
+  /* ── Transitions ─────────────────────────────────────── */
+  --ease-out:   cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-fast:   150ms var(--ease-out);
+  --transition-base:   250ms var(--ease-out);
+  --transition-slow:   400ms var(--ease-out);
+
+  /* ── Z-index ─────────────────────────────────────────── */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-dropdown: 100;
+  --z-sticky:   200;
+  --z-modal:    300;
+  --z-toast:    400;
+}

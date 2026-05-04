@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Experiências — Anauá Ecoturismo</title>
+  <meta name="description" content="Trilhas, expedições, eventos kids e muito mais. Encontre sua próxima aventura na natureza com a Anauá Ecoturismo." />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/listing.css" />
+</head>
+<body class="is-loading">
+  <div id="header-placeholder"></div>
+
+  <!-- PAGE HEADER -->
+  <header class="page-header" aria-labelledby="page-title">
+    <div class="container">
+      <p class="page-header__eyebrow">Catálogo completo</p>
+      <h1 class="page-header__title" id="page-title">Experiências</h1>
+      <p class="page-header__desc">
+        Escolha pelo tipo de aventura, destino ou dificuldade.
+        Temos vagas limitadas — reserve com antecedência.
+      </p>
+    </div>
+  </header>
+
+  <!-- FILTERS -->
+  <div class="filters" id="filters-bar" aria-label="Filtrar experiências">
+    <div class="container">
+      <div class="filters__inner" role="group" aria-label="Categorias">
+        <button class="filter-chip is-active" data-filter="all" aria-pressed="true">
+          🌿 Todas
+        </button>
+        <button class="filter-chip" data-filter="day-experience" aria-pressed="false">
+          ☀️ 1 dia
+        </button>
+        <button class="filter-chip" data-filter="expedition" aria-pressed="false">
+          🗺️ Expedições
+        </button>
+        <button class="filter-chip" data-filter="event" aria-pressed="false">
+          ✨ Eventos
+        </button>
+        <button class="filter-chip" data-filter="kids" aria-pressed="false">
+          🌱 Kids
+        </button>
+        <div class="filters__sep" aria-hidden="true" style="width:1px;height:24px;background:var(--color-stone);flex-shrink:0"></div>
+        <button class="filter-chip" data-filter="iniciante" data-type="difficulty" aria-pressed="false">
+          Iniciante
+        </button>
+        <button class="filter-chip" data-filter="moderado" data-type="difficulty" aria-pressed="false">
+          Moderado
+        </button>
+        <button class="filter-chip" data-filter="aventura" data-type="difficulty" aria-pressed="false">
+          Aventura
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LISTING MAIN -->
+  <main class="section" id="main-content">
+    <div class="container">
+      <div class="listing-toolbar">
+        <p class="listing-count" id="results-count" aria-live="polite"></p>
+        <div class="listing-sort">
+          <label for="sort-select" class="sr-only">Ordenar por</label>
+          <select id="sort-select" class="select" style="max-width:200px">
+            <option value="featured">Em destaque</option>
+            <option value="price-asc">Menor preço</option>
+            <option value="price-desc">Maior preço</option>
+            <option value="name">Nome A–Z</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid-cards" id="listing-grid" aria-live="polite" aria-busy="true">
+        <!-- JS injeta -->
+      </div>
+
+      <!-- Pagination placeholder -->
+      <div id="pagination" class="listing-pagination"></div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+  <script type="module" src="assets/js/listing.js"></script>
+</body>
+</html>

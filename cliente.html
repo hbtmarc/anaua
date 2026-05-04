@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Área do Cliente — Anauá Ecoturismo</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/cliente.css" />
+</head>
+<body>
+  <header id="site-header"></header>
+
+  <main>
+    <!-- Login view -->
+    <div id="login-view" class="login-wrap">
+      <div class="login-card animate-fade-in-up">
+        <div class="login-card__brand">Anauá</div>
+        <p class="login-card__sub">Entre para acessar suas reservas</p>
+
+        <form id="login-form" class="form" novalidate>
+          <div class="field">
+            <label class="label" for="login-email">E-mail</label>
+            <input
+              class="input"
+              type="email"
+              id="login-email"
+              name="email"
+              autocomplete="email"
+              placeholder="seu@email.com"
+              required
+            />
+            <span class="field-error" id="login-email-err" role="alert"></span>
+          </div>
+
+          <div class="field">
+            <label class="label" for="login-password">Senha</label>
+            <input
+              class="input"
+              type="password"
+              id="login-password"
+              name="password"
+              autocomplete="current-password"
+              placeholder="••••••••"
+              required
+            />
+            <span class="field-error" id="login-password-err" role="alert"></span>
+          </div>
+
+          <button type="submit" class="btn btn--primary btn--full" id="login-btn">
+            Entrar
+          </button>
+
+          <span class="field-error" id="login-global-err" role="alert" style="justify-content:center;margin-top:var(--sp-3)"></span>
+        </form>
+
+        <div class="login-card__footer">
+          Não tem conta?
+          <a href="contato.html">Fale conosco</a>
+          &nbsp;·&nbsp;
+          <a href="index.html">Voltar ao site</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard view (hidden until login) -->
+    <div id="dashboard-view" class="dashboard">
+      <div class="dashboard-header">
+        <div class="container">
+          <p class="dashboard-greeting">Olá, <span id="user-name">visitante</span>!</p>
+          <button class="dashboard-logout" id="logout-btn">Sair</button>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="container">
+          <h2 class="reservations-title">Minhas Reservas</h2>
+          <div id="reservation-list" class="reservation-list">
+            <!-- populated by cliente.js -->
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer id="site-footer"></footer>
+
+  <script type="module" src="assets/js/cliente.js"></script>
+</body>
+</html>

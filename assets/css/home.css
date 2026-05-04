@@ -1,0 +1,146 @@
+/* =========================================================
+   ANAUÁ — Home page specific styles
+   ========================================================= */
+
+/* ── Category cards grid ─────────────────────────────────── */
+.home-categories {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-4);
+}
+
+@media (min-width: 768px) { .home-categories { grid-template-columns: repeat(4, 1fr); } }
+
+.home-cat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6) var(--sp-4);
+  background: white;
+  border: 1.5px solid var(--color-stone);
+  border-radius: var(--radius-xl);
+  text-align: center;
+  text-decoration: none;
+  transition: all var(--transition-base);
+  cursor: pointer;
+}
+
+.home-cat-card:hover {
+  border-color: var(--color-forest);
+  background: var(--color-forest);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.home-cat-card:hover .home-cat-card__icon  { background: rgba(255,255,255,0.15); }
+.home-cat-card:hover .home-cat-card__label { color: white; }
+.home-cat-card:hover .home-cat-card__count { color: rgba(255,255,255,0.7); }
+
+.home-cat-card__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-xl);
+  background: var(--color-offwhite);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  transition: background var(--transition-fast);
+}
+
+.home-cat-card__label {
+  font-family: var(--font-serif);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--color-deep);
+  transition: color var(--transition-fast);
+}
+
+.home-cat-card__count {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  transition: color var(--transition-fast);
+}
+
+/* ── Manifesto section ───────────────────────────────────── */
+.home-manifesto {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-10);
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .home-manifesto { grid-template-columns: 1fr 1fr; gap: var(--sp-16); }
+}
+
+.home-manifesto__visual {
+  position: relative;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  aspect-ratio: 4/3;
+}
+
+.home-manifesto__visual img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+.home-manifesto__badge {
+  position: absolute;
+  bottom: var(--sp-6);
+  right: var(--sp-6);
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  color: var(--color-forest);
+  line-height: var(--leading-snug);
+  box-shadow: var(--shadow-md);
+  max-width: 120px;
+}
+
+/* ── CTA Banner ──────────────────────────────────────────── */
+.home-cta-banner {
+  background: linear-gradient(135deg, var(--color-deep) 0%, var(--color-forest) 60%, #2a5a3e 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.home-cta-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Ccircle cx='30' cy='30' r='20'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.home-cta-banner__inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  text-align: center;
+}
+
+.home-cta-banner__title {
+  font-family: var(--font-serif);
+  font-size: clamp(var(--text-2xl), 4vw, var(--text-4xl));
+  font-weight: var(--weight-bold);
+  color: white;
+  line-height: var(--leading-tight);
+}
+
+.home-cta-banner__title em { color: var(--color-earth-light); font-style: italic; }
+
+.home-cta-banner__desc {
+  font-size: var(--text-md);
+  color: rgba(244,240,230,0.75);
+  max-width: 50ch;
+}

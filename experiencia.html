@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="page-title-meta">Detalhes — Anauá Ecoturismo</title>
+  <meta name="description" id="page-desc-meta" content="Detalhes da experiência na Anauá Ecoturismo." />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/detail.css" />
+</head>
+<body class="is-loading">
+  <div id="header-placeholder"></div>
+
+  <!-- BREADCRUMB -->
+  <div class="container" id="breadcrumb-container" aria-label="Navegação"></div>
+
+  <!-- DETAIL HERO -->
+  <div id="detail-hero" class="detail-hero" aria-label="Imagem de destaque"></div>
+
+  <!-- MAIN LAYOUT -->
+  <main class="section" id="detail-main">
+    <div class="container">
+      <div class="detail-layout">
+
+        <!-- LEFT COLUMN -->
+        <div class="detail-content" id="detail-content">
+          <!-- JS injeta tudo aqui -->
+          <div class="skeleton" style="height:40px;width:60%;border-radius:var(--radius-md)"></div>
+          <div class="skeleton" style="height:20px;width:80%;margin-top:12px;border-radius:var(--radius-md)"></div>
+          <div class="skeleton" style="height:120px;margin-top:24px;border-radius:var(--radius-md)"></div>
+        </div>
+
+        <!-- RIGHT COLUMN — booking box -->
+        <aside class="detail-sidebar" aria-label="Reserva">
+          <div class="booking-box" id="booking-box">
+            <div class="skeleton" style="height:80px;border-radius:var(--radius-md)"></div>
+            <div class="skeleton" style="height:44px;border-radius:var(--radius-md)"></div>
+            <div class="skeleton" style="height:44px;border-radius:var(--radius-md)"></div>
+            <div class="skeleton" style="height:48px;border-radius:var(--radius-md)"></div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- RELATED -->
+      <section class="section section--sm" aria-labelledby="related-heading" id="related-section" style="padding-inline:0">
+        <div class="section-header" data-animate>
+          <p class="section-header__eyebrow">Você também pode gostar</p>
+          <h2 class="section-header__title" id="related-heading">Outras experiências</h2>
+        </div>
+        <div class="grid-cards grid-cards--3" id="related-grid"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- STICKY CTA (mobile) -->
+  <div class="sticky-cta" id="sticky-cta" aria-label="Botão de reserva fixo">
+    <div class="sticky-cta__price">
+      <span class="sticky-cta__from">a partir de</span>
+      <span class="sticky-cta__value" id="sticky-price">—</span>
+    </div>
+    <a href="#booking-box" class="btn btn--primary btn--lg" id="sticky-reserve-btn">
+      Reservar vaga
+    </a>
+  </div>
+
+  <!-- GALLERY MODAL -->
+  <div id="gallery-modal-container"></div>
+
+  <div id="footer-placeholder"></div>
+  <script type="module" src="assets/js/detail.js"></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+/* ========================================================
+   legal.css — Política de Privacidade & Termos de Uso
+   ======================================================== */
+
+.container--narrow {
+  max-width: 760px;
+}
+
+.legal-intro {
+  font-size: var(--text-lg);
+  color: var(--color-text-muted);
+  line-height: 1.8;
+  margin-block-end: var(--sp-10);
+  padding-block-end: var(--sp-8);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.legal-section {
+  margin-block-end: var(--sp-10);
+  padding-block-end: var(--sp-8);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.legal-section:last-child {
+  border-bottom: none;
+}
+
+.legal-section h2 {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  color: var(--color-forest);
+  margin-block-end: var(--sp-4);
+}
+
+.legal-section p,
+.legal-section ul {
+  font-size: var(--text-base);
+  line-height: 1.8;
+  color: var(--color-text);
+  margin-block-end: var(--sp-3);
+}
+
+.legal-section p:last-child,
+.legal-section ul:last-child {
+  margin-block-end: 0;
+}
+
+.legal-section ul {
+  padding-inline-start: var(--sp-6);
+  list-style: disc;
+}
+
+.legal-section li {
+  margin-block-end: var(--sp-2);
+}
+
+.legal-section a {
+  color: var(--color-earth);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-section a:hover {
+  color: var(--color-forest);
+}

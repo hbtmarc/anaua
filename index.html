@@ -1,7 +1,152 @@
-<html>
-  <head>
-    <body>
-      <h1>Teste</h1>
-    </body>
-  </head>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anauá Ecoturismo — Experiências autênticas na natureza</title>
+  <meta name="description" content="Trilhas, expedições, eventos e experiências kids em destinos naturais únicos do Brasil. Viva a natureza com a Anauá Ecoturismo." />
+  <meta property="og:title" content="Anauá Ecoturismo" />
+  <meta property="og:description" content="Experiências autênticas na natureza brasileira." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/home.css" />
+</head>
+<body class="is-loading">
+  <div id="header-placeholder"></div>
+
+  <!-- HERO -->
+  <section class="hero" aria-label="Bem-vindo à Anauá Ecoturismo">
+    <img
+      class="hero__bg"
+      src="assets/img/hero-bg.jpg"
+      alt=""
+      aria-hidden="true"
+      fetchpriority="high"
+      onerror="this.style.display='none'"
+    />
+    <div class="hero__overlay" aria-hidden="true"></div>
+    <div class="container">
+      <div class="hero__content animate-fade-in-up">
+        <span class="hero__eyebrow">Ecoturismo premium no Brasil</span>
+        <h1 class="hero__title">
+          A natureza<br/>que te chama<br/><em>de volta.</em>
+        </h1>
+        <p class="hero__desc">
+          Trilhas, expedições, eventos e experiências kids em destinos
+          naturais únicos. Planejamento impecável, guias especializados
+          e memórias para a vida toda.
+        </p>
+        <div class="hero__actions">
+          <a href="experiencias.html" class="btn btn--primary btn--lg">
+            Explorar experiências
+          </a>
+          <a href="sobre.html" class="btn btn--ghost-light btn--lg">
+            Quem somos
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="hero__scroll" aria-hidden="true">
+      <span>Scroll</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+    </div>
+  </section>
+
+  <!-- STATS STRIP -->
+  <div class="stats-strip" aria-label="Números da Anauá">
+    <div class="container">
+      <div class="stats-strip__grid" id="stats-grid"></div>
+    </div>
+  </div>
+
+  <!-- DESTAQUES -->
+  <section class="section" aria-labelledby="featured-heading">
+    <div class="container">
+      <div class="section-header section-header--center" data-animate>
+        <p class="section-header__eyebrow">Seleção da semana</p>
+        <h2 class="section-header__title" id="featured-heading">Experiências em destaque</h2>
+        <p class="section-header__desc">
+          Das trilhas de 1 dia às expedições de vários dias, cada saída é cuidadosamente
+          conduzida para quem quer mais do que um passeio.
+        </p>
+      </div>
+      <div class="grid-cards grid-cards--3" id="featured-grid" aria-live="polite" aria-busy="true"></div>
+      <div style="text-align:center;margin-top:var(--sp-10)">
+        <a href="experiencias.html" class="btn btn--secondary btn--lg">Ver todas as experiências</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIAS -->
+  <section class="section section--sm" style="background:var(--color-offwhite)" aria-labelledby="categories-heading">
+    <div class="container">
+      <div class="section-header section-header--center" data-animate>
+        <p class="section-header__eyebrow">Como explorar</p>
+        <h2 class="section-header__title" id="categories-heading">Encontre seu tipo de aventura</h2>
+      </div>
+      <div id="categories-grid" class="home-categories"></div>
+    </div>
+  </section>
+
+  <!-- MANIFESTO -->
+  <section class="section" aria-labelledby="about-heading">
+    <div class="container">
+      <div class="home-manifesto" data-animate>
+        <div class="home-manifesto__visual" aria-hidden="true">
+          <img src="assets/img/about-forest.jpg" alt="" loading="lazy" onerror="this.src='assets/img/placeholder.svg'" />
+          <div class="home-manifesto__badge">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-earth)" stroke-width="1.5"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+            <span>Certificados<br/>pelo Ministério<br/>do Turismo</span>
+          </div>
+        </div>
+        <div class="home-manifesto__text">
+          <p class="section-header__eyebrow">Sobre a Anauá</p>
+          <h2 class="section-header__title" id="about-heading">Turismo que respeita a floresta e as pessoas</h2>
+          <p style="color:var(--color-muted);line-height:var(--leading-loose);margin-top:var(--sp-4)">
+            Nascemos em 2018 com uma crença simples: a natureza é o melhor professor.
+            Cada experiência que criamos nasce do entendimento profundo do ecossistema local
+            e de relações reais com as comunidades que vivem nele.
+          </p>
+          <p style="color:var(--color-muted);line-height:var(--leading-loose);margin-top:var(--sp-3)">
+            Não somos uma agência de viagens. Somos um coletivo de guias, naturalistas,
+            educadores e apaixonados por natureza que transformam logística em experiência
+            e o desconhecido em pertencimento.
+          </p>
+          <a href="sobre.html" class="btn btn--primary" style="margin-top:var(--sp-6)">Conhecer nossa história</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEPOIMENTOS -->
+  <section class="section section--sm" style="background:var(--color-offwhite)" aria-labelledby="testimonials-heading">
+    <div class="container">
+      <div class="section-header section-header--center" data-animate>
+        <p class="section-header__eyebrow">Quem viveu conta</p>
+        <h2 class="section-header__title" id="testimonials-heading">O que dizem os participantes</h2>
+      </div>
+      <div class="grid-cards grid-cards--3" id="testimonials-grid"></div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="section home-cta-banner" aria-labelledby="cta-heading">
+    <div class="container">
+      <div class="home-cta-banner__inner" data-animate>
+        <h2 class="home-cta-banner__title" id="cta-heading">
+          Pronto para sua próxima<br/><em>grande experiência?</em>
+        </h2>
+        <p class="home-cta-banner__desc">
+          Cada saída tem vagas limitadas. Reserve com antecedência e garanta seu lugar.
+        </p>
+        <a href="experiencias.html" class="btn btn--primary btn--lg">Ver calendário de saídas</a>
+      </div>
+    </div>
+  </section>
+
+  <div id="footer-placeholder"></div>
+  <script type="module" src="assets/js/home.js"></script>
+</body>
 </html>

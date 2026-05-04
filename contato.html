@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contato — Anauá Ecoturismo</title>
+  <meta name="description" content="Fale com a equipe da Anauá Ecoturismo. Respondemos em até 24 horas úteis." />
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/components.css" />
+  <link rel="stylesheet" href="assets/css/contato.css" />
+</head>
+<body class="is-loading">
+  <div id="header-placeholder"></div>
+
+  <header class="page-header" aria-labelledby="page-title">
+    <div class="container">
+      <p class="page-header__eyebrow">Fale conosco</p>
+      <h1 class="page-header__title" id="page-title">Contato</h1>
+      <p class="page-header__desc">
+        Dúvidas, parcerias ou só vontade de falar sobre natureza?
+        Respondemos em até 24 horas úteis.
+      </p>
+    </div>
+  </header>
+
+  <main class="section" id="main-content">
+    <div class="container">
+      <div class="contact-layout">
+
+        <!-- FORM -->
+        <div>
+          <form class="form" id="contact-form" novalidate aria-label="Formulário de contato">
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="label label--required" for="name">Nome completo</label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  class="input"
+                  placeholder="Seu nome"
+                  autocomplete="name"
+                  required
+                />
+                <span class="field-error" id="name-err" role="alert" style="display:none"></span>
+              </div>
+              <div class="form-group">
+                <label class="label label--required" for="email">E-mail</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  class="input"
+                  placeholder="seu@email.com"
+                  autocomplete="email"
+                  required
+                />
+                <span class="field-error" id="email-err" role="alert" style="display:none"></span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="label" for="phone">Telefone / WhatsApp</label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  class="input"
+                  placeholder="(11) 99999-9999"
+                  autocomplete="tel"
+                />
+                <span class="field-error" id="phone-err" role="alert" style="display:none"></span>
+              </div>
+              <div class="form-group">
+                <label class="label" for="subject">Assunto</label>
+                <select id="subject" name="subject" class="select">
+                  <option value="">Selecione um assunto</option>
+                  <option value="reserva">Sobre uma reserva</option>
+                  <option value="experiencia">Dúvida sobre experiência</option>
+                  <option value="grupo">Reserva para grupo</option>
+                  <option value="parceria">Parceria corporativa</option>
+                  <option value="imprensa">Imprensa</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="label label--required" for="message">Mensagem</label>
+              <textarea
+                id="message"
+                name="message"
+                class="textarea"
+                placeholder="Conte mais sobre sua dúvida ou necessidade…"
+                rows="6"
+                required
+              ></textarea>
+              <span class="field-error" id="message-err" role="alert" style="display:none"></span>
+            </div>
+
+            <div class="form-group">
+              <label style="display:flex;align-items:flex-start;gap:var(--sp-3);cursor:pointer;font-size:var(--text-sm);color:var(--color-muted)">
+                <input type="checkbox" id="consent" name="consent" required style="margin-top:3px;accent-color:var(--color-forest);flex-shrink:0" />
+                <span>
+                  Concordo com o tratamento dos meus dados conforme a
+                  <a href="privacidade.html" style="color:var(--color-forest)">Política de Privacidade</a>.
+                  <span style="color:var(--color-danger)">*</span>
+                </span>
+              </label>
+              <span class="field-error" id="consent-err" role="alert" style="display:none"></span>
+            </div>
+
+            <div>
+              <button type="submit" class="btn btn--primary btn--lg btn--full" id="submit-btn">
+                Enviar mensagem
+              </button>
+              <p id="form-status" role="alert" aria-live="polite" style="margin-top:var(--sp-4);font-size:var(--text-sm);display:none"></p>
+            </div>
+          </form>
+        </div>
+
+        <!-- SIDEBAR INFO -->
+        <aside class="contact-info" aria-label="Informações de contato">
+          <div class="contact-info__block">
+            <h2 class="contact-info__title">Atendimento</h2>
+            <ul class="contact-info__list">
+              <li>
+                <span class="contact-info__icon">💬</span>
+                <div>
+                  <strong>WhatsApp</strong>
+                  <p><a href="https://wa.me/5521999999999" rel="noopener" target="_blank" style="color:var(--color-forest)">(21) 99999-9999</a></p>
+                  <p style="font-size:var(--text-xs);color:var(--color-muted)">Seg–Sex, 9h–18h</p>
+                </div>
+              </li>
+              <li>
+                <span class="contact-info__icon">📧</span>
+                <div>
+                  <strong>E-mail</strong>
+                  <p><a href="mailto:oi@anaua.eco" style="color:var(--color-forest)">oi@anaua.eco</a></p>
+                  <p style="font-size:var(--text-xs);color:var(--color-muted)">Resposta em até 24h úteis</p>
+                </div>
+              </li>
+              <li>
+                <span class="contact-info__icon">📍</span>
+                <div>
+                  <strong>Sede administrativa</strong>
+                  <p style="color:var(--color-muted);font-size:var(--text-sm)">São Paulo, SP<br />Operações em todo o Brasil</p>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="contact-info__block" id="faq">
+            <h2 class="contact-info__title">Perguntas frequentes</h2>
+            <div class="faq-list" id="faq-list">
+              <!-- JS injeta -->
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <div id="footer-placeholder"></div>
+  <script type="module" src="assets/js/contato.js"></script>
+</body>
+</html>
