@@ -18,22 +18,15 @@ import {
 } from '../assets/js/services/ReservationStore.js';
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
-// Must run before any DOM manipulation. Imports are hoisted, but the guard
-// executes before the code below touches the DOM.
-const ADMIN_SESSION_KEY = 'anaua_admin_session';
-if (!sessionStorage.getItem(ADMIN_SESSION_KEY)) {
-  console.warn('[admin] Acesso negado — sessão não encontrada. Redirecionando para /admin/login.html');
-  location.replace('login.html');
-  // Prevent the rest of the module from executing
-  throw new Error('[admin] Unauthenticated — halting module execution.');
-}
+// Oculta o body imediatamente para evitar flash de conteúdo antes da validação
+document.body.style.visibility = 'hidden';
 
-/** @type {{ email: string, loginAt: string }} */
-const adminSession = JSON.parse(sessionStorage.getItem(ADMIN_SESSION_KEY));
+const ADMIN_SESSION_KEY = 'anaua_admin_session'; // mantido para compatibilidade
 
 // ─── Logout helper ────────────────────────────────────────────────────────────
 function adminLogout() {
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  if (window.anauaDb) window.anauaDb.auth.signOut();
   location.replace('login.html');
 }
 
@@ -1377,20 +1370,125 @@ $('adm-global-search').addEventListener('keydown', e => {
 
 seedMockBookings();
 
-// Populate session user info
-const userNameEl   = $('adm-user-name');
-const userAvatarEl = $('adm-user-avatar');
-if (userNameEl && adminSession?.email) {
-  const emailPrefix = adminSession.email.split('@')[0];
-  userNameEl.textContent = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
-}
-if (userAvatarEl && adminSession?.email) {
-  userAvatarEl.textContent = adminSession.email[0].toUpperCase();
+// ─── Supabase Auth Guard (async) ──────────────────────────────────────────────
+// Inicializa o cliente Supabase reutilizando a mesma URL/key do projeto
+(function initAdminSupabase() {
+  if (window.supabase && !window.anauaDb) {
+    window.anauaDb = window.supabase.createClient(
+      'https://dmclvlarnoimrrfndcsx.supabase.co',
+      'sb_publishable_5uEhWBG8FOnhK4FmoNfFcQ_4MP1jNbS'
+    );
+  }
+})();
+
+(async function validateAdminSession() {
+  const db = window.anauaDb;
+
+  if (!db) {
+    // CDN não carregou — fallback para sessionStorage legado
+    if (!sessionStorage.getItem(ADMIN_SESSION_KEY)) {
+      location.replace('login.html');
+      return;
+    }
+    document.body.style.visibility = '';
+    const legacySession = JSON.parse(sessionStorage.getItem(ADMIN_SESSION_KEY) || '{}');
+    const el = $('adm-user-name'); if (el) el.textContent = legacySession.email?.split('@')[0] ?? 'Admin';
+    const av = $('adm-user-avatar'); if (av) av.textContent = (legacySession.email?.[0] ?? 'A').toUpperCase();
+    return;
+  }
+
+  try {
+    const { data: { user }, error } = await db.auth.getUser();
+
+    if (!user || error) {
+      console.warn('[admin] Sessão Supabase não encontrada. Redirecionando...');
+      location.replace('login.html');
+      return;
+    }
+
+    const { data: profile } = await db
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || !['admin', 'operator'].includes(profile.role)) {
+      document.body.style.visibility = '';
+      $('adm-main').innerHTML = `
+        <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
+          <p style="color:var(--adm-danger);font-size:1.1rem;font-weight:600">Acesso não autorizado.</p>
+          <p style="color:var(--adm-text-muted);margin-top:8px">Você não tem permissão para acessar o backoffice.</p>
+          <a href="../index.html" class="adm-btn adm-btn--primary" style="margin-top:20px;display:inline-flex">Voltar ao site</a>
+        </div>`;
+      return;
+    }
+
+    // Popula informações do usuário
+    const displayName = profile.full_name ?? user.email.split('@')[0];
+    const userNameEl  = $('adm-user-name');
+    const avatarEl    = $('adm-user-avatar');
+    if (userNameEl) userNameEl.textContent = displayName;
+    if (avatarEl)   avatarEl.textContent   = displayName[0].toUpperCase();
+
+    console.log('[admin] Sessão validada ✓ —', user.email, '| role:', profile.role);
+    document.body.style.visibility = '';
+
+    // Carrega contadores reais do Supabase no dashboard
+    loadSupabaseCounters();
+
+  } catch (err) {
+    console.error('[admin] Erro ao validar sessão:', err);
+    location.replace('login.html');
+  }
+})();
+
+/**
+ * Carrega contadores reais do Supabase e adiciona uma linha de KPIs
+ * abaixo dos KPIs locais no dashboard.
+ * Se a RLS bloquear alguma query, exibe '—' sem quebrar.
+ */
+async function loadSupabaseCounters() {
+  const db = window.anauaDb;
+  if (!db) return;
+
+  const safeCount = async (query) => {
+    try {
+      const { count, error } = await query;
+      if (error) { console.warn('[admin] Contagem bloqueada por RLS ou erro:', error.message); return '—'; }
+      return count ?? '—';
+    } catch (_) { return '—'; }
+  };
+
+  const [expCount, depCount, resCount, pendCount] = await Promise.all([
+    safeCount(db.from('experiences').select('*', { count: 'exact', head: true }).eq('is_active', true)),
+    safeCount(db.from('departures').select('*', { count: 'exact', head: true }).eq('status', 'scheduled')),
+    safeCount(db.from('reservations').select('*', { count: 'exact', head: true })),
+    safeCount(db.from('reservations').select('*', { count: 'exact', head: true }).eq('status', 'pending_payment')),
+  ]);
+
+  const kpiRow = document.querySelector('.adm-kpi-row');
+  if (!kpiRow) return;
+
+  const row = document.createElement('div');
+  row.className = 'adm-kpi-row';
+  row.setAttribute('aria-label', 'Contadores do Supabase');
+  row.innerHTML = [
+    kpi('Experiências ativas', expCount,  'catálogo Supabase',           'green',  `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/></svg>`),
+    kpi('Saídas agendadas',    depCount,  'tabela departures',           'blue',   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`),
+    kpi('Total de reservas',   resCount,  'tabela reservations',         'purple', `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`),
+    kpi('Pagamentos pendentes', pendCount, 'aguardando no Supabase',     'red',    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`),
+  ].join('');
+  kpiRow.parentElement?.insertBefore(row, kpiRow.nextSibling);
+
+  if ([expCount, depCount, resCount, pendCount].some(v => v === '—')) {
+    toast('Alguns contadores bloqueados por RLS — configure permissões no Supabase.', 'warn');
+  }
 }
 
 // Logout
 $('admin-logout-btn')?.addEventListener('click', () => {
-  if (confirm('Deseja sair do backoffice?')) adminLogout();
+  toast('Saindo do backoffice…', 'info');
+  setTimeout(adminLogout, 800);
 });
 
 $('adm-notif-dot').classList.add('is-visible');

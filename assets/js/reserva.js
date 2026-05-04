@@ -29,6 +29,9 @@ import {
   computeTotal, computeSplit, submitBooking,
 } from './services/BookingService.js';
 
+// Expõe showToast globalmente para onclick inline em templates de string
+window.__anauaToast = showToast;
+
 // ─── Init ──────────────────────────────────────────────────────────────────────
 
 initPage('reserva.html');
@@ -828,7 +831,13 @@ $('next-8').addEventListener('click', async () => {
     setProcessing(false);
     goTo(9);
     renderVoucher(booking, paymentResult, split);
-    showToast('Reserva confirmada!', 'success');
+    // Toast reflete o status real — pagamento sem integração nunca chega em 'confirmed' diretamente
+    const STATUS_TOAST = {
+      confirmed:       'Reserva confirmada! ✓',
+      reserved:        'Reserva solicitada! Aguardando confirmação de pagamento.',
+      pending_payment: 'Solicitação recebida. Finalize o pagamento para garantir sua vaga.',
+    };
+    showToast(STATUS_TOAST[booking.status] ?? 'Solicitação recebida!', 'success', 6000);
   } catch (err) {
     setProcessing(false);
     showError('Erro ao processar reserva. Tente novamente.');
@@ -839,6 +848,28 @@ $('next-8').addEventListener('click', async () => {
 $('back-8').addEventListener('click', () => goTo(7));
 
 // ─── STEP 9: Voucher ──────────────────────────────────────────────────────────
+
+/**
+ * Gera link wa.me para cancelamento via WhatsApp.
+ * Inclui: código da reserva, nome, experiência, data e valor.
+ * @param {object} booking
+ * @param {object} experience
+ * @returns {string} URL wa.me
+ */
+function buildWhatsAppCancelLink(booking, experience) {
+  const exitObj   = (experience.nextExits ?? []).find(e => e.id === booking.exitId);
+  const dateLabel = exitObj?.dateLabel ?? booking.exitId ?? 'data a confirmar';
+  const msg = [
+    `Olá! Gostaria de cancelar minha reserva.`,
+    `Código: ${booking.voucherCode ?? booking.id}`,
+    `Nome: ${booking.payer?.fullName ?? ''}`,
+    `Experiência: ${experience.title}`,
+    `Data: ${dateLabel}`,
+    `Valor: ${formatBRL(booking.totalAmount ?? 0)}`,
+    `Status: ${STATUS_LABEL[booking.status] ?? booking.status}`,
+  ].join('\n');
+  return `https://wa.me/5511999999999?text=${encodeURIComponent(msg)}`;
+}
 
 function renderVoucher(booking, paymentResult, split) {
   const exitObj = (exp.nextExits ?? []).find(e => e.id === booking.exitId);
@@ -922,7 +953,7 @@ function renderVoucher(booking, paymentResult, split) {
             <div class="pix-box" style="margin-block-start:var(--sp-4)">
               ${paymentResult.pixQrData ? `<img class="pix-box__qr" src="${paymentResult.pixQrData}" alt="QR Code PIX" />` : ''}
               <div class="pix-box__code">${paymentResult.pixCode}</div>
-              <button class="btn btn--secondary btn--sm pix-box__copy" onclick="navigator.clipboard.writeText('${paymentResult.pixCode}').then(()=>alert('Código copiado!'))">
+              <button class="btn btn--secondary btn--sm pix-box__copy" onclick="navigator.clipboard.writeText('${paymentResult.pixCode}').then(()=>window.__anauaToast('Código PIX copiado!','success',2500))">
                 Copiar código PIX
               </button>
             </div>` : ''}
@@ -932,6 +963,14 @@ function renderVoucher(booking, paymentResult, split) {
       <div class="voucher__actions">
         <button class="btn btn--secondary" onclick="window.print()">🖨️ Imprimir</button>
         <a href="cliente.html" class="btn btn--primary">Ver minhas reservas</a>
+        <a
+          href="${buildWhatsAppCancelLink(booking, exp)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn--ghost-light"
+          style="color:var(--color-text-muted)"
+          aria-label="Cancelar reserva via WhatsApp"
+        >Cancelar reserva</a>
         <a href="experiencias.html" class="btn btn--ghost-light" style="color:var(--color-text-muted)">Ver mais experiências</a>
       </div>
     </div>`;

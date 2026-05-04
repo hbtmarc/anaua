@@ -499,10 +499,51 @@ export function maskCPF(input) {
  * Inicializa header + footer e remove o estado de loading do body.
  * @param {string} activePage
  */
+/**
+ * Verifica se o usuário autenticado é admin ou operador.
+ * Se sim, injeta o link "Backoffice" na navegação de forma silenciosa.
+ * Não bloqueia o carregamento da página.
+ */
+async function detectAdminAndInjectNavLink() {
+  // Usa window.anauaDb (cliente inicializado em supabaseClient.js)
+  // window.supabase é a biblioteca CDN — não o cliente, portanto não serve aqui
+  const db = window.anauaDb;
+  if (!db) return;
+
+  try {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await db
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || !['admin', 'operator'].includes(profile.role)) return;
+
+    const makeLink = (cls) => {
+      const a = document.createElement('a');
+      a.href        = 'admin/index.html';
+      a.textContent = 'Backoffice';
+      a.className   = cls;
+      return a;
+    };
+
+    document.querySelector('.nav')?.appendChild(makeLink('nav__link'));
+    document.querySelector('#nav-drawer')?.appendChild(makeLink('nav-drawer__link'));
+
+    console.log('[admin] Link de backoffice injetado para role:', profile.role);
+  } catch (_err) {
+    // Falha silenciosa — não afeta navegação pública
+  }
+}
+
 export function initPage(activePage = '') {
   renderHeader(activePage);
   renderFooter();
   document.body.classList.remove('is-loading');
+  detectAdminAndInjectNavLink(); // assíncrono — não bloqueia
 }
 
 /* ── INTERSECTION OBSERVER ANIMATION ────────────────────── */

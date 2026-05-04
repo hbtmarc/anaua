@@ -11,6 +11,9 @@ import {
 
 initPage('cliente.html');
 
+// Expõe showToast em window para uso em onclick inline sem necessitar de import
+window.__anauaToast = showToast;
+
 /* ── Seed demo accounts (only if they don’t exist yet) ───────────────────
    So the demo credentials always work on a fresh localStorage. */
 (function seedDemoAccounts() {
@@ -101,8 +104,8 @@ function renderReservations(userName) {
 
       <div class="reservation-card__actions">
         <a href="experiencia.html?id=${r.experience.id}" class="btn btn--secondary btn--sm">Ver experiência</a>
-        ${r.status === 'pending' ? `<button class="btn btn--primary btn--sm" onclick="alert('Funcionalidade de pagamento em breve!')">Pagar agora</button>` : ''}
-        ${r.status === 'confirmed' ? `<button class="btn btn--ghost-light btn--sm" style="color:var(--color-text-muted)" onclick="alert('Cancelamento disponível via contato.')">Cancelar</button>` : ''}
+        ${r.status === 'pending' ? `<button class="btn btn--primary btn--sm" onclick="window.__anauaToast('Funcionalidade de pagamento em breve!','warn',4000)">Pagar agora</button>` : ''}
+        ${r.status === 'confirmed' ? `<button class="btn btn--ghost-light btn--sm" style="color:var(--color-text-muted)" onclick="window.__anauaToast('Para cancelar, entre em contato pelo WhatsApp ou envie um e-mail para a Anauá.','info',6000)">Cancelar</button>` : ''}
       </div>
     </article>
   `).join('');

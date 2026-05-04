@@ -110,16 +110,28 @@ function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp) {
 function renderHero(exp) {
   const hero = document.getElementById('detail-hero');
   if (!hero) return;
-  hero.innerHTML = `
-    <img
-      src="${exp.coverImage}"
-      alt="${exp.title}"
-      fetchpriority="high"
-      onerror="this.src='assets/img/placeholder.svg'"
-      style="width:100%;height:100%;object-fit:cover"
-    />
-    <div class="detail-hero__overlay" aria-hidden="true"></div>
-  `;
+
+  // Usa URL segura — nunca renderiza src com caminho local quebrado
+  const imgUrl = (exp.coverImage && !exp.coverImage.startsWith('assets/img/exp-'))
+    ? exp.coverImage
+    : null;
+
+  hero.innerHTML = imgUrl
+    ? `<img
+        src="${imgUrl}"
+        alt="${exp.title}"
+        fetchpriority="high"
+        onerror="this.style.display='none'"
+        style="width:100%;height:100%;object-fit:cover"
+      />
+      <div class="detail-hero__overlay" aria-hidden="true"></div>`
+    : `<div class="detail-hero__placeholder" aria-hidden="true" style="
+        width:100%;height:100%;
+        background:linear-gradient(135deg,var(--color-earth-dark,#2d4a2d) 0%,var(--color-earth,#4a7c4a) 60%,var(--color-leaf,#6aaa6a) 100%);
+        display:flex;align-items:center;justify-content:center;
+        color:rgba(255,255,255,.5);font-size:var(--text-sm);letter-spacing:.05em
+      "><span>Imagem pendente</span></div>
+      <div class="detail-hero__overlay" aria-hidden="true"></div>`;
 }
 
 /* ── Main content ────────────────────────────────────────── */
@@ -171,7 +183,8 @@ function renderContent(exp) {
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">Saídas disponíveis</h2>
       <div class="exit-list" id="exit-list">
-        ${exp.nextExits.map(exit => renderExitItem(exit, exp)).join('')}
+        ${(exp.nextExits ?? []).map(exit => renderExitItem(exit, exp)).join('')
+          || '<p style="color:var(--color-muted);font-size:var(--text-sm)">Nenhuma saída programada no momento.</p>'}
       </div>
     </div>
 
@@ -231,10 +244,17 @@ function renderContent(exp) {
 
 /* ── Gallery ─────────────────────────────────────────────── */
 function renderGallery(images, alt) {
-  if (!images.length) return '<p style="color:var(--color-muted);font-size:var(--text-sm)">Imagens em breve.</p>';
+  // Filtra caminhos locais quebrados (assets/img/exp-*) que não existem no servidor
+  const validImages = (images ?? []).filter(src =>
+    src && typeof src === 'string' && (
+      src.startsWith('http') || src.startsWith('https')
+    )
+  );
 
-  const visible = images.slice(0, 5);
-  const remaining = images.length - 5;
+  if (!validImages.length) return '<p style="color:var(--color-muted);font-size:var(--text-sm)">Imagens em breve.</p>';
+
+  const visible   = validImages.slice(0, 5);
+  const remaining = validImages.length - 5;
 
   const items = visible.map((src, i) => `
     <div class="gallery__item ${i === 4 && remaining > 0 ? 'gallery__more' : ''}"

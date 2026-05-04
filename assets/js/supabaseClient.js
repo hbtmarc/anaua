@@ -18,4 +18,8 @@ if (!window.supabase) {
 
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Expõe o cliente inicializado globalmente para uso em components.js e admin
+// (necessário porque components.js não importa supabaseClient diretamente)
+window.anauaDb = supabase;
+
 console.log('[supabase] Cliente inicializado ✓');
