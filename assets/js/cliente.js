@@ -14,101 +14,105 @@ initPage('cliente.html');
 // Expõe showToast em window para uso em onclick inline sem necessitar de import
 window.__anauaToast = showToast;
 
-/* ── Seed demo accounts (only if they don’t exist yet) ───────────────────
-   So the demo credentials always work on a fresh localStorage. */
-(function seedDemoAccounts() {
-  const demos = [
-    { profile: { fullName: 'Maria Fernanda', email: 'demo@anaua.com.br', cpf: '', phone: '', birthdate: '' }, password: '12345678' },
-    { profile: { fullName: 'João Silva',     email: 'test@test.com',         cpf: '', phone: '', birthdate: '' }, password: 'password'  },
-  ];
-  const existing = JSON.parse(localStorage.getItem('anaua_accounts') ?? '[]');
-  demos.forEach(d => {
-    if (!existing.find(a => a.email === d.profile.email)) {
-      createAccount(d.profile, d.password);
-      clearSession(); // seedeing should not start a session
-    }
-  });
-})();
+// ─── Status helpers ──────────────────────────────────────────────────────────
+const STATUS_LABEL = {
+  confirmed:       'Confirmada',
+  reserved:        'Reservada',
+  pending_payment: 'Aguardando pagamento',
+  pending:         'Aguardando pagamento',
+  cancelled:       'Cancelada',
+  draft:           'Rascunho',
+};
+const STATUS_CLASS = {
+  confirmed:       'badge--confirmed',
+  reserved:        'badge--confirmed',
+  pending_payment: 'badge--pending',
+  pending:         'badge--pending',
+  cancelled:       'badge--cancelled',
+  draft:           'badge--pending',
+};
 
+/**
+ * Renderiza um card de reserva a partir de uma linha de public.reservations.
+ * @param {object} r
+ */
+function renderReservationCard(r) {
+  const status    = r.reservation_status ?? r.status ?? 'pending_payment';
+  const statusLbl = STATUS_LABEL[status]  ?? status;
+  const statusCls = STATUS_CLASS[status]  ?? 'badge--pending';
+  const expLocal  = EXPERIENCES.find(e => e.id === r.experience_id);
+  const expTitle  = expLocal?.title ?? r.experience_id ?? 'Experiência';
+  const expHref   = expLocal ? `experiencia.html?id=${r.experience_id}` : 'experiencias.html';
+  const dateLabel = r.created_at ? formatDate(r.created_at.split('T')[0]) : '\u2014';
+  const paid      = Number(r.amount_paid  ?? 0);
+  const total     = Number(r.total_amount ?? 0);
+  const code      = r.reservation_code ?? r.id ?? '\u2014';
 
-/* ── Mock reservations ───────────────────────────────────── */
-function buildMockReservations(userName) {
-  const exps = EXPERIENCES.slice(0, 3);
-  return [
-    {
-      id: 'RES-001',
-      experience: exps[0],
-      date: '2025-03-15',
-      pax: 2,
-      status: 'confirmed',
-      totalPaid: exps[0].pricePerPerson * 2,
-    },
-    {
-      id: 'RES-002',
-      experience: exps[1],
-      date: '2025-04-20',
-      pax: 1,
-      status: 'pending',
-      totalPaid: 0,
-    },
-    {
-      id: 'RES-003',
-      experience: exps[2],
-      date: '2025-02-10',
-      pax: 3,
-      status: 'cancelled',
-      totalPaid: exps[2].pricePerPerson * 3,
-    },
-  ];
-}
-
-const STATUS_LABEL = { confirmed: 'Confirmada', pending: 'Aguardando pagamento', cancelled: 'Cancelada' };
-const STATUS_CLASS = { confirmed: 'badge--confirmed', pending: 'badge--pending', cancelled: 'badge--cancelled' };
-
-function renderReservations(userName) {
-  const container = document.getElementById('reservation-list');
-  if (!container) return;
-
-  const reservations = buildMockReservations(userName);
-
-  if (!reservations.length) {
-    container.innerHTML = `
-      <div class="reservations-empty">
-        <div class="reservations-empty__icon">🌿</div>
-        <p>Você ainda não tem reservas.</p>
-        <a href="experiencias.html" class="btn btn--primary">Ver experiências</a>
-      </div>`;
-    return;
-  }
-
-  container.innerHTML = reservations.map(r => `
-    <article class="reservation-card">
+  return `
+    <article class="reservation-card" aria-label="Reserva ${code}">
       <div>
-        <p class="reservation-card__name">${r.experience.title}</p>
+        <p class="reservation-card__name">${expTitle}</p>
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px">Código: <strong>${code}</strong></p>
         <div class="reservation-card__meta">
           <span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            ${formatDate(r.date)}
+            ${dateLabel}
           </span>
-          <span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            ${r.pax} ${r.pax === 1 ? 'participante' : 'participantes'}
-          </span>
-          <span><span class="badge ${STATUS_CLASS[r.status]}">${STATUS_LABEL[r.status]}</span></span>
+          <span><span class="badge ${statusCls}">${statusLbl}</span></span>
         </div>
       </div>
-
       <div class="reservation-card__price">
-        ${r.totalPaid > 0 ? formatBRL(r.totalPaid) : '<span style="font-size:var(--text-sm);font-weight:400;color:var(--color-text-muted)">A pagar</span>'}
+        ${paid > 0 ? formatBRL(paid) : \`<span style="font-size:var(--text-sm);font-weight:400;color:var(--color-text-muted)">R$ ${total.toFixed(2).replace('.', ',')} a confirmar</span>\`}
       </div>
-
       <div class="reservation-card__actions">
-        <a href="experiencia.html?id=${r.experience.id}" class="btn btn--secondary btn--sm">Ver experiência</a>
-        ${r.status === 'pending' ? `<button class="btn btn--primary btn--sm" onclick="window.__anauaToast('Funcionalidade de pagamento em breve!','warn',4000)">Pagar agora</button>` : ''}
-        ${r.status === 'confirmed' ? `<button class="btn btn--ghost-light btn--sm" style="color:var(--color-text-muted)" onclick="window.__anauaToast('Para cancelar, entre em contato pelo WhatsApp ou envie um e-mail para a Anauá.','info',6000)">Cancelar</button>` : ''}
+        <a href="${expHref}" class="btn btn--secondary btn--sm">Ver experiência</a>
+        ${status === 'pending_payment' ? \`<button class="btn btn--primary btn--sm" onclick="window.__anauaToast('Pagamento em breve aqui.','warn',4000)">Pagar agora</button>\` : ''}
+        ${(status === 'confirmed' || status === 'reserved') ? \`<button class="btn btn--ghost-light btn--sm" style="color:var(--color-text-muted)" onclick="window.__anauaToast('Cancelamento via WhatsApp ou e-mail.','info',6000)">Cancelar</button>\` : ''}
       </div>
-    </article>
-  `).join('');
+    </article>`;
+}
+
+async function renderReservations(userId) {
+  const container = document.getElementById('reservation-list');
+  if (!container) return;
+  container.innerHTML = `<p style="color:var(--color-text-muted);font-size:var(--text-sm);padding:var(--sp-4) 0">Carregando reservas\u2026</p>`;
+  const { ok, data, error } = await getUserReservations(userId);
+  if (!ok || !data.length) {
+    container.innerHTML = `
+      <div class="reservations-empty">
+        <div class="reservations-empty__icon">\U0001f33f</div>
+        <p>Você ainda não possui reservas.</p>
+        <a href="experiencias.html" class="btn btn--primary">Ver experiências</a>
+      </div>`;
+    if (!ok) console.warn('[cliente] Erro ao carregar reservas:', error);
+    return;
+  }
+  container.innerHTML = data.map(renderReservationCard).join('');
+}
+
+// ─── Booking draft resume ────────────────────────────────────────────────────
+const BOOKING_RESUME_KEY = 'anaua_booking_resume';
+
+function checkAndShowDraftResumeBanner() {
+  const raw = sessionStorage.getItem(BOOKING_RESUME_KEY);
+  if (!raw) return;
+  try {
+    const draft = JSON.parse(raw);
+    const expId = draft?.experienceId;
+    if (!expId) return;
+    const banner = document.createElement('div');
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = 'background:var(--color-leaf,#4a7c4a);color:#fff;padding:var(--sp-3) var(--sp-4);border-radius:var(--radius-md,8px);margin-bottom:var(--sp-4);display:flex;align-items:center;gap:var(--sp-3);font-size:var(--text-sm)';
+    banner.innerHTML = `
+      <span>\U0001f33f</span>
+      <span>Você tem uma reserva em andamento.</span>
+      <a href="reserva.html?id=${expId}" class="btn btn--sm" style="background:#fff;color:var(--color-leaf,#4a7c4a);margin-left:auto;white-space:nowrap">Continuar reserva</a>
+      <button type="button" aria-label="Fechar" style="background:none;border:none;color:#fff;cursor:pointer;font-size:1.2rem;padding:0 var(--sp-1)" onclick="this.parentElement.remove();sessionStorage.removeItem('anaua_booking_resume')">&times;</button>
+    `;
+    document.getElementById('dashboard-view')?.insertAdjacentElement('afterbegin', banner);
+  } catch {
+    sessionStorage.removeItem(BOOKING_RESUME_KEY);
+  }
 }
 
 /* ── Auth state ───────────────────────────────────────────── */
