@@ -420,6 +420,9 @@ export const DIFFICULTY_LABELS = {
  * @returns {import('./types').Exit|null}
  */
 export function getNextActiveExit(exp) {
+  // Guarda defensiva: retorna null se o array de saídas não existir
+  // (acontece com dados vindos do Supabase sem saídas locais anexadas)
+  if (!Array.isArray(exp.nextExits) || !exp.nextExits.length) return null;
   return exp.nextExits.find(e => e.status === 'active' && e.spotsAvailable > 0) ?? null;
 }
 
@@ -438,5 +441,9 @@ export function formatBRL(value) {
  * @returns {string}
  */
 export function formatDate(iso) {
-  return new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso + 'T12:00:00'));
+  if (!iso || typeof iso !== 'string') return 'Data a confirmar';
+  // start_at pode vir com fuso (ex: '2026-06-10T09:00:00+00:00'); usa direto
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Data a confirmar';
+  return new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
 }

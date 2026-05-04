@@ -3,6 +3,7 @@
  */
 import { EXPERIENCES, TESTIMONIALS, STATS, CATEGORIES, getNextActiveExit, formatBRL } from './data.js';
 import { initPage, renderExperienceCard, renderSkeletonCards, renderTestimonialCard, observeAnimations } from './components.js';
+import { listExperiences, listDeparturesByExperience } from './repositories/experienceRepo.js';
 
 initPage('index.html');
 
@@ -31,34 +32,56 @@ async function renderFeatured() {
   const grid = document.getElementById('featured-grid');
   if (!grid) return;
 
+  grid.setAttribute('aria-busy', 'true');
   grid.innerHTML = renderSkeletonCards(3);
 
-  try {
-    const featured = EXPERIENCES.filter(e => e.isFeatured).slice(0, 3);
-    grid.setAttribute('aria-busy', 'false');
+  // 1. Tenta buscar do Supabase
+  let featured = [];
+  const { data, error } = await listExperiences();
 
-    if (!featured.length) {
-      grid.innerHTML = `
-        <div class="empty-state" style="grid-column:1/-1">
-          <svg class="empty-state__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/></svg>
-          <h3 class="empty-state__title">Nenhuma experiência disponível</h3>
-          <p class="empty-state__desc">Volte em breve — nossa agenda está sendo atualizada.</p>
-        </div>
-      `;
-      return;
-    }
+  if (error || !data) {
+    // Supabase falhou — usa dados locais como fallback
+    console.warn('[home] Usando dados locais como fallback.');
+    featured = EXPERIENCES.filter(e => e.status === 'active' && e.isFeatured).slice(0, 3);
+  } else {
+    // Supabase retornou — filtra os destaques (campo `featured` = true)
+    featured = data.filter(e => e.isFeatured).slice(0, 3);
 
-    grid.innerHTML = featured.map(renderExperienceCard).join('');
-  } catch (err) {
-    console.error('[home] Erro ao renderizar experiências em destaque:', err);
-    grid.setAttribute('aria-busy', 'false');
+    // Se não houver destaques marcados, pega os 3 primeiros
+    if (!featured.length) featured = data.slice(0, 3);
+
+    // Busca a próxima saída de cada experiência e anexa ao objeto
+    await Promise.all(
+      featured.map(async (exp) => {
+        const { data: deps } = await listDeparturesByExperience(exp.id);
+        if (deps && deps.length) {
+          // Ordena por start_at e pega a mais próxima
+          const sorted = deps.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+          const dep = sorted[0];
+          // Garante que .date espelha .start_at para compatibilidade com componentes legados
+          dep.date = dep.date ?? dep.start_at;
+          exp.nextDeparture = dep;
+        }
+      })
+    );
+
+    console.log('[home] Experiências em destaque renderizadas ✓');
+  }
+
+  grid.setAttribute('aria-busy', 'false');
+
+  if (!featured.length) {
     grid.innerHTML = `
       <div class="empty-state" style="grid-column:1/-1">
-        <h3 class="empty-state__title">Não foi possível carregar</h3>
-        <p class="empty-state__desc">Tente recarregar a página.</p>
+        <svg class="empty-state__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/></svg>
+        <h3 class="empty-state__title">Nenhuma experiência disponível no momento</h3>
+        <p class="empty-state__desc">Volte em breve — nossa agenda está sendo atualizada.</p>
       </div>
     `;
+    return;
   }
+
+  grid.innerHTML = featured.map(renderExperienceCard).join('');
 }
 
 /* ── Category grid ───────────────────────────────────────── */

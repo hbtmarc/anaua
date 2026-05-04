@@ -211,11 +211,40 @@ export function renderFooter() {
  * @param {import('./types').Experience} exp
  * @returns {string} HTML string
  */
+/**
+ * Retorna uma URL de imagem válida ou o placeholder local.
+ * Evita src="undefined" e src="null".
+ * @param {string|undefined|null} url
+ * @returns {string}
+ */
+function getExperienceCoverUrl(url) {
+  if (url && typeof url === 'string' && url.trim() !== '' && url !== 'undefined' && url !== 'null') {
+    return url;
+  }
+  return 'assets/img/placeholder.svg';
+}
+
 export function renderExperienceCard(exp) {
-  const nextExit = getNextActiveExit(exp);
-  const isSoldOut = !nextExit && exp.status !== 'draft';
-  const price = formatBRL(exp.pricePerPerson);
-  const nextLabel = nextExit ? nextExit.dateLabel : 'Esgotado';
+  // Prefere saída vinda do Supabase (nextDeparture); fallback para mock local
+  const supabaseDeparture = exp.nextDeparture ?? null;
+  const nextExit = supabaseDeparture ? null : getNextActiveExit(exp);
+
+  // Com dados do Supabase, considera disponível se tiver próxima saída
+  const isSoldOut = supabaseDeparture
+    ? false
+    : (!nextExit && exp.status !== 'draft');
+
+  const price = formatBRL(exp.pricePerPerson ?? exp.price_per_person ?? 0);
+
+  // Label da próxima saída: usa Supabase → local → fallback texto
+  let nextLabel;
+  if (supabaseDeparture) {
+    nextLabel = supabaseDeparture.dateLabel ?? formatDate(supabaseDeparture.start_at ?? supabaseDeparture.date);
+  } else if (nextExit) {
+    nextLabel = nextExit.dateLabel;
+  } else {
+    nextLabel = 'Agenda em breve';
+  }
 
   const levelBadge = `<span class="badge badge--level-${exp.difficulty}">${exp.difficulty}</span>`;
   const categoryLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category;
@@ -224,7 +253,7 @@ export function renderExperienceCard(exp) {
     <article class="card ${isSoldOut ? 'card--sold-out' : ''}">
       <a href="experiencia.html?id=${exp.id}" class="card__thumb" tabindex="-1" aria-hidden="true">
         <img
-          src="${exp.coverImage}"
+          src="${getExperienceCoverUrl(exp.coverImage ?? exp.cover_image_url)}"
           alt=""
           loading="lazy"
           onerror="this.src='assets/img/placeholder.svg'"
@@ -249,12 +278,16 @@ export function renderExperienceCard(exp) {
           <span class="card__meta-item">${Icon.clock} ${exp.durationLabel}</span>
           <span class="card__meta-item">${Icon.map} ${exp.location}</span>
           <span class="card__meta-item">${Icon.users} Máx. ${exp.maxParticipants}</span>
-          ${nextExit ? `
+          ${(supabaseDeparture || nextExit) ? `
             <span class="card__next-exit">
               ${Icon.calendar} Próxima: ${nextLabel}
-              ${nextExit.spotsAvailable <= 4 ? `· <strong style="color:var(--color-warning)">${nextExit.spotsAvailable} vagas</strong>` : ''}
+              ${(supabaseDeparture?.spots_available ?? nextExit?.spotsAvailable ?? 99) <= 4
+                ? `· <strong style="color:var(--color-warning)">${supabaseDeparture?.spots_available ?? nextExit?.spotsAvailable} vagas</strong>`
+                : ''}
             </span>
-          ` : ''}
+          ` : `
+            <span class="card__next-exit" style="opacity:.7">${Icon.calendar} ${nextLabel}</span>
+          `}
         </div>
       </div>
       <a href="experiencia.html?id=${exp.id}" class="card__cta" aria-label="Ver detalhes de ${exp.title}">

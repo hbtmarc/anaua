@@ -24,8 +24,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600&display=swap" />
-  <!-- Preload hero image -->
-  <link rel="preload" as="image" href="assets/img/hero-bg.jpg" fetchpriority="high" />
+  <!-- Preload hero image — descomentar quando o arquivo existir em assets/img/hero-bg.jpg -->
+  <!-- <link rel="preload" as="image" href="assets/img/hero-bg.jpg" fetchpriority="high" /> -->
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/css/base.css" />
   <link rel="stylesheet" href="assets/css/components.css" />
@@ -38,9 +38,10 @@
 
   <!-- HERO -->
   <section class="hero" aria-label="Bem-vindo à Anauá Ecoturismo">
+    <!-- hero-bg.jpg: substituir pelo caminho real da imagem quando disponível -->
     <img
       class="hero__bg"
-      src="assets/img/hero-bg.jpg"
+      src="assets/img/placeholder.svg"
       alt=""
       aria-hidden="true"
       fetchpriority="high"
@@ -115,7 +116,8 @@
     <div class="container">
       <div class="home-manifesto" data-animate>
         <div class="home-manifesto__visual" aria-hidden="true">
-          <img src="assets/img/about-forest.jpg" alt="" loading="lazy" onerror="this.src='assets/img/placeholder.svg'" />
+          <!-- about-forest.jpg: substituir pelo caminho real da imagem quando disponível -->
+          <img src="assets/img/placeholder.svg" alt="" loading="lazy" />
           <div class="home-manifesto__badge">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-earth)" stroke-width="1.5"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
             <span>Certificados<br/>pelo Ministério<br/>do Turismo</span>
@@ -185,6 +187,8 @@
     ]
   }
   </script>
+  <!-- Supabase JS v2 via CDN — deve vir antes dos módulos ES -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="assets/js/home.js"></script>
 </body>
 </html>
