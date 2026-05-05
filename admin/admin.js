@@ -527,7 +527,24 @@ function openNovaExperienciaModal() {
         </div>
         <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" /></div>
       </div>
-      <div class="adm-field"><label>URL da imagem de capa</label><input id="exp-cover" class="adm-input" placeholder="https://…" /></div>
+      <div class="adm-field">
+        <label>Imagem de capa</label>
+        <div id="exp-cover-widget" class="adm-upload-widget">
+          <input type="file" id="exp-cover-file" accept="image/*" style="display:none" />
+          <div id="exp-cover-preview" class="adm-upload-preview" style="display:none">
+            <img id="exp-cover-img" src="" alt="Pré-visualização" />
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span id="exp-cover-name" class="adm-upload-status"></span>
+              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" onclick="document.getElementById('exp-cover-file').click()">Trocar imagem</button>
+            </div>
+          </div>
+          <div id="exp-cover-empty" class="adm-upload-empty">
+            <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" onclick="document.getElementById('exp-cover-file').click()">📷 Escolher imagem</button>
+            <span id="exp-cover-status" class="adm-upload-status"></span>
+          </div>
+          <input type="hidden" id="exp-cover" />
+        </div>
+      </div>
       <div class="adm-field" style="flex-direction:row;align-items:center;gap:10px">
         <input id="exp-active" type="checkbox" checked style="width:18px;height:18px" />
         <label for="exp-active" style="margin:0">Ativa (visível no site)</label>
@@ -537,6 +554,12 @@ function openNovaExperienciaModal() {
         <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
       </div>
     </form>`);
+
+  document.getElementById('exp-cover-file').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await uploadExperienciaCover(file);
+  });
 
   document.getElementById('exp-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -566,6 +589,51 @@ function openNovaExperienciaModal() {
     closeDrawer();
     navigate('#experiencias');
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  HELPER: UPLOAD DE IMAGEM DE CAPA
+// ─────────────────────────────────────────────────────────────────────────────
+async function uploadExperienciaCover(file) {
+  const db = window.anauaDb;
+  const statusEl   = document.getElementById('exp-cover-status');
+  const previewEl  = document.getElementById('exp-cover-preview');
+  const emptyEl    = document.getElementById('exp-cover-empty');
+  const imgEl      = document.getElementById('exp-cover-img');
+  const nameEl     = document.getElementById('exp-cover-name');
+  const hiddenInput = document.getElementById('exp-cover');
+
+  if (!db) { toast('Supabase não disponível.', 'error'); return; }
+
+  if (statusEl) statusEl.textContent = 'Enviando…';
+
+  const ext  = file.name.split('.').pop();
+  const path = `covers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+  const { error: uploadError } = await db.storage
+    .from('experience-covers')
+    .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+
+  if (uploadError) {
+    console.warn('[upload] Erro ao enviar capa:', uploadError.message);
+    if (statusEl) statusEl.textContent = '✗ Falha no upload';
+    toast('Erro ao fazer upload da imagem: ' + uploadError.message, 'error');
+    return;
+  }
+
+  const { data } = db.storage.from('experience-covers').getPublicUrl(path);
+  const url = data.publicUrl;
+
+  if (hiddenInput) hiddenInput.value = url;
+
+  // Show preview, hide empty state
+  if (imgEl)     imgEl.src = url;
+  if (nameEl)    nameEl.textContent = file.name;
+  if (previewEl) previewEl.style.display = 'flex';
+  if (emptyEl)   emptyEl.style.display   = 'none';
+
+  console.log('[upload] Capa enviada com sucesso:', url);
+  toast('Imagem enviada!', 'success');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
