@@ -409,3 +409,91 @@ export async function setDepartureStatus(id, status) {
   console.log(`[hardening-2.1] Saída atualizada ✓ status=${status}`, id);
   return { data, error: null };
 }
+
+/**
+ * Cria experiência + saída + reserva + participantes em uma única transação via RPC.
+ * Se o RPC não existir (erro 42883), faz criação sequencial com rollback parcial.
+ *
+ * @param {{
+ *   experience: object,
+ *   departure?: object|null,
+ *   reservation?: object|null,
+ *   participants?: object[]|null,
+ * }} bundle
+ * @returns {Promise<{ data: { experience_id, departure_id, reservation_id }|null, error: object|null }>}
+ */
+export async function createExperienceBundle(bundle) {
+  // ── Tenta RPC atômica ──────────────────────────────────────────────────────
+  const { data: rpcData, error: rpcErr } = await supabase
+    .rpc('create_experience_bundle', { payload: bundle });
+
+  if (!rpcErr) {
+    console.log('[bundle] Criado via RPC ✓', rpcData);
+    return { data: rpcData, error: null };
+  }
+
+  // RPC não existe ainda → fallback sequencial (PGRST202 / 42883)
+  const isNotFound = rpcErr.code === 'PGRST202' || rpcErr.code === '42883' || rpcErr.message?.includes('does not exist');
+  if (!isNotFound) {
+    console.error('[bundle] RPC falhou:', rpcErr.message);
+    return { data: null, error: rpcErr };
+  }
+  console.warn('[bundle] RPC não disponível — usando fallback sequencial.');
+
+  let expId = null;
+
+  // 1. Experiência
+  const { data: exp, error: expErr } = await createExperience(bundle.experience);
+  if (expErr || !exp) return { data: null, error: expErr ?? new Error('createExperience sem dados') };
+  expId = exp.id ?? exp.dbId;
+
+  // 2. Saída
+  let depId = null;
+  if (bundle.departure?.start_at) {
+    const { data: dep, error: depErr } = await createDeparture({ ...bundle.departure, experience_id: expId });
+    if (depErr) {
+      // Rollback: desativa experiência
+      await supabase.from('experiences').update({ is_active: false }).eq('id', expId);
+      return { data: null, error: { message: 'Experiência criada mas saída falhou: ' + depErr.message } };
+    }
+    depId = dep?.id ?? null;
+  }
+
+  // 3. Reserva
+  let resId = null;
+  if (bundle.reservation?.customer_name) {
+    const resPayload = {
+      experience_id:      expId,
+      departure_id:       depId,
+      customer_name:      bundle.reservation.customer_name,
+      customer_email:     bundle.reservation.customer_email || null,
+      customer_phone:     bundle.reservation.customer_phone || null,
+      payment_method:     bundle.reservation.payment_method || null,
+      reservation_status: bundle.reservation.reservation_status || 'reserved',
+      total_amount:       bundle.reservation.total_amount || 0,
+      amount_paid:        bundle.reservation.amount_paid || 0,
+      notes:              bundle.reservation.notes || null,
+    };
+    const { data: res, error: resErr } = await supabase
+      .from('reservations').insert(resPayload).select('id').single();
+    if (resErr) {
+      console.warn('[bundle] Reserva falhou (experiência foi criada):', resErr.message);
+      return { data: { experience_id: expId, departure_id: depId, reservation_id: null }, error: { message: 'Reserva inicial falhou: ' + resErr.message } };
+    }
+    resId = res.id;
+
+    // 4. Participantes
+    if (bundle.participants?.length && resId) {
+      const rows = bundle.participants
+        .filter(p => p.name?.trim())
+        .map(p => ({ reservation_id: resId, name: p.name, profile_type: p.profile_type || null, birthdate: p.birthdate || null }));
+      if (rows.length) {
+        const { error: partsErr } = await supabase.from('participants').insert(rows);
+        if (partsErr) console.warn('[bundle] Participantes falharam (reserva criada):', partsErr.message);
+      }
+    }
+  }
+
+  console.log('[bundle] Criado via fallback sequencial ✓', { expId, depId, resId });
+  return { data: { experience_id: expId, departure_id: depId, reservation_id: resId }, error: null };
+}

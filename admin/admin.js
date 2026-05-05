@@ -10,7 +10,7 @@
 
 import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
-import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus } from '../assets/js/repositories/experienceRepo.js';
+import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus, createExperienceBundle } from '../assets/js/repositories/experienceRepo.js';
 // ReservationStore removido — dados vêm do Supabase
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
@@ -521,19 +521,32 @@ async function renderExperiencias(root) {
 
 function openNovaExperienciaModal() {
   openDrawer('Nova experiência', `
-    <form id="exp-form" style="display:flex;flex-direction:column;gap:14px">
-      <div class="adm-field"><label>Título *</label><input id="exp-title" class="adm-input" required placeholder="Ex: Trilha do Pico" /></div>
+    <form id="nova-exp-form" autocomplete="off">
+
+      <!-- ══ A: DADOS DA EXPERIÊNCIA ══════════════════════════════════ -->
+      <div class="adm-section-hd">Dados da experiência</div>
+
+      <div class="adm-field">
+        <label>Título *</label>
+        <input id="ne-title" class="adm-input" required placeholder="Ex: Trilha do Pico" />
+      </div>
       <div class="adm-field">
         <label>Slug *</label>
-        <input id="exp-slug" class="adm-input" required placeholder="trilha-do-pico" />
-        <span style="font-size:11px;color:var(--adm-text-muted)">Gerado automaticamente. Pode editar.</span>
+        <input id="ne-slug" class="adm-input" required placeholder="trilha-do-pico" />
+        <span class="adm-hint">Gerado automaticamente. Pode editar.</span>
       </div>
-      <div class="adm-field"><label>Subtítulo</label><input id="exp-subtitle" class="adm-input" placeholder="Frase curta de apresentação" /></div>
-      <div class="adm-field"><label>Descrição</label><textarea id="exp-description" class="adm-input" rows="3" placeholder="Descrição completa da experiência"></textarea></div>
+      <div class="adm-field">
+        <label>Subtítulo</label>
+        <input id="ne-subtitle" class="adm-input" placeholder="Frase curta de apresentação" />
+      </div>
+      <div class="adm-field">
+        <label>Descrição</label>
+        <textarea id="ne-description" class="adm-input" rows="3" placeholder="Descrição completa da experiência"></textarea>
+      </div>
       <div class="adm-grid-2">
-        <div class="adm-field"><label>Local</label><input id="exp-location" class="adm-input" placeholder="Ex: Serra da Canastra" /></div>
+        <div class="adm-field"><label>Local</label><input id="ne-location" class="adm-input" placeholder="Ex: Serra da Canastra" /></div>
         <div class="adm-field"><label>Categoria</label>
-          <select id="exp-category" class="adm-input">
+          <select id="ne-category" class="adm-select">
             <option value="">— selecione —</option>
             <option value="day-experience">Experiência de 1 dia</option>
             <option value="expedition">Expedição</option>
@@ -544,100 +557,369 @@ function openNovaExperienciaModal() {
       </div>
       <div class="adm-grid-2">
         <div class="adm-field"><label>Dificuldade</label>
-          <select id="exp-difficulty" class="adm-input">
+          <select id="ne-difficulty" class="adm-select">
             <option value="">— selecione —</option>
             <option value="iniciante">Iniciante (Fácil)</option>
             <option value="moderado">Moderado</option>
             <option value="aventura">Aventura (Difícil)</option>
           </select>
         </div>
-        <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" /></div>
+        <div class="adm-field"><label>Preço base (R$)</label>
+          <input id="ne-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
+        </div>
       </div>
       <div class="adm-grid-2">
-        <div class="adm-field"><label>Duração (horas)</label><input id="exp-duration" class="adm-input" type="number" min="0.5" step="0.5" placeholder="Ex: 8" /></div>
-        <div class="adm-field"><label>Capacidade máxima</label><input id="exp-capacity" class="adm-input" type="number" min="1" step="1" placeholder="Ex: 20" /></div>
+        <div class="adm-field"><label>Duração (horas)</label>
+          <input id="ne-duration" class="adm-input" type="number" min="0.5" step="0.5" placeholder="Ex: 8" />
+        </div>
+        <div class="adm-field"><label>Capacidade máxima</label>
+          <input id="ne-maxpax" class="adm-input" type="number" min="1" step="1" placeholder="Ex: 20" />
+        </div>
       </div>
       <div class="adm-field">
         <label>Imagem de capa</label>
-        <div id="exp-cover-widget" class="adm-upload-widget">
-          <input type="file" id="exp-cover-file" accept="image/*" style="display:none" />
-          <div id="exp-cover-preview" class="adm-upload-preview" style="display:none">
-            <img id="exp-cover-img" src="" alt="Pré-visualização" />
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <span id="exp-cover-name" class="adm-upload-status"></span>
-              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" onclick="document.getElementById('exp-cover-file').click()">Trocar imagem</button>
+        <div class="adm-upload-widget">
+          <input type="file" id="ne-cover-file" accept="image/*" style="display:none" />
+          <div id="ne-cover-preview" style="display:none;align-items:center;gap:10px">
+            <img id="ne-cover-img" src="" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--adm-border)" />
+            <div>
+              <span id="ne-cover-name" style="font-size:12px;color:var(--adm-text-muted)"></span><br>
+              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-cover-change-btn">Trocar</button>
             </div>
           </div>
-          <div id="exp-cover-empty" class="adm-upload-empty">
-            <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" onclick="document.getElementById('exp-cover-file').click()">📷 Escolher imagem</button>
-            <span id="exp-cover-status" class="adm-upload-status"></span>
+          <div id="ne-cover-empty">
+            <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" id="ne-cover-pick-btn">📷 Escolher imagem</button>
+            <span id="ne-cover-status" style="font-size:12px;color:var(--adm-text-muted);margin-left:8px"></span>
           </div>
-          <input type="hidden" id="exp-cover" />
+          <input type="hidden" id="ne-cover" />
         </div>
       </div>
-      <div class="adm-field" style="flex-direction:row;align-items:center;gap:10px">
-        <input id="exp-active" type="checkbox" checked style="width:18px;height:18px" />
-        <label for="exp-active" style="margin:0">Ativa (visível no site)</label>
+      <div class="adm-grid-2" style="margin-top:4px">
+        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
+          <input id="ne-active" type="checkbox" checked style="width:16px;height:16px" />
+          <label for="ne-active" style="margin:0;font-weight:400">Ativa (visível no site)</label>
+        </div>
+        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
+          <input id="ne-featured" type="checkbox" style="width:16px;height:16px" />
+          <label for="ne-featured" style="margin:0;font-weight:400">Destaque</label>
+        </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:8px">
-        <button type="submit" id="exp-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar experiência</button>
+
+      <!-- ══ B: SAÍDA INICIAL ═════════════════════════════════════════ -->
+      <div class="adm-section-hd" style="margin-top:20px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input id="ne-dep-check" type="checkbox" style="width:16px;height:16px" />
+          Criar primeira saída agora
+        </label>
+      </div>
+      <div id="ne-dep-section" style="display:none;display:flex;flex-direction:column;gap:12px">
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Data/hora de início *</label>
+            <input id="ne-dep-start" class="adm-input" type="datetime-local" />
+          </div>
+          <div class="adm-field"><label>Data/hora de término</label>
+            <input id="ne-dep-end" class="adm-input" type="datetime-local" />
+          </div>
+        </div>
+        <div class="adm-field"><label>Ponto de encontro</label>
+          <input id="ne-dep-meeting" class="adm-input" placeholder="Ex: Estacionamento do Parque" />
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Capacidade (vagas)</label>
+            <input id="ne-dep-capacity" class="adm-input" type="number" min="1" placeholder="Igual à capacidade máxima" />
+          </div>
+          <div class="adm-field"><label>Preço (R$)</label>
+            <input id="ne-dep-price" class="adm-input" type="number" min="0" step="0.01" placeholder="Igual ao preço base" />
+          </div>
+        </div>
+        <div class="adm-field"><label>Status da saída</label>
+          <select id="ne-dep-status" class="adm-select">
+            <option value="scheduled">Aberta</option>
+            <option value="sold_out">Esgotada</option>
+            <option value="cancelled">Cancelada</option>
+          </select>
+        </div>
+        <div class="adm-field"><label>Título da saída (opcional)</label>
+          <input id="ne-dep-title" class="adm-input" placeholder="Ex: Saída de verão" />
+        </div>
+      </div>
+
+      <!-- ══ C: PRÉ-RESERVA MANUAL ════════════════════════════════════ -->
+      <div class="adm-section-hd" style="margin-top:20px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input id="ne-res-check" type="checkbox" style="width:16px;height:16px" />
+          Criar reserva manual inicial
+        </label>
+      </div>
+      <div id="ne-res-section" style="display:none;display:flex;flex-direction:column;gap:12px">
+        <p style="font-size:12px;color:var(--adm-text-muted)">Preencha os dados do responsável pela reserva.</p>
+        <div class="adm-field"><label>Nome do responsável *</label>
+          <input id="ne-res-name" class="adm-input" placeholder="Nome completo" />
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>E-mail</label>
+            <input id="ne-res-email" class="adm-input" type="email" placeholder="email@exemplo.com" />
+          </div>
+          <div class="adm-field"><label>Telefone</label>
+            <input id="ne-res-phone" class="adm-input" type="tel" placeholder="(99) 99999-9999" />
+          </div>
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Forma de pagamento</label>
+            <select id="ne-res-payment" class="adm-select">
+              <option value="">— selecione —</option>
+              <option value="pix">Pix</option>
+              <option value="credit_card">Cartão de crédito</option>
+              <option value="bank_transfer">Transferência</option>
+              <option value="cash">Dinheiro</option>
+              <option value="other">Outro</option>
+            </select>
+          </div>
+          <div class="adm-field"><label>Status da reserva</label>
+            <select id="ne-res-status" class="adm-select">
+              <option value="reserved">Reservado</option>
+              <option value="pending_payment">Aguardando pagamento</option>
+              <option value="paid">Pago</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+          </div>
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Valor total (R$)</label>
+            <input id="ne-res-total" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
+          </div>
+          <div class="adm-field"><label>Valor pago (R$)</label>
+            <input id="ne-res-paid" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
+          </div>
+        </div>
+        <div class="adm-field"><label>Observações</label>
+          <textarea id="ne-res-notes" class="adm-input" rows="2" placeholder="Informações adicionais..."></textarea>
+        </div>
+      </div>
+
+      <!-- ══ D: PARTICIPANTES ═════════════════════════════════════════ -->
+      <div id="ne-parts-wrapper" style="display:none">
+        <div class="adm-section-hd" style="margin-top:20px">Participantes</div>
+        <div id="ne-parts-list" style="display:flex;flex-direction:column;gap:10px"></div>
+        <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-add-part-btn" style="margin-top:8px">+ Adicionar participante</button>
+      </div>
+
+      <!-- ══ FOOTER ════════════════════════════════════════════════════ -->
+      <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--adm-border)">
+        <button type="submit" id="ne-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar experiência</button>
         <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
       </div>
-    </form>`);
 
-  // Auto-gera slug a partir do título (somente enquanto não foi editado manualmente)
-  let slugManuallyEdited = false;
-  document.getElementById('exp-slug')?.addEventListener('input', () => { slugManuallyEdited = true; });
-  document.getElementById('exp-title')?.addEventListener('input', e => {
-    if (slugManuallyEdited) return;
-    const slug = e.target.value
-      .toLowerCase()
+    </form>
+  `);
+
+  // ── Auto-slug ──────────────────────────────────────────────────────────────
+  let slugEdited = false;
+  document.getElementById('ne-slug')?.addEventListener('input', () => { slugEdited = true; });
+  document.getElementById('ne-title')?.addEventListener('input', e => {
+    if (slugEdited) return;
+    const sl = e.target.value.toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s-]/g, '')
-      .trim().replace(/\s+/g, '-');
-    const slugEl = document.getElementById('exp-slug');
-    if (slugEl) slugEl.value = slug;
+      .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+    const el = document.getElementById('ne-slug');
+    if (el) el.value = sl;
   });
 
-  document.getElementById('exp-cover-file').addEventListener('change', async e => {
+  // ── Price → departure price default ───────────────────────────────────────
+  document.getElementById('ne-price')?.addEventListener('change', e => {
+    const depPrice = document.getElementById('ne-dep-price');
+    if (depPrice && !depPrice.value) depPrice.value = e.target.value;
+  });
+  document.getElementById('ne-maxpax')?.addEventListener('change', e => {
+    const depCap = document.getElementById('ne-dep-capacity');
+    if (depCap && !depCap.value) depCap.value = e.target.value;
+  });
+
+  // ── Section B toggle ───────────────────────────────────────────────────────
+  document.getElementById('ne-dep-check')?.addEventListener('change', e => {
+    const sec = document.getElementById('ne-dep-section');
+    if (sec) sec.style.display = e.target.checked ? 'flex' : 'none';
+    // Default departure values from experience fields
+    if (e.target.checked) {
+      const depPrice = document.getElementById('ne-dep-price');
+      const depCap   = document.getElementById('ne-dep-capacity');
+      if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ne-price')?.value ?? '';
+      if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ne-maxpax')?.value ?? '';
+    }
+  });
+
+  // ── Section C toggle ───────────────────────────────────────────────────────
+  document.getElementById('ne-res-check')?.addEventListener('change', e => {
+    const sec   = document.getElementById('ne-res-section');
+    const parts = document.getElementById('ne-parts-wrapper');
+    if (sec)   sec.style.display   = e.target.checked ? 'flex' : 'none';
+    if (parts) parts.style.display = e.target.checked ? 'block' : 'none';
+  });
+
+  // ── Section D: add/remove participant rows ────────────────────────────────
+  let partCount = 0;
+  function addParticipantRow() {
+    const i = partCount++;
+    const row = document.createElement('div');
+    row.className = 'adm-part-row';
+    row.id = `ne-part-row-${i}`;
+    row.innerHTML = `
+      <div class="adm-grid-2" style="gap:8px">
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Nome *</label>
+          <input id="ne-p-name-${i}" class="adm-input adm-input--sm" placeholder="Nome completo" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Perfil</label>
+          <select id="ne-p-profile-${i}" class="adm-select adm-select--sm">
+            <option value="adult">Adulto</option>
+            <option value="child">Criança</option>
+            <option value="senior">Idoso (60+)</option>
+            <option value="pcd">PCD</option>
+          </select>
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Data de nascimento</label>
+          <input id="ne-p-birth-${i}" class="adm-input adm-input--sm" type="date" />
+        </div>
+        <div class="adm-field" style="margin:0;align-self:flex-end">
+          <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ne-part-row-${i}').remove()">Remover</button>
+        </div>
+      </div>`;
+    document.getElementById('ne-parts-list')?.appendChild(row);
+  }
+
+  document.getElementById('ne-add-part-btn')?.addEventListener('click', addParticipantRow);
+  addParticipantRow(); // one row by default
+
+  // ── Image upload ──────────────────────────────────────────────────────────
+  const pickCover = () => document.getElementById('ne-cover-file')?.click();
+  document.getElementById('ne-cover-pick-btn')?.addEventListener('click', pickCover);
+  document.getElementById('ne-cover-change-btn')?.addEventListener('click', pickCover);
+  document.getElementById('ne-cover-file')?.addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
-    await uploadExperienciaCover(file);
-  });
-
-  document.getElementById('exp-form').addEventListener('submit', async e => {
-    e.preventDefault();
     const db = window.anauaDb;
     if (!db) { toast('Supabase não disponível.', 'error'); return; }
+    const statusEl = document.getElementById('ne-cover-status');
+    if (statusEl) statusEl.textContent = 'Enviando…';
+    const ext  = file.name.split('.').pop();
+    const path = `covers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:false, contentType:file.type });
+    if (upErr) { if (statusEl) statusEl.textContent = '✗ Falha'; toast('Upload falhou: '+upErr.message,'error'); return; }
+    const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
+    const url = pub.publicUrl;
+    const hiddenEl  = document.getElementById('ne-cover');
+    const imgEl     = document.getElementById('ne-cover-img');
+    const nameEl    = document.getElementById('ne-cover-name');
+    const previewEl = document.getElementById('ne-cover-preview');
+    const emptyEl   = document.getElementById('ne-cover-empty');
+    if (hiddenEl)  hiddenEl.value  = url;
+    if (imgEl)     imgEl.src       = url;
+    if (nameEl)    nameEl.textContent = file.name;
+    if (previewEl) previewEl.style.display = 'flex';
+    if (emptyEl)   emptyEl.style.display   = 'none';
+    toast('Imagem enviada!', 'success');
+  });
 
-    const saveBtn = document.getElementById('exp-save-btn');
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  document.getElementById('nova-exp-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('ne-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
 
-    const payload = {
-      title:            document.getElementById('exp-title').value.trim(),
-      slug:             document.getElementById('exp-slug').value.trim(),
-      subtitle:         document.getElementById('exp-subtitle')?.value.trim() || null,
-      description:      document.getElementById('exp-description')?.value.trim() || null,
-      location:         document.getElementById('exp-location').value.trim() || null,
-      category:         document.getElementById('exp-category').value.trim() || null,
-      difficulty:       document.getElementById('exp-difficulty').value || null,
-      base_price:       parseFloat(document.getElementById('exp-price').value) || 0,
-      duration_hours:   parseFloat(document.getElementById('exp-duration')?.value) || null,
-      max_participants: parseInt(document.getElementById('exp-capacity')?.value, 10) || null,
-      cover_image_url:  document.getElementById('exp-cover').value.trim() || null,
-      is_active:        document.getElementById('exp-active').checked,
+    // A — Experience payload
+    const experience = {
+      title:            document.getElementById('ne-title').value.trim(),
+      slug:             document.getElementById('ne-slug').value.trim(),
+      subtitle:         document.getElementById('ne-subtitle')?.value.trim() || null,
+      description:      document.getElementById('ne-description')?.value.trim() || null,
+      location:         document.getElementById('ne-location')?.value.trim() || null,
+      category:         document.getElementById('ne-category')?.value || null,
+      difficulty:       document.getElementById('ne-difficulty')?.value || null,
+      base_price:       parseFloat(document.getElementById('ne-price')?.value) || 0,
+      duration_hours:   parseFloat(document.getElementById('ne-duration')?.value) || null,
+      max_participants: parseInt(document.getElementById('ne-maxpax')?.value, 10) || null,
+      cover_image_url:  document.getElementById('ne-cover')?.value.trim() || null,
+      is_active:        document.getElementById('ne-active')?.checked ?? true,
+      featured:         document.getElementById('ne-featured')?.checked ?? false,
     };
 
-    const { error } = await createExperience(payload);
-    if (error) {
-      console.warn('[admin-db] Erro ao salvar experiência:', error.message);
-      toast('Não foi possível salvar. ' + error.message, 'error');
+    if (!experience.title || !experience.slug) {
+      toast('Título e slug são obrigatórios.', 'error');
       if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
       return;
     }
 
-    console.log('[admin-db] Nova experiência salva:', payload.title);
-    toast('Experiência cadastrada com sucesso!', 'success');
+    // B — Departure payload (optional)
+    let departure = null;
+    if (document.getElementById('ne-dep-check')?.checked) {
+      const startVal = document.getElementById('ne-dep-start')?.value;
+      if (!startVal) {
+        toast('Informe a data/hora de início da saída.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
+        return;
+      }
+      departure = {
+        start_at:      new Date(startVal).toISOString(),
+        end_at:        document.getElementById('ne-dep-end')?.value ? new Date(document.getElementById('ne-dep-end').value).toISOString() : null,
+        meeting_point: document.getElementById('ne-dep-meeting')?.value.trim() || null,
+        capacity:      parseInt(document.getElementById('ne-dep-capacity')?.value, 10) || experience.max_participants || null,
+        price:         parseFloat(document.getElementById('ne-dep-price')?.value) || experience.base_price || null,
+        status:        document.getElementById('ne-dep-status')?.value || 'scheduled',
+        title:         document.getElementById('ne-dep-title')?.value.trim() || null,
+      };
+    }
+
+    // C — Reservation payload (optional)
+    let reservation = null;
+    if (document.getElementById('ne-res-check')?.checked) {
+      const resName = document.getElementById('ne-res-name')?.value.trim();
+      if (!resName) {
+        toast('Nome do responsável é obrigatório para criar reserva.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
+        return;
+      }
+      reservation = {
+        customer_name:      resName,
+        customer_email:     document.getElementById('ne-res-email')?.value.trim() || null,
+        customer_phone:     document.getElementById('ne-res-phone')?.value.trim() || null,
+        payment_method:     document.getElementById('ne-res-payment')?.value || null,
+        reservation_status: document.getElementById('ne-res-status')?.value || 'reserved',
+        total_amount:       parseFloat(document.getElementById('ne-res-total')?.value) || 0,
+        amount_paid:        parseFloat(document.getElementById('ne-res-paid')?.value) || 0,
+        notes:              document.getElementById('ne-res-notes')?.value.trim() || null,
+      };
+    }
+
+    // D — Participants
+    let participants = null;
+    if (document.getElementById('ne-res-check')?.checked) {
+      const rows = document.querySelectorAll('[id^="ne-part-row-"]');
+      participants = Array.from(rows).map((row, idx) => {
+        const i = row.id.replace('ne-part-row-', '');
+        return {
+          name:         document.getElementById(`ne-p-name-${i}`)?.value.trim() || null,
+          profile_type: document.getElementById(`ne-p-profile-${i}`)?.value || 'adult',
+          birthdate:    document.getElementById(`ne-p-birth-${i}`)?.value || null,
+        };
+      }).filter(p => p.name);
+    }
+
+    // Persist
+    const { data, error } = await createExperienceBundle({ experience, departure, reservation, participants });
+
+    if (error) {
+      console.error('[nova-exp] Erro:', error.message ?? error);
+      toast('Erro ao salvar: ' + (error.message ?? 'verifique o console.'), 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
+      return;
+    }
+
+    console.log('[nova-exp] Bundle criado ✓', data);
+
+    const msgs = ['Experiência cadastrada!'];
+    if (data?.departure_id)  msgs.push('Saída criada.');
+    if (data?.reservation_id) msgs.push('Reserva criada.');
+    toast(msgs.join(' '), 'success');
+
     closeDrawer();
     navigate('#experiencias');
   });
@@ -709,148 +991,418 @@ async function openEditExperienciaModal(id) {
     return;
   }
 
+  const esc = escHtml;
+  const sel = (val, opt) => val === opt ? 'selected' : '';
+
   $('adm-drawer-title').textContent = 'Editar experiência';
   $('adm-drawer-body').innerHTML = `
-    <form id="exp-form" style="display:flex;flex-direction:column;gap:14px">
-      <div class="adm-field"><label>Título *</label><input id="exp-title" class="adm-input" required value="${escHtml(row.title ?? '')}" /></div>
+    <form id="edit-exp-form" autocomplete="off">
+
+      <!-- ══ DADOS DA EXPERIÊNCIA ══════════════════════════════════ -->
+      <div class="adm-section-hd">Dados da experiência</div>
+
+      <div class="adm-field">
+        <label>Título *</label>
+        <input id="ee-title" class="adm-input" required value="${esc(row.title ?? '')}" />
+      </div>
       <div class="adm-field">
         <label>Slug *</label>
-        <input id="exp-slug" class="adm-input" required value="${escHtml(row.slug ?? '')}" />
+        <input id="ee-slug" class="adm-input" required value="${esc(row.slug ?? '')}" />
       </div>
-      <div class="adm-field"><label>Subtítulo</label><input id="exp-subtitle" class="adm-input" value="${escHtml(row.subtitle ?? '')}" /></div>
-      <div class="adm-field"><label>Descrição</label><textarea id="exp-description" class="adm-input" rows="3">${escHtml(row.description ?? '')}</textarea></div>
+      <div class="adm-field">
+        <label>Subtítulo</label>
+        <input id="ee-subtitle" class="adm-input" value="${esc(row.subtitle ?? '')}" placeholder="Frase curta de apresentação" />
+      </div>
+      <div class="adm-field">
+        <label>Descrição</label>
+        <textarea id="ee-description" class="adm-input" rows="3">${esc(row.description ?? '')}</textarea>
+      </div>
       <div class="adm-grid-2">
-        <div class="adm-field"><label>Local</label><input id="exp-location" class="adm-input" value="${escHtml(row.location ?? '')}" /></div>
+        <div class="adm-field"><label>Local</label><input id="ee-location" class="adm-input" value="${esc(row.location ?? '')}" /></div>
         <div class="adm-field"><label>Categoria</label>
-          <select id="exp-category" class="adm-input">
+          <select id="ee-category" class="adm-select">
             <option value="">— selecione —</option>
-            <option value="day-experience" ${row.category === 'day-experience' ? 'selected' : ''}>Experiência de 1 dia</option>
-            <option value="expedition" ${row.category === 'expedition' ? 'selected' : ''}>Expedição</option>
-            <option value="event" ${row.category === 'event' ? 'selected' : ''}>Evento</option>
-            <option value="kids" ${row.category === 'kids' ? 'selected' : ''}>Kids</option>
+            <option value="day-experience" ${sel(row.category,'day-experience')}>Experiência de 1 dia</option>
+            <option value="expedition" ${sel(row.category,'expedition')}>Expedição</option>
+            <option value="event" ${sel(row.category,'event')}>Evento</option>
+            <option value="kids" ${sel(row.category,'kids')}>Kids</option>
           </select>
         </div>
       </div>
       <div class="adm-grid-2">
         <div class="adm-field"><label>Dificuldade</label>
-          <select id="exp-difficulty" class="adm-input">
+          <select id="ee-difficulty" class="adm-select">
             <option value="">— selecione —</option>
-            <option value="iniciante" ${row.difficulty === 'iniciante' ? 'selected' : ''}>Iniciante (Fácil)</option>
-            <option value="moderado" ${row.difficulty === 'moderado' ? 'selected' : ''}>Moderado</option>
-            <option value="aventura" ${row.difficulty === 'aventura' ? 'selected' : ''}>Aventura (Difícil)</option>
+            <option value="iniciante" ${sel(row.difficulty,'iniciante')}>Iniciante (Fácil)</option>
+            <option value="moderado" ${sel(row.difficulty,'moderado')}>Moderado</option>
+            <option value="aventura" ${sel(row.difficulty,'aventura')}>Aventura (Difícil)</option>
           </select>
         </div>
-        <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" value="${row.base_price ?? 0}" /></div>
+        <div class="adm-field"><label>Preço base (R$)</label>
+          <input id="ee-price" class="adm-input" type="number" min="0" step="0.01" value="${row.base_price ?? 0}" />
+        </div>
       </div>
       <div class="adm-grid-2">
-        <div class="adm-field"><label>Duração (horas)</label><input id="exp-duration" class="adm-input" type="number" min="0.5" step="0.5" value="${row.duration_hours ?? ''}" /></div>
-        <div class="adm-field"><label>Capacidade máxima</label><input id="exp-capacity" class="adm-input" type="number" min="1" step="1" value="${row.max_participants ?? ''}" /></div>
+        <div class="adm-field"><label>Duração (horas)</label>
+          <input id="ee-duration" class="adm-input" type="number" min="0.5" step="0.5" value="${row.duration_hours ?? ''}" />
+        </div>
+        <div class="adm-field"><label>Capacidade máxima</label>
+          <input id="ee-maxpax" class="adm-input" type="number" min="1" value="${row.max_participants ?? ''}" />
+        </div>
       </div>
       <div class="adm-field">
-        <label>URL da imagem de capa</label>
-        <input id="exp-cover" class="adm-input" type="url" value="${escHtml(row.cover_image_url ?? '')}" placeholder="https://..." />
-        <span style="font-size:11px;color:var(--adm-text-muted)">Cole a URL ou use o botão abaixo para fazer upload.</span>
-        <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" style="margin-top:6px" onclick="document.getElementById('exp-cover-file-edit').click()">📷 Trocar imagem</button>
-        <input type="file" id="exp-cover-file-edit" accept="image/*" style="display:none" />
+        <label>Imagem de capa</label>
+        <div class="adm-upload-widget">
+          <input type="file" id="ee-cover-file" accept="image/*" style="display:none" />
+          <div id="ee-cover-preview" style="display:${row.cover_image_url ? 'flex' : 'none'};align-items:center;gap:10px">
+            <img id="ee-cover-img" src="${esc(row.cover_image_url ?? '')}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--adm-border)" />
+            <div>
+              <span id="ee-cover-name" style="font-size:12px;color:var(--adm-text-muted)"></span><br>
+              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-cover-change-btn">Trocar</button>
+            </div>
+          </div>
+          <div id="ee-cover-empty" style="display:${row.cover_image_url ? 'none' : 'block'}">
+            <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" id="ee-cover-pick-btn">📷 Escolher imagem</button>
+            <span id="ee-cover-status" style="font-size:12px;color:var(--adm-text-muted);margin-left:8px"></span>
+          </div>
+          <input type="hidden" id="ee-cover" value="${esc(row.cover_image_url ?? '')}" />
+        </div>
       </div>
-      <div class="adm-field" style="flex-direction:row;align-items:center;gap:10px">
-        <input id="exp-active" type="checkbox" style="width:18px;height:18px" ${row.is_active !== false ? 'checked' : ''} />
-        <label for="exp-active" style="margin:0">Ativa (visível no site)</label>
+      <div class="adm-grid-2" style="margin-top:4px">
+        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
+          <input id="ee-active" type="checkbox" ${row.is_active !== false ? 'checked' : ''} style="width:16px;height:16px" />
+          <label for="ee-active" style="margin:0;font-weight:400">Ativa (visível no site)</label>
+        </div>
+        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
+          <input id="ee-featured" type="checkbox" ${row.featured ? 'checked' : ''} style="width:16px;height:16px" />
+          <label for="ee-featured" style="margin:0;font-weight:400">Destaque</label>
+        </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:8px">
-        <button type="submit" id="exp-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar alterações</button>
+
+      <!-- ══ NOVA SAÍDA ═════════════════════════════════════════════ -->
+      <div class="adm-section-hd" style="margin-top:20px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input id="ee-dep-check" type="checkbox" style="width:16px;height:16px" />
+          Criar nova saída
+        </label>
+      </div>
+      <div id="ee-dep-section" style="display:none;flex-direction:column;gap:12px">
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Data/hora de início *</label>
+            <input id="ee-dep-start" class="adm-input" type="datetime-local" />
+          </div>
+          <div class="adm-field"><label>Data/hora de término</label>
+            <input id="ee-dep-end" class="adm-input" type="datetime-local" />
+          </div>
+        </div>
+        <div class="adm-field"><label>Ponto de encontro</label>
+          <input id="ee-dep-meeting" class="adm-input" placeholder="Ex: Estacionamento do Parque" />
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Capacidade (vagas)</label>
+            <input id="ee-dep-capacity" class="adm-input" type="number" min="1" placeholder="Igual à capacidade máxima" />
+          </div>
+          <div class="adm-field"><label>Preço (R$)</label>
+            <input id="ee-dep-price" class="adm-input" type="number" min="0" step="0.01" placeholder="Igual ao preço base" />
+          </div>
+        </div>
+        <div class="adm-field"><label>Status da saída</label>
+          <select id="ee-dep-status" class="adm-select">
+            <option value="scheduled">Aberta</option>
+            <option value="sold_out">Esgotada</option>
+            <option value="cancelled">Cancelada</option>
+          </select>
+        </div>
+        <div class="adm-field"><label>Título da saída (opcional)</label>
+          <input id="ee-dep-title" class="adm-input" placeholder="Ex: Saída de verão" />
+        </div>
+      </div>
+
+      <!-- ══ NOVA RESERVA MANUAL ════════════════════════════════════ -->
+      <div class="adm-section-hd" style="margin-top:20px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input id="ee-res-check" type="checkbox" style="width:16px;height:16px" />
+          Criar reserva manual
+        </label>
+      </div>
+      <div id="ee-res-section" style="display:none;flex-direction:column;gap:12px">
+        <p style="font-size:12px;color:var(--adm-text-muted)">Preencha os dados do responsável pela reserva.</p>
+        <div class="adm-field"><label>Nome do responsável *</label>
+          <input id="ee-res-name" class="adm-input" placeholder="Nome completo" />
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>E-mail</label>
+            <input id="ee-res-email" class="adm-input" type="email" placeholder="email@exemplo.com" />
+          </div>
+          <div class="adm-field"><label>Telefone</label>
+            <input id="ee-res-phone" class="adm-input" type="tel" placeholder="(99) 99999-9999" />
+          </div>
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Forma de pagamento</label>
+            <select id="ee-res-payment" class="adm-select">
+              <option value="">— selecione —</option>
+              <option value="pix">Pix</option>
+              <option value="credit_card">Cartão de crédito</option>
+              <option value="bank_transfer">Transferência</option>
+              <option value="cash">Dinheiro</option>
+              <option value="other">Outro</option>
+            </select>
+          </div>
+          <div class="adm-field"><label>Status da reserva</label>
+            <select id="ee-res-status" class="adm-select">
+              <option value="reserved">Reservado</option>
+              <option value="pending_payment">Aguardando pagamento</option>
+              <option value="paid">Pago</option>
+              <option value="cancelled">Cancelado</option>
+            </select>
+          </div>
+        </div>
+        <div class="adm-grid-2">
+          <div class="adm-field"><label>Valor total (R$)</label>
+            <input id="ee-res-total" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
+          </div>
+          <div class="adm-field"><label>Valor pago (R$)</label>
+            <input id="ee-res-paid" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
+          </div>
+        </div>
+        <div class="adm-field"><label>Observações</label>
+          <textarea id="ee-res-notes" class="adm-input" rows="2" placeholder="Informações adicionais..."></textarea>
+        </div>
+      </div>
+
+      <!-- ══ PARTICIPANTES ══════════════════════════════════════════ -->
+      <div id="ee-parts-wrapper" style="display:none">
+        <div class="adm-section-hd" style="margin-top:20px">Participantes</div>
+        <div id="ee-parts-list" style="display:flex;flex-direction:column;gap:10px"></div>
+        <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-add-part-btn" style="margin-top:8px">+ Adicionar participante</button>
+      </div>
+
+      <!-- ══ FOOTER ════════════════════════════════════════════════ -->
+      <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--adm-border)">
+        <button type="submit" id="ee-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar alterações</button>
         <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
       </div>
+
       ${row.is_active === false ? `
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--adm-border)">
-        <button type="button" id="exp-delete-btn" class="adm-btn adm-btn--danger" style="width:100%">🗑️ Excluir experiência permanentemente</button>
-        <p style="font-size:11px;color:var(--adm-text-muted);margin-top:6px;text-align:center">Remove a experiência e todas as saídas e entradas de lista de espera vinculadas.</p>
+        <button type="button" id="ee-delete-btn" class="adm-btn adm-btn--danger" style="width:100%">🗑️ Excluir experiência permanentemente</button>
+        <p style="font-size:11px;color:var(--adm-text-muted);margin-top:6px;text-align:center">Remove a experiência, saídas e entradas de lista de espera vinculadas.</p>
       </div>` : ''}
+
     </form>`;
 
-  // Upload de imagem no modo edição
-  document.getElementById('exp-cover-file-edit')?.addEventListener('change', async e => {
+  // ── Image upload ──────────────────────────────────────────────────────────
+  const pickCover = () => document.getElementById('ee-cover-file')?.click();
+  document.getElementById('ee-cover-pick-btn')?.addEventListener('click', pickCover);
+  document.getElementById('ee-cover-change-btn')?.addEventListener('click', pickCover);
+  document.getElementById('ee-cover-file')?.addEventListener('change', async e => {
     const file = e.target.files[0];
-    if (!file || !db) return;
-    const statusEl = document.getElementById('exp-cover');
-    if (statusEl) statusEl.placeholder = 'Enviando…';
+    if (!file) return;
+    const statusEl = document.getElementById('ee-cover-status');
+    if (statusEl) statusEl.textContent = 'Enviando…';
     const ext  = file.name.split('.').pop();
     const path = `covers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
-    if (upErr) { toast('Erro no upload: ' + upErr.message, 'error'); return; }
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:false, contentType:file.type });
+    if (upErr) { if (statusEl) statusEl.textContent = '✗ Falha'; toast('Upload falhou: '+upErr.message,'error'); return; }
     const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
-    if (statusEl) statusEl.value = pub.publicUrl;
+    const url = pub.publicUrl;
+    const hiddenEl  = document.getElementById('ee-cover');
+    const imgEl     = document.getElementById('ee-cover-img');
+    const nameEl    = document.getElementById('ee-cover-name');
+    const previewEl = document.getElementById('ee-cover-preview');
+    const emptyEl   = document.getElementById('ee-cover-empty');
+    if (hiddenEl)  hiddenEl.value  = url;
+    if (imgEl)     imgEl.src       = url;
+    if (nameEl)    nameEl.textContent = file.name;
+    if (previewEl) previewEl.style.display = 'flex';
+    if (emptyEl)   emptyEl.style.display   = 'none';
     toast('Imagem enviada!', 'success');
   });
 
-  // Delete button — only rendered when experience is inactive
-  document.getElementById('exp-delete-btn')?.addEventListener('click', () => {
+  // ── Section B toggle ──────────────────────────────────────────────────────
+  document.getElementById('ee-dep-check')?.addEventListener('change', e => {
+    const sec = document.getElementById('ee-dep-section');
+    if (sec) sec.style.display = e.target.checked ? 'flex' : 'none';
+    if (e.target.checked) {
+      const depPrice = document.getElementById('ee-dep-price');
+      const depCap   = document.getElementById('ee-dep-capacity');
+      if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ee-price')?.value ?? '';
+      if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ee-maxpax')?.value ?? '';
+    }
+  });
+
+  // ── Section C toggle ──────────────────────────────────────────────────────
+  document.getElementById('ee-res-check')?.addEventListener('change', e => {
+    const sec   = document.getElementById('ee-res-section');
+    const parts = document.getElementById('ee-parts-wrapper');
+    if (sec)   sec.style.display   = e.target.checked ? 'flex' : 'none';
+    if (parts) parts.style.display = e.target.checked ? 'block' : 'none';
+  });
+
+  // ── Participant rows ──────────────────────────────────────────────────────
+  let partCount = 0;
+  function addPartRow() {
+    const i = partCount++;
+    const r = document.createElement('div');
+    r.className = 'adm-part-row'; r.id = `ee-part-row-${i}`;
+    r.innerHTML = `
+      <div class="adm-grid-2" style="gap:8px">
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Nome *</label>
+          <input id="ee-p-name-${i}" class="adm-input adm-input--sm" placeholder="Nome completo" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Perfil</label>
+          <select id="ee-p-profile-${i}" class="adm-select adm-select--sm">
+            <option value="adult">Adulto</option>
+            <option value="child">Criança</option>
+            <option value="senior">Idoso (60+)</option>
+            <option value="pcd">PCD</option>
+          </select>
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Data de nascimento</label>
+          <input id="ee-p-birth-${i}" class="adm-input adm-input--sm" type="date" />
+        </div>
+        <div class="adm-field" style="margin:0;align-self:flex-end">
+          <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ee-part-row-${i}').remove()">Remover</button>
+        </div>
+      </div>`;
+    document.getElementById('ee-parts-list')?.appendChild(r);
+  }
+  document.getElementById('ee-add-part-btn')?.addEventListener('click', addPartRow);
+  addPartRow();
+
+  // ── Delete button (inactive only) ─────────────────────────────────────────
+  document.getElementById('ee-delete-btn')?.addEventListener('click', () => {
     openModal(
       'Excluir experiência',
       `<p style="font-size:var(--text-sm);color:var(--adm-text-muted);line-height:1.6">
          Você está prestes a <strong>excluir permanentemente</strong> a experiência:<br><br>
-         <strong style="color:var(--adm-text)">${escHtml(row.title ?? '')}</strong><br><br>
+         <strong style="color:var(--adm-text)">${esc(row.title ?? '')}</strong><br><br>
          Esta ação também removerá:<br>
-         &bull; Todas as <strong>saídas (departures)</strong> vinculadas<br>
+         &bull; Todas as <strong>saídas</strong> vinculadas<br>
          &bull; Todas as <strong>entradas da lista de espera</strong> vinculadas<br><br>
          <span style="color:var(--adm-danger);font-weight:600">Esta ação é irreversível.</span>
        </p>`,
       `<button class="adm-btn adm-btn--secondary" onclick="closeModal()">Cancelar</button>
        <button class="adm-btn adm-btn--danger" id="confirm-delete-exp-btn">Sim, excluir tudo</button>`
     );
-
     document.getElementById('confirm-delete-exp-btn')?.addEventListener('click', async () => {
       closeModal();
-      const db = window.anauaDb;
-      if (!db) { toast('Supabase não disponível.', 'error'); return; }
-
-      // 1. Remove departures
-      const { error: depErr } = await db.from('departures').delete().eq('experience_id', id);
-      if (depErr) { toast('Erro ao excluir saídas: ' + depErr.message, 'error'); return; }
-
-      // 2. Remove waitlist entries (table may not exist — ignore errors)
+      await db.from('departures').delete().eq('experience_id', id);
       await db.from('waitlist_entries').delete().eq('experience_id', id);
-
-      // 3. Remove experience
-      const { error: expErr } = await db.from('experiences').delete().eq('id', id);
-      if (expErr) { toast('Erro ao excluir experiência: ' + expErr.message, 'error'); return; }
-
-      toast('Experiência e dados vinculados excluídos com sucesso.', 'success');
+      const { error: delErr } = await db.from('experiences').delete().eq('id', id);
+      if (delErr) { toast('Erro ao excluir: ' + delErr.message, 'error'); return; }
+      toast('Experiência excluída.', 'success');
       closeDrawer();
       navigate('#experiencias');
     });
   });
 
-  document.getElementById('exp-form').addEventListener('submit', async e => {
+  // ── Submit: save experience + optional departure/reservation/participants ──
+  document.getElementById('edit-exp-form')?.addEventListener('submit', async e => {
     e.preventDefault();
-    const saveBtn = document.getElementById('exp-save-btn');
+    const saveBtn = document.getElementById('ee-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
 
-    const payload = {
-      title:            document.getElementById('exp-title').value.trim(),
-      slug:             document.getElementById('exp-slug').value.trim(),
-      subtitle:         document.getElementById('exp-subtitle')?.value.trim() || null,
-      description:      document.getElementById('exp-description')?.value.trim() || null,
-      location:         document.getElementById('exp-location').value.trim() || null,
-      category:         document.getElementById('exp-category').value.trim() || null,
-      difficulty:       document.getElementById('exp-difficulty').value || null,
-      base_price:       parseFloat(document.getElementById('exp-price').value) || 0,
-      duration_hours:   parseFloat(document.getElementById('exp-duration')?.value) || null,
-      max_participants: parseInt(document.getElementById('exp-capacity')?.value, 10) || null,
-      cover_image_url:  document.getElementById('exp-cover').value.trim() || null,
-      is_active:        document.getElementById('exp-active').checked,
+    // 1. Update experience
+    const expPayload = {
+      title:            document.getElementById('ee-title').value.trim(),
+      slug:             document.getElementById('ee-slug').value.trim(),
+      subtitle:         document.getElementById('ee-subtitle')?.value.trim() || null,
+      description:      document.getElementById('ee-description')?.value.trim() || null,
+      location:         document.getElementById('ee-location')?.value.trim() || null,
+      category:         document.getElementById('ee-category')?.value || null,
+      difficulty:       document.getElementById('ee-difficulty')?.value || null,
+      base_price:       parseFloat(document.getElementById('ee-price')?.value) || 0,
+      duration_hours:   parseFloat(document.getElementById('ee-duration')?.value) || null,
+      max_participants: parseInt(document.getElementById('ee-maxpax')?.value, 10) || null,
+      cover_image_url:  document.getElementById('ee-cover')?.value.trim() || null,
+      is_active:        document.getElementById('ee-active')?.checked ?? true,
+      featured:         document.getElementById('ee-featured')?.checked ?? false,
     };
 
-    const { error: updErr } = await updateExperience(id, payload);
-    if (updErr) {
-      console.error('[admin-db] Erro ao atualizar experiência:', updErr.message);
-      toast('Não foi possível salvar. ' + updErr.message, 'error');
+    if (!expPayload.title || !expPayload.slug) {
+      toast('Título e slug são obrigatórios.', 'error');
       if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
       return;
     }
 
-    console.log('[admin-db] Experiência atualizada:', id);
-    toast('Experiência atualizada!', 'success');
+    const { error: updErr } = await updateExperience(id, expPayload);
+    if (updErr) {
+      toast('Não foi possível salvar: ' + updErr.message, 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
+      return;
+    }
+
+    const msgs = ['Experiência atualizada!'];
+
+    // 2. Optional new departure
+    if (document.getElementById('ee-dep-check')?.checked) {
+      const startVal = document.getElementById('ee-dep-start')?.value;
+      if (!startVal) {
+        toast('Informe a data/hora de início da saída.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
+        return;
+      }
+      const depPayload = {
+        experience_id: id,
+        start_at:      new Date(startVal).toISOString(),
+        end_at:        document.getElementById('ee-dep-end')?.value ? new Date(document.getElementById('ee-dep-end').value).toISOString() : null,
+        meeting_point: document.getElementById('ee-dep-meeting')?.value.trim() || null,
+        capacity:      parseInt(document.getElementById('ee-dep-capacity')?.value, 10) || expPayload.max_participants || null,
+        price:         parseFloat(document.getElementById('ee-dep-price')?.value) || expPayload.base_price || null,
+        status:        document.getElementById('ee-dep-status')?.value || 'scheduled',
+        title:         document.getElementById('ee-dep-title')?.value.trim() || null,
+      };
+      const { error: depErr } = await createDeparture(depPayload);
+      if (depErr) toast('Saída não criada: ' + depErr.message, 'error');
+      else msgs.push('Saída criada.');
+    }
+
+    // 3. Optional new reservation
+    let newResId = null;
+    if (document.getElementById('ee-res-check')?.checked) {
+      const resName = document.getElementById('ee-res-name')?.value.trim();
+      if (!resName) {
+        toast('Nome do responsável é obrigatório para criar reserva.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
+        return;
+      }
+      const resPayload = {
+        experience_id:      id,
+        customer_name:      resName,
+        customer_email:     document.getElementById('ee-res-email')?.value.trim() || null,
+        customer_phone:     document.getElementById('ee-res-phone')?.value.trim() || null,
+        payment_method:     document.getElementById('ee-res-payment')?.value || null,
+        reservation_status: document.getElementById('ee-res-status')?.value || 'reserved',
+        total_amount:       parseFloat(document.getElementById('ee-res-total')?.value) || 0,
+        amount_paid:        parseFloat(document.getElementById('ee-res-paid')?.value) || 0,
+        notes:              document.getElementById('ee-res-notes')?.value.trim() || null,
+      };
+      const { data: resData, error: resErr } = await db.from('reservations').insert(resPayload).select('id').single();
+      if (resErr) toast('Reserva não criada: ' + resErr.message, 'error');
+      else { newResId = resData?.id; msgs.push('Reserva criada.'); }
+    }
+
+    // 4. Optional participants
+    if (newResId) {
+      const rows = document.querySelectorAll('[id^="ee-part-row-"]');
+      const parts = Array.from(rows).map(r => {
+        const i = r.id.replace('ee-part-row-', '');
+        return {
+          reservation_id: newResId,
+          name:           document.getElementById(`ee-p-name-${i}`)?.value.trim() || null,
+          profile_type:   document.getElementById(`ee-p-profile-${i}`)?.value || 'adult',
+          birthdate:      document.getElementById(`ee-p-birth-${i}`)?.value || null,
+        };
+      }).filter(p => p.name);
+      if (parts.length) {
+        const { error: pErr } = await db.from('participants').insert(parts);
+        if (pErr) toast('Participantes não salvos: ' + pErr.message, 'error');
+      }
+    }
+
+    toast(msgs.join(' '), 'success');
     closeDrawer();
     navigate('#experiencias');
   });
