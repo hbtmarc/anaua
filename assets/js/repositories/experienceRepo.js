@@ -11,6 +11,77 @@
 import { supabase } from '../supabaseClient.js';
 
 /**
+ * Colunas confirmadas na tabela public.experiences conforme SELECT bem-sucedido no admin.
+ * Estas colunas SEMPRE existem e podem ser incluídas com segurança.
+ */
+const CONFIRMED_COLUMNS = new Set([
+  'title', 'slug', 'location', 'category', 'difficulty',
+  'base_price', 'is_active', 'cover_image_url',
+]);
+
+/**
+ * Colunas estendidas — adicionadas via migration experiences_extended_fields.sql.
+ * Só são enviadas se o valor estiver presente E não for nulo/vazio.
+ * Se a migration ainda não foi executada, o Supabase retornará erro de coluna
+ * desconhecida — nesse caso, aplique a migration primeiro.
+ * @see supabase/migrations/experiences_extended_fields.sql
+ */
+const EXTENDED_COLUMNS = new Set([
+  'subtitle', 'description', 'duration_hours', 'max_participants',
+  'is_new', 'featured', 'region', 'highlights', 'includes',
+  'excludes', 'what_to_bring', 'gallery', 'currency',
+  'min_age', 'distance_km', 'elevation_gain_m', 'cancellation_policy',
+]);
+
+/**
+ * Constrói um payload seguro para INSERT/UPDATE em public.experiences.
+ * - Inclui apenas campos com valores não-nulos e não-vazios.
+ * - Se um campo estendido for fornecido mas a migration não tiver sido aplicada,
+ *   o Supabase retornará um erro claro de schema.
+ * - cover_image_url vazio é normalizado para null (nunca envia string vazia).
+ *
+ * @param {object} raw — campos brutos do formulário
+ * @param {{ includeExtended?: boolean }} [opts]
+ * @returns {object} payload pronto para o Supabase
+ */
+export function buildExperiencePayload(raw, { includeExtended = true } = {}) {
+  const payload = {};
+
+  for (const key of CONFIRMED_COLUMNS) {
+    if (key in raw) {
+      const val = raw[key];
+      // Normaliza cover_image_url vazio para null
+      if (key === 'cover_image_url') {
+        payload[key] = (val && String(val).trim() !== '') ? String(val).trim() : null;
+      } else {
+        payload[key] = val ?? null;
+      }
+    }
+  }
+
+  if (includeExtended) {
+    for (const key of EXTENDED_COLUMNS) {
+      if (!(key in raw)) continue;
+      const val = raw[key];
+      if (val === null || val === undefined || val === '') {
+        // Envia null explícito para limpar o campo ao editar
+        payload[key] = null;
+        continue;
+      }
+      payload[key] = val;
+    }
+  } else {
+    console.warn(
+      '[experienceRepo] Campos estendidos (subtitle, description, duration_hours, max_participants) ' +
+      'foram omitidos pois includeExtended=false. ' +
+      'Execute supabase/migrations/experiences_extended_fields.sql antes de ativá-los.'
+    );
+  }
+
+  return payload;
+}
+
+/**
  * Converte uma linha do Supabase (snake_case) para o formato que os
  * componentes do projeto esperam (camelCase).
  * Isso isola o restante do código de mudanças no schema do banco.
@@ -166,14 +237,22 @@ export async function getExperienceById(id) {
  * @param {object} payload - Campos da tabela public.experiences (snake_case)
  */
 export async function createExperience(payload) {
+  const safePayload = buildExperiencePayload(payload);
   const { data, error } = await supabase
     .from('experiences')
-    .insert(payload)
+    .insert(safePayload)
     .select()
     .single();
 
   if (error) {
     console.error('[experienceRepo] Erro em experiências — createExperience:', error.message);
+    // Dica amigável se o erro for de coluna desconhecida
+    if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+      console.warn(
+        '[experienceRepo] Coluna não encontrada no banco. ' +
+        'Execute supabase/migrations/experiences_extended_fields.sql no Supabase Dashboard.'
+      );
+    }
     return { data: null, error };
   }
   console.log('[experienceRepo] Experiência criada ✓', data.id);
@@ -186,15 +265,22 @@ export async function createExperience(payload) {
  * @param {object} payload - Campos a atualizar
  */
 export async function updateExperience(id, payload) {
+  const safePayload = buildExperiencePayload(payload);
   const { data, error } = await supabase
     .from('experiences')
-    .update(payload)
+    .update(safePayload)
     .eq('id', id)
     .select()
     .single();
 
   if (error) {
     console.error('[experienceRepo] Erro em experiências — updateExperience:', error.message);
+    if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+      console.warn(
+        '[experienceRepo] Coluna não encontrada no banco. ' +
+        'Execute supabase/migrations/experiences_extended_fields.sql no Supabase Dashboard.'
+      );
+    }
     return { data: null, error };
   }
   console.log('[experienceRepo] Experiência atualizada ✓', id);

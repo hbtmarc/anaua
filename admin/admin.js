@@ -10,6 +10,7 @@
 
 import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
+import { createExperience, updateExperience } from '../assets/js/repositories/experienceRepo.js';
 // ReservationStore removido — dados vêm do Supabase
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
@@ -246,8 +247,8 @@ async function renderDashboard(root) {
     safeCount('reservations', q => q.in('reservation_status', ['confirmed', 'reserved'])),
     safeCount('reservations', q => q.eq('reservation_status', 'pending_payment')),
     safeCount('reservations', q => q.eq('reservation_status', 'cancelled')),
-    db.from('reservations').select('id, reservation_code, payer_name, reservation_status, total_amount, created_at').order('created_at', { ascending: false }).limit(6),
-    db.from('departures').select('id, date, status, spots_total, spots_available, experience_id, experiences(title)').gte('date', new Date().toISOString().split('T')[0]).eq('status', 'scheduled').order('date').limit(5),
+    db.from('reservations').select('id, reservation_status, total_amount, created_at').order('created_at', { ascending: false }).limit(6),
+    db.from('departures').select('id, start_at, status, capacity, experience_id, experiences(title)').gte('start_at', new Date().toISOString().split('T')[0]).eq('status', 'scheduled').order('start_at').limit(5),
     db.from('payments').select('amount').eq('status', 'paid'),
   ]);
 
@@ -271,8 +272,8 @@ async function renderDashboard(root) {
         <thead><tr><th>Código</th><th>Responsável</th><th>Status</th><th>Total</th></tr></thead>
         <tbody>${recent.length
           ? recent.map(r => `<tr>
-              <td class="no-wrap text-small text-muted">${escHtml(r.reservation_code ?? r.id)}</td>
-              <td class="text-bold">${escHtml(r.payer_name ?? '—')}</td>
+              <td class="no-wrap text-small text-muted">${escHtml(r.id)}</td>
+              <td class="text-bold">—</td>
               <td>${badge(r.reservation_status ?? 'pending_payment')}</td>
               <td class="no-wrap text-bold">${fmt(r.total_amount ?? 0)}</td>
             </tr>`).join('')
@@ -289,14 +290,12 @@ async function renderDashboard(root) {
         <thead><tr><th>Data</th><th>Experiência</th><th>Ocupação</th><th>Vagas</th></tr></thead>
         <tbody>${upcoming.length
           ? upcoming.map(d => {
-              const booked = (d.spots_total ?? 0) - (d.spots_available ?? 0);
-              const pct    = d.spots_total ? (booked / d.spots_total) * 100 : 0;
               const title  = d.experiences?.title ?? d.experience_id ?? '—';
               return `<tr>
-                <td class="no-wrap">${fmtDateShort(d.date)}</td>
+                <td class="no-wrap">${fmtDateShort(d.start_at)}</td>
                 <td>${escHtml(title)}</td>
-                <td style="min-width:120px">${occFill(pct)}</td>
-                <td class="text-bold">${d.spots_available ?? 0}/${d.spots_total ?? 0}</td>
+                <td class="text-muted text-small">—</td>
+                <td class="text-bold">${d.capacity ?? 0} vagas</td>
               </tr>`;
             }).join('')
           : '<tr><td colspan="4" class="adm-table__empty text-muted">Sem saídas futuras agendadas.</td></tr>'
@@ -333,12 +332,12 @@ async function renderAgenda(root) {
   if (db) {
     const { data, error } = await db
       .from('departures')
-      .select('id, date, status, spots_total, spots_available, experience_id, experiences(title)')
-      .order('date');
+      .select('id, start_at, status, capacity, experience_id, experiences(title)')
+      .order('start_at');
     if (!error) {
       allExits = (data ?? []).map(d => ({
         exp:  { title: d.experiences?.title ?? d.experience_id ?? '—', id: d.experience_id },
-        exit: { id: d.id, date: d.date, status: d.status, spotsTotal: d.spots_total ?? 0, spotsAvailable: d.spots_available ?? 0 },
+        exit: { id: d.id, start_at: d.start_at, status: d.status, spotsTotal: d.capacity ?? 0, spotsAvailable: d.capacity ?? 0 },
       }));
       console.log('[admin-db] Saídas carregadas (agenda):', allExits.length);
     } else {
@@ -361,7 +360,7 @@ async function renderAgenda(root) {
     const dayEventsHtml = cells.map(d => {
       if (d === null) return '<div class="adm-cal__day is-empty"></div>';
       const ds = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const dayEx = allExits.filter(x => x.exit.date === ds);
+      const dayEx = allExits.filter(x => (x.exit.start_at ?? '').slice(0, 10) === ds);
       const isToday = ds === todayStr;
       const evts = dayEx.map(({ exp, exit }) => {
         const pct = exit.spotsTotal ? ((exit.spotsTotal - exit.spotsAvailable) / exit.spotsTotal) * 100 : 0;
@@ -404,7 +403,7 @@ async function renderAgenda(root) {
   }
 
   function renderList() {
-    const sorted = [...allExits].sort((a, b) => a.exit.date.localeCompare(b.exit.date));
+    const sorted = [...allExits].sort((a, b) => (a.exit.start_at ?? '').localeCompare(b.exit.start_at ?? ''));
     root.innerHTML = `
       <div class="adm-card">
         <div class="adm-card__header">
@@ -418,15 +417,13 @@ async function renderAgenda(root) {
           <table class="adm-table">
             <thead><tr><th>Data</th><th>Experiência</th><th>Vagas</th><th>Ocupação</th><th>Status</th><th></th></tr></thead>
             <tbody>${sorted.length ? sorted.map(({ exp, exit }) => {
-              const booked = exit.spotsTotal - exit.spotsAvailable;
-              const pct = exit.spotsTotal ? (booked / exit.spotsTotal) * 100 : 0;
-              const st = exit.spotsAvailable === 0 ? 'soldout' : exit.status === 'cancelled' ? 'cancelled' : 'active';
+              const st = exit.status === 'cancelled' ? 'cancelled' : 'active';
               return `<tr>
-                <td class="no-wrap">${fmtDate(exit.date)}</td>
+                <td class="no-wrap">${fmtDate(exit.start_at)}</td>
                 <td>${escHtml(exp.title)}</td>
-                <td>${exit.spotsAvailable}/${exit.spotsTotal}</td>
-                <td style="min-width:120px">${occFill(pct)}</td>
-                <td><span class="badge badge--${st}">${st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
+                <td>${exit.spotsTotal} vagas</td>
+                <td class="text-muted text-small">—</td>
+                <td><span class="badge badge--${st}">${st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
                 <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
               </tr>`;
             }).join('') : '<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída cadastrada.</td></tr>'}</tbody>
@@ -628,7 +625,7 @@ function openNovaExperienciaModal() {
       is_active:        document.getElementById('exp-active').checked,
     };
 
-    const { error } = await db.from('experiences').insert(payload);
+    const { error } = await createExperience(payload);
     if (error) {
       console.warn('[admin-db] Erro ao salvar experiência:', error.message);
       toast('Não foi possível salvar. ' + error.message, 'error');
@@ -798,7 +795,7 @@ async function openEditExperienciaModal(id) {
       is_active:        document.getElementById('exp-active').checked,
     };
 
-    const { error: updErr } = await db.from('experiences').update(payload).eq('id', id);
+    const { error: updErr } = await updateExperience(id, payload);
     if (updErr) {
       console.error('[admin-db] Erro ao atualizar experiência:', updErr.message);
       toast('Não foi possível salvar. ' + updErr.message, 'error');
@@ -965,12 +962,12 @@ async function renderSaidas(root) {
   if (db) {
     const { data, error } = await db
       .from('departures')
-      .select('id, date, status, spots_total, spots_available, experience_id, experiences(title)')
-      .order('date', { ascending: false });
+      .select('id, start_at, status, capacity, experience_id, experiences(title)')
+      .order('start_at', { ascending: false });
     if (!error) {
       allExits = (data ?? []).map(d => ({
         exp:  { title: d.experiences?.title ?? d.experience_id ?? '—' },
-        exit: { id: d.id, date: d.date, status: d.status ?? 'scheduled', spotsTotal: d.spots_total ?? 0, spotsAvailable: d.spots_available ?? 0 },
+        exit: { id: d.id, start_at: d.start_at, status: d.status ?? 'scheduled', spotsTotal: d.capacity ?? 0, spotsAvailable: d.capacity ?? 0 },
       }));
       console.log('[admin-db] Saídas carregadas:', allExits.length);
     } else {
@@ -984,15 +981,12 @@ async function renderSaidas(root) {
     const tbody = $('saidas-tbody');
     $('saidas-count').textContent = `${data.length} saída(s)`;
     tbody.innerHTML = data.map(({ exp, exit }) => {
-      const booked = exit.spotsTotal - exit.spotsAvailable;
-      const pct = exit.spotsTotal ? (booked / exit.spotsTotal) * 100 : 0;
-      const isSoldOut = exit.spotsAvailable === 0;
-      const st = isSoldOut ? 'soldout' : exit.status === 'cancelled' ? 'cancelled' : 'active';
+      const st = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'soldout' : 'active';
       return `<tr>
-        <td class="no-wrap">${fmtDate(exit.date)}</td>
+        <td class="no-wrap">${fmtDate(exit.start_at)}</td>
         <td class="text-bold">${escHtml(exp.title)}</td>
-        <td>${booked}/${exit.spotsTotal}</td>
-        <td style="min-width:130px">${occFill(pct)}</td>
+        <td>${exit.spotsTotal} vagas</td>
+        <td class="text-muted text-small">—</td>
         <td><span class="badge badge--${st}">${st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
         <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
       </tr>`;
@@ -1004,8 +998,8 @@ async function renderSaidas(root) {
     const q = $('saidas-filter').value.toLowerCase();
     const s = $('saidas-status').value;
     return allExits.filter(({ exp, exit }) => {
-      const matchQ = !q || exp.title.toLowerCase().includes(q) || exit.date.includes(q);
-      const matchS = !s || (s === 'sold_out' ? exit.spotsAvailable === 0 : exit.status === s);
+      const matchQ = !q || exp.title.toLowerCase().includes(q) || (exit.start_at ?? '').includes(q);
+      const matchS = !s || exit.status === s;
       return matchQ && matchS;
     });
   }
@@ -1052,7 +1046,7 @@ async function renderReservas(root, openId) {
   if (db) {
     const { data, error } = await db
       .from('reservations')
-      .select('id, reservation_code, payer_name, payer_email, experience_id, reservation_status, total_amount, amount_paid, created_at')
+      .select('id, experience_id, reservation_status, total_amount, amount_paid, created_at')
       .order('created_at', { ascending: false });
     if (!error) {
       allBookings = data ?? [];
@@ -1082,10 +1076,7 @@ async function renderReservas(root, openId) {
     return allBookings.filter(b => {
       const matchTab = activeTab === 'all' || b.reservation_status === activeTab;
       const q = search.toLowerCase();
-      const matchSearch = !q ||
-        (b.payer_name ?? '').toLowerCase().includes(q) ||
-        (b.reservation_code ?? '').toLowerCase().includes(q) ||
-        (b.payer_email ?? '').toLowerCase().includes(q);
+      const matchSearch = !q || b.id.toLowerCase().includes(q);
       return matchTab && matchSearch;
     });
   }
@@ -1093,14 +1084,11 @@ async function renderReservas(root, openId) {
   function renderTable(data) {
     $('reservas-count').textContent = `${data.length} reserva(s)`;
     $('reservas-tbody').innerHTML = data.length ? data.map(b => `<tr>
-      <td class="no-wrap text-small text-muted">${escHtml(b.reservation_code ?? b.id)}</td>
+      <td class="no-wrap text-small text-muted">${escHtml(b.id)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:7px">
-          <div class="adm-avatar">${initials(b.payer_name)}</div>
-          <div>
-            <div class="text-bold">${escHtml(b.payer_name ?? '—')}</div>
-            <div class="text-small text-muted">${escHtml(b.payer_email ?? '')}</div>
-          </div>
+          <div class="adm-avatar">?</div>
+          <div class="text-bold text-muted">—</div>
         </div>
       </td>
       <td class="text-small">${escHtml(b.experience_id ?? '—')}</td>
@@ -1143,8 +1131,8 @@ async function renderParticipantes(root) {
   if (db) {
     const { data, error } = await db
       .from('participants')
-      .select('id, full_name, document_number, profile_type, birthdate, reservation_id, reservations(reservation_code, reservation_status)')
-      .order('full_name');
+      .select('id, name, profile_type, birthdate, reservation_id, reservations(reservation_status)')
+      .order('id');
     if (!error) {
       participants = data ?? [];
       console.log('[admin-db] Participantes carregados:', participants.length);
@@ -1158,8 +1146,7 @@ async function renderParticipantes(root) {
   function filtered() {
     const q = search.toLowerCase();
     return !q ? participants : participants.filter(p =>
-      (p.full_name ?? '').toLowerCase().includes(q) ||
-      (p.document_number ?? '').toLowerCase().includes(q)
+      (p.name ?? '').toLowerCase().includes(q)
     );
   }
 
@@ -1168,14 +1155,14 @@ async function renderParticipantes(root) {
     $('part-tbody').innerHTML = data.length ? data.map(p => `<tr>
       <td>
         <div style="display:flex;align-items:center;gap:7px">
-          <div class="adm-avatar">${initials(p.full_name)}</div>
-          <div class="text-bold">${escHtml(p.full_name ?? '—')}</div>
+          <div class="adm-avatar">${initials(p.name)}</div>
+          <div class="text-bold">${escHtml(p.name ?? '—')}</div>
         </div>
       </td>
-      <td class="text-small text-muted">${escHtml(p.document_number ?? '—')}</td>
+      <td class="text-small text-muted">—</td>
       <td class="text-small">${escHtml(p.profile_type ?? '—')}</td>
       <td class="text-small text-muted">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
-      <td class="text-small text-muted">${escHtml(p.reservations?.reservation_code ?? p.reservation_id ?? '—')}</td>
+      <td class="text-small text-muted">${escHtml(p.reservation_id ?? '—')}</td>
       <td>${badge(p.reservations?.reservation_status ?? 'pending_payment')}</td>
     </tr>`).join('') : `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhum participante.</td></tr>`;
   }
@@ -1220,8 +1207,8 @@ async function renderFinanceiro(root) {
   const db = window.anauaDb;
   if (db) {
     const [paymentsRes, reservationsRes] = await Promise.all([
-      db.from('payments').select('id, reservation_id, amount, payment_method, status, paid_at, reservations(reservation_code, payer_name, payer_email, experience_id, reservation_status)').order('paid_at', { ascending: false }),
-      db.from('reservations').select('id, reservation_code, payer_name, total_amount, amount_paid, reservation_status').order('created_at', { ascending: false }),
+      db.from('payments').select('id, reservation_id, amount, payment_method, status, paid_at, reservations(experience_id, reservation_status)').order('paid_at', { ascending: false }),
+      db.from('reservations').select('id, total_amount, amount_paid, reservation_status').order('created_at', { ascending: false }),
     ]);
     if (!paymentsRes.error) {
       allPayments = paymentsRes.data ?? [];
@@ -1265,10 +1252,9 @@ async function renderFinanceiro(root) {
     $('fin-tbody').innerHTML = data.length ? data.map(p => {
       const r = p.reservations ?? {};
       return `<tr>
-        <td class="text-small text-muted no-wrap">${escHtml(r.reservation_code ?? p.reservation_id ?? '—')}</td>
+        <td class="text-small text-muted no-wrap">${escHtml(p.reservation_id ?? '—')}</td>
         <td>
-          <div class="text-bold">${escHtml(r.payer_name ?? '—')}</div>
-          <div class="text-small text-muted">${escHtml(r.payer_email ?? '')}</div>
+          <div class="text-bold text-muted">—</div>
         </td>
         <td class="text-small">${escHtml(r.experience_id ?? '—')}</td>
         <td class="text-small">${payMethodLabel(p.payment_method ?? p.method)}</td>
@@ -1284,10 +1270,10 @@ async function renderFinanceiro(root) {
   renderFTable(tabPayments(activeTab));
 
   $('fin-export').addEventListener('click', () => {
-    const cols = ['Código','Responsável','E-mail','Método','Valor','Status pag.','Data pag.','Status reserva'];
+    const cols = ['Código','Experiência','Método','Valor','Status pag.','Data pag.','Status reserva'];
     const rows = tabPayments(activeTab).map(p => {
       const r = p.reservations ?? {};
-      return [r.reservation_code ?? p.reservation_id, r.payer_name ?? '', r.payer_email ?? '', p.payment_method ?? '', p.amount ?? 0, p.status ?? '', p.paid_at ?? '', r.reservation_status ?? '']
+      return [p.reservation_id, r.experience_id ?? '', p.payment_method ?? '', p.amount ?? 0, p.status ?? '', p.paid_at ?? '', r.reservation_status ?? '']
         .map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
     });
     const csv = [cols.join(','), ...rows].join('\n');
@@ -1567,7 +1553,7 @@ function openBookingDrawer(bookingId) {
       <div class="adm-section__title">Experiência</div>
       <div class="adm-dl">
         <dt>Título</dt><dd>${exp?.title ?? b.experienceId}</dd>
-        <dt>Data</dt><dd>${exit ? fmtDate(exit.date) : '—'}</dd>
+        <dt>Data</dt><dd>${exit ? fmtDate(exit.start_at) : '—'}</dd>
         <dt>Ponto</dt><dd>${exit?.meetingPoints?.find(mp => mp.id === b.meetingPointId)?.name ?? '—'}</dd>
         <dt>Voucher</dt><dd><strong>${b.voucherCode ?? b.id}</strong></dd>
       </div>
@@ -1679,8 +1665,6 @@ function openExitDrawer(exitId) {
   const { exp, exit } = ref;
 
   const bookings = []; // DB-first: detalhes de reservas por saída serão implementados no próximo sprint
-  const booked = exit.spotsTotal - exit.spotsAvailable;
-  const pct = (booked / exit.spotsTotal) * 100;
 
   const mpHtml = (exit.meetingPoints ?? []).map(mp => `
     <div style="padding:8px 0;border-bottom:1px solid var(--adm-border);font-size:13px">
@@ -1703,15 +1687,14 @@ function openExitDrawer(exitId) {
       <div class="adm-section__title">Saída</div>
       <div class="adm-dl">
         <dt>Experiência</dt><dd class="text-bold">${exp.title}</dd>
-        <dt>Data</dt><dd>${fmtDate(exit.date)}</dd>
-        <dt>Status</dt><dd>${exit.spotsAvailable === 0 ? '<span class="badge badge--soldout">Esgotada</span>' : '<span class="badge badge--active">Aberta</span>'}</dd>
+        <dt>Data</dt><dd>${fmtDate(exit.start_at)}</dd>
+        <dt>Status</dt><dd>${exit.status === 'cancelled' ? '<span class="badge badge--cancelled">Cancelada</span>' : exit.status === 'sold_out' ? '<span class="badge badge--soldout">Esgotada</span>' : '<span class="badge badge--active">Aberta</span>'}</dd>
       </div>
     </div>
 
     <div class="adm-section">
-      <div class="adm-section__title">Ocupação</div>
-      ${occFill(pct)}
-      <div class="text-small text-muted mt-12">${booked} reservados de ${exit.spotsTotal} vagas</div>
+      <div class="adm-section__title">Capacidade</div>
+      <div class="text-small text-muted mt-12">${exit.spotsTotal} vagas</div>
     </div>
 
     <div class="adm-section">
@@ -1725,7 +1708,7 @@ function openExitDrawer(exitId) {
     </div>
   `;
 
-  openDrawer(`${exp.title} — ${fmtDate(exit.date)}`, html);
+  openDrawer(`${exp.title} — ${fmtDate(exit.start_at)}`, html);
 
   document.querySelectorAll('[data-booking]').forEach(el => {
     el.addEventListener('click', () => {
@@ -1812,8 +1795,8 @@ $('adm-global-search').addEventListener('keydown', async e => {
   if (!db) { toast('Supabase não disponível.', 'error'); return; }
   const { data } = await db
     .from('reservations')
-    .select('id, reservation_code, payer_name, payer_email')
-    .or(`reservation_code.ilike.%${q}%,payer_name.ilike.%${q}%`)
+    .select('id')
+    .ilike('id', `%${q}%`)
     .limit(1)
     .single();
   if (data) {
