@@ -973,74 +973,194 @@ function exportCSV(data) {
 //  MODULE: CONFIGURAÇÕES
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderConfiguracoes(root) {
+async function renderConfiguracoes(root) {
+  root.innerHTML = `
+    <div style="max-width:680px">
+      <div class="adm-card" style="padding:var(--adm-sp-6);text-align:center">
+        <p class="text-muted">Carregando configurações…</p>
+      </div>
+    </div>`;
+
+  const db = window.anauaDb;
+  if (!db) {
+    root.innerHTML = `<div class="adm-empty"><p style="color:var(--adm-danger)">Supabase não disponível.</p></div>`;
+    return;
+  }
+
+  const { data, error } = await db
+    .from('app_settings')
+    .select('key, value, updated_at')
+    .eq('key', 'company_settings')
+    .single();
+
+  const cfg = (error || !data) ? {} : (data.value ?? {});
+  const res = cfg.reservations ?? {};
+  const ntf = cfg.notifications ?? {};
+
+  if (error && error.code !== 'PGRST116') {
+    // PGRST116 = row not found — first-time use, show empty form
+    console.warn('[admin-settings] Erro ao carregar configurações:', error.message);
+    root.innerHTML = `
+      <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
+        <p style="color:var(--adm-danger);font-weight:600">Não foi possível carregar as configurações.</p>
+        <p class="text-muted text-small">${error.message}</p>
+        <button class="adm-btn adm-btn--primary" style="margin-top:16px" onclick="navigate('#configuracoes')">Tentar novamente</button>
+      </div>`;
+    return;
+  }
+
+  if (data?.updated_at) {
+    console.log('[admin-settings] Configurações carregadas do Supabase — atualizado em:', data.updated_at);
+  } else {
+    console.log('[admin-settings] Configurações carregadas do Supabase — nenhum registro ainda, usando padrões');
+  }
+
   root.innerHTML = `
     <div style="max-width:680px">
 
       <div class="adm-config-section">
         <div class="adm-config-section__title">Empresa</div>
         <div class="adm-config-section__body">
-          <div class="adm-field"><label>Nome da empresa</label><input class="adm-input" value="Anauá Ecoturismo" /></div>
-          <div class="adm-grid-2">
-            <div class="adm-field"><label>E-mail de contato</label><input class="adm-input" value="contato@anaua.com.br" /></div>
-            <div class="adm-field"><label>WhatsApp</label><input class="adm-input" value="(21) 99000-0000" /></div>
+          <div class="adm-field">
+            <label for="cfg-company-name">Nome da empresa</label>
+            <input id="cfg-company-name" class="adm-input" value="${escHtml(cfg.company_name ?? '')}" placeholder="Anauá Ecoturismo" />
           </div>
-          <div class="adm-field"><label>CNPJ</label><input class="adm-input" value="00.000.000/0001-00" /></div>
-          <button class="adm-btn adm-btn--primary" onclick="alert('Dados salvos (demo)') || void 0">Salvar</button>
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-contact-email">E-mail de contato</label>
+              <input id="cfg-contact-email" class="adm-input" type="email" value="${escHtml(cfg.contact_email ?? '')}" placeholder="contato@anaua.com.br" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-whatsapp">WhatsApp</label>
+              <input id="cfg-whatsapp" class="adm-input" value="${escHtml(cfg.whatsapp ?? '')}" placeholder="(21) 99000-0000" />
+            </div>
+          </div>
+          <div class="adm-field">
+            <label for="cfg-cnpj">CNPJ</label>
+            <input id="cfg-cnpj" class="adm-input" value="${escHtml(cfg.cnpj ?? '')}" placeholder="00.000.000/0001-00" />
+          </div>
         </div>
       </div>
 
       <div class="adm-config-section">
         <div class="adm-config-section__title">Reservas</div>
         <div class="adm-config-section__body">
-          ${configRow('Confirmação automática', 'Confirmar reservas automaticamente após pagamento', true)}
-          ${configRow('Enviar voucher por e-mail', 'E-mail com voucher ao responsável após pagamento', true)}
-          ${configRow('Permitir sinal + saldo', 'Habilitar pagamento em duas etapas', true)}
-          ${configRow('Aceite de imagem obrigatório', 'Tornar consentimento de imagem obrigatório', false)}
+          ${configRow('cfg-auto-confirm',      'Confirmação automática',        'Confirmar reservas automaticamente após pagamento',     res.auto_confirm_after_payment ?? true)}
+          ${configRow('cfg-voucher-email',     'Enviar voucher por e-mail',     'E-mail com voucher ao responsável após pagamento',      res.send_voucher_email ?? true)}
+          ${configRow('cfg-signal-balance',    'Permitir sinal + saldo',        'Habilitar pagamento em duas etapas',                    res.allow_signal_balance ?? true)}
+          ${configRow('cfg-image-consent',     'Aceite de imagem obrigatório',  'Tornar consentimento de imagem obrigatório',            res.image_consent_required ?? false)}
         </div>
       </div>
 
       <div class="adm-config-section">
         <div class="adm-config-section__title">Notificações</div>
         <div class="adm-config-section__body">
-          ${configRow('Nova reserva', 'Notificar ao criar nova reserva', true)}
-          ${configRow('Pagamento recebido', 'Notificar ao registrar pagamento', true)}
-          ${configRow('Saldo vencido', 'Alertar quando saldo ultrapassar vencimento', true)}
-          ${configRow('Saída próxima (48h)', 'Lembrete 48h antes de cada saída', false)}
+          ${configRow('cfg-notif-booking',     'Nova reserva',                  'Notificar ao criar nova reserva',                      ntf.new_booking ?? true)}
+          ${configRow('cfg-notif-payment',     'Pagamento recebido',            'Notificar ao registrar pagamento',                     ntf.payment_received ?? true)}
+          ${configRow('cfg-notif-overdue',     'Saldo vencido',                 'Alertar quando saldo ultrapassar vencimento',           ntf.overdue_balance ?? true)}
+          ${configRow('cfg-notif-departure',   'Saída próxima (48h)',           'Lembrete 48h antes de cada saída',                     ntf.departure_48h ?? false)}
         </div>
       </div>
 
       <div class="adm-config-section">
-        <div class="adm-config-section__title">Dados e LGPD</div>
-        <div class="adm-config-section__body">
-          <div class="adm-config-row">
-            <div class="adm-config-row__info">
-              <div class="adm-config-row__label">Versão dos termos ativa</div>
-              <div class="adm-config-row__desc">Altere apenas quando os termos forem revisados</div>
-            </div>
-            <input class="adm-input" value="2026-01" style="width:100px" />
-          </div>
-          <div class="adm-config-row" style="margin-top:12px;border:none">
-            <button class="adm-btn adm-btn--danger adm-btn--sm" onclick="if(confirm('Limpar TODOS os dados de teste?')) { localStorage.clear(); toast('Dados limpos.','info'); }">Limpar dados de teste</button>
-          </div>
+        <div class="adm-config-section__body" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <span class="text-small text-muted" id="cfg-last-saved">
+            ${data?.updated_at ? 'Última atualização: ' + fmtDateShort(data.updated_at) : 'Ainda não salvo no banco.'}
+          </span>
+          <button id="cfg-save-btn" class="adm-btn adm-btn--primary">Salvar configurações</button>
         </div>
       </div>
 
     </div>`;
+
+  document.getElementById('cfg-save-btn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('cfg-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Salvando…';
+    console.log('[admin-settings] Salvando configurações');
+
+    const newCfg = {
+      company_name:   document.getElementById('cfg-company-name')?.value.trim()  ?? '',
+      contact_email:  document.getElementById('cfg-contact-email')?.value.trim() ?? '',
+      whatsapp:       document.getElementById('cfg-whatsapp')?.value.trim()       ?? '',
+      cnpj:           document.getElementById('cfg-cnpj')?.value.trim()           ?? '',
+      reservations: {
+        auto_confirm_after_payment: document.getElementById('cfg-auto-confirm')?.checked    ?? true,
+        send_voucher_email:         document.getElementById('cfg-voucher-email')?.checked   ?? true,
+        allow_signal_balance:       document.getElementById('cfg-signal-balance')?.checked  ?? true,
+        image_consent_required:     document.getElementById('cfg-image-consent')?.checked   ?? false,
+      },
+      notifications: {
+        new_booking:      document.getElementById('cfg-notif-booking')?.checked    ?? true,
+        payment_received: document.getElementById('cfg-notif-payment')?.checked    ?? true,
+        overdue_balance:  document.getElementById('cfg-notif-overdue')?.checked    ?? true,
+        departure_48h:    document.getElementById('cfg-notif-departure')?.checked  ?? false,
+      },
+    };
+
+    try {
+      const { data: { user } } = await db.auth.getUser();
+
+      const { error: saveErr } = await db
+        .from('app_settings')
+        .upsert({
+          key:        'company_settings',
+          value:      newCfg,
+          updated_by: user?.id ?? null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+
+      if (saveErr) {
+        console.error('[admin-settings] Erro ao salvar configurações:', saveErr.message);
+        toast('Não foi possível salvar as configurações.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Salvar configurações';
+        return;
+      }
+
+      console.log('[admin-settings] Configurações salvas com sucesso');
+      toast('Configurações salvas com sucesso.', 'success');
+
+      // Confirm persistence — reload updated_at
+      const { data: reloaded } = await db
+        .from('app_settings')
+        .select('updated_at')
+        .eq('key', 'company_settings')
+        .single();
+
+      const savedEl = document.getElementById('cfg-last-saved');
+      if (savedEl && reloaded?.updated_at) {
+        savedEl.textContent = 'Última atualização: ' + fmtDateShort(reloaded.updated_at);
+      }
+    } catch (err) {
+      console.error('[admin-settings] Erro inesperado:', err);
+      toast('Não foi possível salvar as configurações.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Salvar configurações';
+    }
+  });
 }
 
-function configRow(label, desc, defaultOn) {
-  const id = 'cfg-' + label.replace(/\s/g, '-').toLowerCase();
+function configRow(id, label, desc, checked) {
   return `<div class="adm-config-row">
     <div class="adm-config-row__info">
       <div class="adm-config-row__label">${label}</div>
       <div class="adm-config-row__desc">${desc}</div>
     </div>
     <label class="adm-toggle">
-      <input type="checkbox" id="${id}" ${defaultOn ? 'checked' : ''} />
+      <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} />
       <span class="adm-toggle__track"></span>
     </label>
   </div>`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
