@@ -58,15 +58,17 @@ function normalizeExperience(row) {
   const rawCategory   = (row.category   ?? '').toLowerCase().trim();
 
   return {
-    id:               row.slug ?? row.id,   // usa slug como ID para URLs
-    slug:             row.slug ?? row.id,
-    dbId:             row.id,
+    id:               row.id,            // UUID — fonte de verdade para joins no banco
+    dbId:             row.id,            // alias explícito para uso em queries
+    slug:             row.slug ?? null,  // identificador público para URLs
     category:         CATEGORY_MAP[rawCategory]   ?? rawCategory   ?? 'day-experience',
     status:           row.is_active ? 'active' : 'draft',
     title:            row.title        ?? '',
     subtitle:         row.subtitle     ?? row.description?.slice(0, 100) ?? '',
     description:      row.description  ?? '',
-    coverImage:       row.cover_image_url ?? row.cover_image ?? null,
+    coverImage:       (row.cover_image_url && row.cover_image_url.trim() !== '' && row.cover_image_url !== 'null' && row.cover_image_url !== 'undefined')
+                        ? row.cover_image_url
+                        : 'assets/img/placeholder.svg',
     gallery:          row.gallery      ?? [],
     durationHours:    row.duration_hours  ?? null,
     durationLabel:    row.duration_label  ?? (row.duration_hours ? `${row.duration_hours}h` : '—'),
@@ -86,10 +88,35 @@ function normalizeExperience(row) {
     cancellationPolicy: row.cancellation_policy ?? null,
     isFeatured:       row.featured         ?? false,
     isNew:            row.is_new           ?? false,
+    highlights:       row.highlights       ?? [],
+    nextExits:        [],                  // saídas carregadas separadamente via listDeparturesByExperience
     departures:       row.departures       ?? [],
     createdAt:        row.created_at,
     updatedAt:        row.updated_at,
   };
+}
+
+/**
+ * Busca uma experiência ativa pelo seu slug público.
+ *
+ * @param {string} slug - valor da coluna experiences.slug
+ * @returns {Promise<{ data: object|null, error: object|null }>}
+ */
+export async function getExperienceBySlug(slug) {
+  const { data, error } = await supabase
+    .from('experiences')
+    .select('*')
+    .eq('slug', slug)
+    .neq('is_active', false)   // inclui true e null
+    .single();
+
+  if (error) {
+    console.warn('[experienceRepo] Experiência não encontrada por slug:', slug, error.message);
+    return { data: null, error };
+  }
+
+  console.log('[experienceRepo] Experiência carregada por slug ✓', slug);
+  return { data: normalizeExperience(data), error: null };
 }
 
 /**
@@ -104,16 +131,92 @@ export async function listExperiences() {
   const { data, error } = await supabase
     .from('experiences')
     .select('*')
-    .eq('is_active', true)
+    .neq('is_active', false)
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('[experienceRepo] Erro ao carregar experiências:', error.message);
+    console.error('[experienceRepo] Erro em experiências — listExperiences:', error.message);
     return { data: null, error };
   }
 
-  console.log(`[experienceRepo] Experiências carregadas com sucesso ✓ (${data.length} registros)`);
+  console.log(`[experienceRepo] Experiências carregadas ✓ (${data.length} registros)`);
   return { data: data.map(normalizeExperience), error: null };
+}
+
+/**
+ * Busca uma experiência pelo UUID.
+ * @param {string} id - UUID da experiência
+ */
+export async function getExperienceById(id) {
+  const { data, error } = await supabase
+    .from('experiences')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('[experienceRepo] Erro em experiências — getExperienceById:', error.message);
+    return { data: null, error };
+  }
+  return { data: normalizeExperience(data), error: null };
+}
+
+/**
+ * Cria uma nova experiência.
+ * @param {object} payload - Campos da tabela public.experiences (snake_case)
+ */
+export async function createExperience(payload) {
+  const { data, error } = await supabase
+    .from('experiences')
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[experienceRepo] Erro em experiências — createExperience:', error.message);
+    return { data: null, error };
+  }
+  console.log('[experienceRepo] Experiência criada ✓', data.id);
+  return { data: normalizeExperience(data), error: null };
+}
+
+/**
+ * Atualiza uma experiência existente pelo UUID.
+ * @param {string} id - UUID da experiência
+ * @param {object} payload - Campos a atualizar
+ */
+export async function updateExperience(id, payload) {
+  const { data, error } = await supabase
+    .from('experiences')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[experienceRepo] Erro em experiências — updateExperience:', error.message);
+    return { data: null, error };
+  }
+  console.log('[experienceRepo] Experiência atualizada ✓', id);
+  return { data: normalizeExperience(data), error: null };
+}
+
+/**
+ * Soft-deleta uma experiência setando is_active = false.
+ * @param {string} id - UUID da experiência
+ */
+export async function deleteExperience(id) {
+  const { error } = await supabase
+    .from('experiences')
+    .update({ is_active: false })
+    .eq('id', id);
+
+  if (error) {
+    console.error('[experienceRepo] Erro em experiências — deleteExperience:', error.message);
+    return { error };
+  }
+  console.log('[experienceRepo] Experiência excluída (soft) ✓', id);
+  return { error: null };
 }
 
 /**

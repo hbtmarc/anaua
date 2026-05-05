@@ -1,20 +1,33 @@
 /**
  * @fileoverview Experience detail page — Anauá Ecoturismo
+ * Carrega experiência do Supabase pelo slug da URL (?id=<slug>).
  */
-import { EXPERIENCES, CATEGORIES, getNextActiveExit, formatBRL, formatDate } from './data.js';
+import { CATEGORIES, getNextActiveExit, formatBRL, formatDate } from './data.js';
 import {
   initPage, renderBreadcrumb, renderExperienceCard, renderSkeletonCards,
   Icon, showToast, openModal, observeAnimations,
 } from './components.js';
+import { getExperienceBySlug } from './repositories/experienceRepo.js';
 
 initPage('experiencias.html');
 
-/* ── Load experience ─────────────────────────────────────── */
-const params = new URLSearchParams(location.search);
-const expId  = params.get('id');
-const exp    = EXPERIENCES.find(e => e.id === expId);
+/* ── Skeleton enquanto carrega ───────────────────────────── */
+function showDetailSkeleton() {
+  const hero = document.getElementById('detail-hero');
+  if (hero) hero.innerHTML = `<div class="skeleton" style="width:100%;height:100%"></div>`;
+  const content = document.getElementById('detail-content');
+  if (content) content.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:16px;padding:24px 0">
+      <div class="skeleton sk-line sk-line--xl" style="height:32px"></div>
+      <div class="skeleton sk-line sk-line--lg"></div>
+      <div class="skeleton sk-line sk-line--md"></div>
+      <div class="skeleton sk-line sk-line--lg" style="margin-top:24px"></div>
+      <div class="skeleton sk-line sk-line--xl"></div>
+    </div>`;
+}
 
-if (!exp) {
+/* ── Estado de erro ──────────────────────────────────────── */
+function showNotFound() {
   document.getElementById('detail-content')?.replaceWith((() => {
     const d = document.createElement('div');
     d.className = 'empty-state';
@@ -27,9 +40,24 @@ if (!exp) {
     `;
     return d;
   })());
-} else {
-  renderPage(exp);
 }
+
+/* ── Init assíncrono ─────────────────────────────────────── */
+(async function initDetail() {
+  const params = new URLSearchParams(location.search);
+  const slug   = params.get('id');
+
+  if (!slug) { showNotFound(); return; }
+
+  showDetailSkeleton();
+
+  const { data: exp, error } = await getExperienceBySlug(slug);
+
+  if (!exp || error) { showNotFound(); return; }
+
+  console.log('[detail] Experiência carregada do Supabase ✓', exp.slug);
+  renderPage(exp);
+})();
 
 /* ── Main render ─────────────────────────────────────────── */
 function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp) {
@@ -42,7 +70,8 @@ function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp) {
 
   // ── Open Graph (IDs injected in experiencia.html)
   const setMeta = (id, value) => { const el = document.getElementById(id); if (el && value) el.setAttribute('content', value); };
-  const pageUrl = `${BASE_URL}/experiencia.html?id=${encodeURIComponent(exp.id)}`;
+const expSlug = exp.slug ?? exp.id;
+  const pageUrl = `${BASE_URL}/experiencia.html?id=${encodeURIComponent(expSlug)}`;
   setMeta('og-title', `${exp.title} — Anauá Ecoturismo`);
   setMeta('og-desc',  exp.subtitle);
   setMeta('og-url',   pageUrl);
@@ -71,7 +100,7 @@ function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp) {
       price: exp.pricePerPerson,
       priceCurrency: 'BRL',
       availability: exp.status === 'active' ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
-      url: `${BASE_URL}/reserva.html?id=${encodeURIComponent(exp.id)}`,
+      url: `${BASE_URL}/reserva.html?id=${encodeURIComponent(expSlug)}`,
     },
   });
   document.head.appendChild(sd);
@@ -139,15 +168,16 @@ function renderContent(exp) {
   const el = document.getElementById('detail-content');
   if (!el) return;
 
-  const catLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category;
+  const catLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category ?? '';
   const nextExit = getNextActiveExit(exp);
+  const diffLabel = { iniciante: 'Iniciante', moderado: 'Moderado', aventura: 'Aventura' }[exp.difficulty] ?? exp.difficulty ?? '';
 
   el.innerHTML = `
     <!-- Header -->
     <div class="detail-header animate-fade-in-up">
       <div class="detail-header__badges">
-        <span class="badge badge--level-${exp.difficulty}">${exp.difficulty}</span>
-        <span class="badge" style="background:var(--color-offwhite);color:var(--color-muted);border:1px solid var(--color-stone)">${catLabel}</span>
+        ${diffLabel ? `<span class="badge badge--level-${exp.difficulty}">${diffLabel}</span>` : ''}
+        ${catLabel  ? `<span class="badge" style="background:var(--color-offwhite);color:var(--color-muted);border:1px solid var(--color-stone)">${catLabel}</span>` : ''}
         ${exp.isNew ? '<span class="badge badge--new">Novo</span>' : ''}
         ${!nextExit ? '<span class="badge badge--sold-out">Esgotado</span>' : ''}
       </div>
@@ -163,9 +193,10 @@ function renderContent(exp) {
     </div>
 
     <!-- Highlights -->
+    ${(exp.highlights ?? []).length ? `
     <div class="detail-highlights" data-animate>
       ${exp.highlights.map(h => `<div class="detail-highlight">${h}</div>`).join('')}
-    </div>
+    </div>` : ''}
 
     <!-- Description -->
     <div class="detail-block">
@@ -496,39 +527,115 @@ function renderBookingBox(exp) {
     document.getElementById('modal-cancel-btn')?.addEventListener('click', close);
     document.getElementById('modal-confirm-btn')?.addEventListener('click', () => {
       close();
-      location.href = `reserva.html?id=${exp.id}`;
+      location.href = `reserva.html?id=${exp.slug ?? exp.id}`;
     });
   });
 
   // Waitlist button
   document.getElementById('waitlist-btn')?.addEventListener('click', () => {
-    showToast('Você foi adicionado à lista de espera! Avisaremos por e-mail.', 'success');
+    const { close } = openModal({
+      title: 'Entrar na lista de espera',
+      body: `
+        <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">
+          Preencha seus dados e avisaremos quando houver disponibilidade para
+          <strong>${exp.title}</strong>.
+        </p>
+        <form id="waitlist-form" style="display:flex;flex-direction:column;gap:var(--sp-4)">
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Nome *</label>
+            <input id="wl-name" type="text" required placeholder="Seu nome completo"
+              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">E-mail *</label>
+            <input id="wl-email" type="email" required placeholder="seu@email.com"
+              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">WhatsApp</label>
+            <input id="wl-phone" type="tel" placeholder="(99) 99999-9999"
+              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Quantidade de participantes</label>
+            <select id="wl-participants"
+              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box">
+              <option value="1">1 pessoa</option>
+              <option value="2">2 pessoas</option>
+              <option value="3">3 pessoas</option>
+              <option value="4">4 pessoas</option>
+              <option value="5+">5 ou mais</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Mensagem (opcional)</label>
+            <textarea id="wl-message" rows="3" placeholder="Alguma preferência de data ou informação adicional?"
+              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);resize:vertical;box-sizing:border-box"></textarea>
+          </div>
+          <p id="wl-error" style="color:var(--color-danger,#c0392b);font-size:var(--text-sm);display:none"></p>
+        </form>
+      `,
+      footer: `
+        <button class="btn btn--secondary" id="wl-cancel-btn">Cancelar</button>
+        <button class="btn btn--primary" id="wl-submit-btn">Entrar na lista</button>
+      `,
+    });
+
+    document.getElementById('wl-cancel-btn')?.addEventListener('click', close);
+
+    document.getElementById('wl-submit-btn')?.addEventListener('click', async () => {
+      const name         = document.getElementById('wl-name')?.value.trim();
+      const email        = document.getElementById('wl-email')?.value.trim();
+      const phone        = document.getElementById('wl-phone')?.value.trim() || null;
+      const participants = document.getElementById('wl-participants')?.value ?? '1';
+      const message      = document.getElementById('wl-message')?.value.trim() || null;
+      const errEl        = document.getElementById('wl-error');
+
+      if (!name || !email) {
+        if (errEl) { errEl.textContent = 'Por favor, preencha nome e e-mail.'; errEl.style.display = 'block'; }
+        return;
+      }
+      if (errEl) errEl.style.display = 'none';
+
+      const submitBtn = document.getElementById('wl-submit-btn');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Enviando…'; }
+
+      const db = window.anauaDb;
+      if (!db) {
+        if (errEl) { errEl.textContent = 'Serviço indisponível. Tente novamente.'; errEl.style.display = 'block'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar na lista'; }
+        return;
+      }
+
+      const { error: insertError } = await db.from('waitlist_entries').insert({
+        experience_id:      exp.id,
+        departure_id:       exp.nextDeparture?.id ?? null,
+        name,
+        email,
+        phone,
+        participants_count: parseInt(participants, 10) || 1,
+        message,
+        status:             'pending',
+        source:             'site',
+      });
+
+      if (insertError) {
+        console.error('[waitlist] Erro ao inserir lista de espera:', insertError.message);
+        if (errEl) { errEl.textContent = 'Não foi possível enviar. Tente novamente em breve.'; errEl.style.display = 'block'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar na lista'; }
+        return;
+      }
+
+      close();
+      showToast('Recebemos seu interesse. Entraremos em contato quando houver disponibilidade!', 'success');
+    });
   });
 }
 
 /* ── Related ─────────────────────────────────────────────── */
-function renderRelated(exp) {
-  const grid = document.getElementById('related-grid');
-  if (!grid) return;
-
-  const related = EXPERIENCES
-    .filter(e => e.id !== exp.id && (e.category === exp.category || e.region === exp.region))
-    .slice(0, 3);
-
-  if (!related.length) {
-    document.getElementById('related-section')?.remove();
-    return;
-  }
-
-  grid.innerHTML = related.map(exp => {
-    const { renderExperienceCard: rc } = { renderExperienceCard: require => require };
-    return `<!-- related-${exp.id} -->`;
-  }).join('');
-
-  // Import the render function properly
-  import('./components.js').then(({ renderExperienceCard }) => {
-    grid.innerHTML = related.map(renderExperienceCard).join('');
-  });
+function renderRelated(_exp) {
+  // Seção de relacionados requer query Supabase separada (implementação futura)
+  document.getElementById('related-section')?.remove();
 }
 
 /* ── Sticky CTA ──────────────────────────────────────────── */

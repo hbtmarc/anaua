@@ -3,7 +3,7 @@
  * Dados carregados dinamicamente do Supabase (não mais mock estático).
  */
 import './supabaseClient.js'; // garante window.anauaDb
-import { listExperiences } from './repositories/experienceRepo.js';
+import { listExperiences, listDeparturesByExperience } from './repositories/experienceRepo.js';
 import { initPage, renderExperienceCard, renderSkeletonCards, observeAnimations } from './components.js';
 
 initPage('experiencias.html');
@@ -169,6 +169,7 @@ async function init() {
   const { data, error } = await listExperiences();
 
   if (error || !data) {
+    console.error('[listing] Falha ao carregar experiências do Supabase:', error?.message ?? 'sem dados');
     if (grid) grid.innerHTML = `
       <div class="empty-state" style="grid-column:1/-1">
         <p class="empty-state__desc">Não foi possível carregar as experiências. Tente recarregar a página.</p>
@@ -176,7 +177,33 @@ async function init() {
     return;
   }
 
-  EXPERIENCES = data;
+  console.log(`[listing] ${data.length} experiência(s) carregada(s) do Supabase ✓`);
+  console.log('[listing] Buscando saídas reais por experiência...');
+
+  // Enriquece cada experiência com a próxima saída real do banco
+  const enriched = await Promise.all(
+    data.map(async (exp) => {
+      const expId = exp.dbId ?? exp.id;
+      if (!expId) { exp.nextDeparture = null; return exp; }
+
+      try {
+        const { data: deps, error: depErr } = await listDeparturesByExperience(expId);
+        if (depErr || !deps || deps.length === 0) {
+          console.log(`[listing] Experiência sem saída futura: ${exp.title}`);
+          exp.nextDeparture = null;
+        } else {
+          exp.nextDeparture = deps[0]; // próxima cronologicamente
+          console.log(`[listing] Saída vinculada à experiência '${exp.title}':`, exp.nextDeparture.start_at);
+        }
+      } catch (e) {
+        console.warn(`[listing] Falha ao buscar saídas para '${exp.title}':`, e);
+        exp.nextDeparture = null;
+      }
+      return exp;
+    })
+  );
+
+  EXPERIENCES = enriched;
   render();
 }
 

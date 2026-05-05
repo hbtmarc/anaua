@@ -138,7 +138,11 @@ const MODULES = {
   financeiro:     { title: 'Financeiro',     render: renderFinanceiro },
   configuracoes:  { title: 'Configurações',  render: renderConfiguracoes },
   usuarios:       { title: 'Usuários',       render: renderUsuarios },
+  'lista-espera': { title: 'Lista de espera', render: renderListaEspera },
 };
+
+/** Cache das experiências carregadas para uso nos modais de edição */
+let _expCache = [];
 
 let currentModule = '';
 
@@ -178,7 +182,11 @@ window.navigate               = navigate;
 window.adminLogout            = adminLogout;
 window.toast                  = toast;
 window.closeDrawer            = closeDrawer;
+window.closeModal             = closeModal;
 window.openNovaExperienciaModal = openNovaExperienciaModal;
+window.openEditExperienciaModal = openEditExperienciaModal;
+window.deactivateExp          = deactivateExp;
+window.setWlStatus            = setWlStatus;
 
 // ─── Sidebar toggle ───────────────────────────────────────────────────────────
 
@@ -467,6 +475,7 @@ async function renderExperiencias(root) {
   }
 
   const exps = data ?? [];
+  _expCache = exps;
 
   if (exps.length === 0) {
     console.log('[admin-db] Nenhuma experiência cadastrada');
@@ -498,9 +507,10 @@ async function renderExperiencias(root) {
             <td class="no-wrap">${fmt(exp.base_price ?? 0)}</td>
             <td><span class="badge badge--${exp.is_active !== false ? 'active' : 'cancelled'}">${exp.is_active !== false ? 'Ativa' : 'Inativa'}</span></td>
             <td>
-              <div style="display:flex;gap:6px">
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
                 <a href="../experiencia.html?id=${escHtml(exp.slug ?? exp.id)}" target="_blank" class="adm-btn adm-btn--ghost adm-btn--sm">Ver</a>
-                <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="toast('Edição em breve','info')">Editar</button>
+                <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="openEditExperienciaModal('${exp.id}')">Editar</button>
+                <button class="adm-btn adm-btn--danger adm-btn--sm" onclick="deactivateExp('${exp.id}','${escHtml(exp.title ?? '')}')">${exp.is_active !== false ? 'Desativar' : 'Reativar'}</button>
               </div>
             </td>
           </tr>`).join('')}</tbody>
@@ -513,7 +523,13 @@ function openNovaExperienciaModal() {
   openDrawer('Nova experiência', `
     <form id="exp-form" style="display:flex;flex-direction:column;gap:14px">
       <div class="adm-field"><label>Título *</label><input id="exp-title" class="adm-input" required placeholder="Ex: Trilha do Pico" /></div>
-      <div class="adm-field"><label>Slug *</label><input id="exp-slug" class="adm-input" required placeholder="trilha-do-pico" /></div>
+      <div class="adm-field">
+        <label>Slug *</label>
+        <input id="exp-slug" class="adm-input" required placeholder="trilha-do-pico" />
+        <span style="font-size:11px;color:var(--adm-text-muted)">Gerado automaticamente. Pode editar.</span>
+      </div>
+      <div class="adm-field"><label>Subtítulo</label><input id="exp-subtitle" class="adm-input" placeholder="Frase curta de apresentação" /></div>
+      <div class="adm-field"><label>Descrição</label><textarea id="exp-description" class="adm-input" rows="3" placeholder="Descrição completa da experiência"></textarea></div>
       <div class="adm-grid-2">
         <div class="adm-field"><label>Local</label><input id="exp-location" class="adm-input" placeholder="Ex: Serra da Canastra" /></div>
         <div class="adm-field"><label>Categoria</label>
@@ -536,6 +552,10 @@ function openNovaExperienciaModal() {
           </select>
         </div>
         <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" /></div>
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field"><label>Duração (horas)</label><input id="exp-duration" class="adm-input" type="number" min="0.5" step="0.5" placeholder="Ex: 8" /></div>
+        <div class="adm-field"><label>Capacidade máxima</label><input id="exp-capacity" class="adm-input" type="number" min="1" step="1" placeholder="Ex: 20" /></div>
       </div>
       <div class="adm-field">
         <label>Imagem de capa</label>
@@ -560,10 +580,24 @@ function openNovaExperienciaModal() {
         <label for="exp-active" style="margin:0">Ativa (visível no site)</label>
       </div>
       <div style="display:flex;gap:10px;margin-top:8px">
-        <button type="submit" class="adm-btn adm-btn--primary" style="flex:1">Salvar experiência</button>
+        <button type="submit" id="exp-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar experiência</button>
         <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
       </div>
     </form>`);
+
+  // Auto-gera slug a partir do título (somente enquanto não foi editado manualmente)
+  let slugManuallyEdited = false;
+  document.getElementById('exp-slug')?.addEventListener('input', () => { slugManuallyEdited = true; });
+  document.getElementById('exp-title')?.addEventListener('input', e => {
+    if (slugManuallyEdited) return;
+    const slug = e.target.value
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim().replace(/\s+/g, '-');
+    const slugEl = document.getElementById('exp-slug');
+    if (slugEl) slugEl.value = slug;
+  });
 
   document.getElementById('exp-cover-file').addEventListener('change', async e => {
     const file = e.target.files[0];
@@ -576,21 +610,29 @@ function openNovaExperienciaModal() {
     const db = window.anauaDb;
     if (!db) { toast('Supabase não disponível.', 'error'); return; }
 
+    const saveBtn = document.getElementById('exp-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
+
     const payload = {
-      title:           document.getElementById('exp-title').value.trim(),
-      slug:            document.getElementById('exp-slug').value.trim(),
-      location:        document.getElementById('exp-location').value.trim() || null,
-      category:        document.getElementById('exp-category').value.trim() || null,
-      difficulty:      document.getElementById('exp-difficulty').value || null,
-      base_price:      parseFloat(document.getElementById('exp-price').value) || 0,
-      cover_image_url: document.getElementById('exp-cover').value.trim() || null,
-      is_active:       document.getElementById('exp-active').checked,
+      title:            document.getElementById('exp-title').value.trim(),
+      slug:             document.getElementById('exp-slug').value.trim(),
+      subtitle:         document.getElementById('exp-subtitle')?.value.trim() || null,
+      description:      document.getElementById('exp-description')?.value.trim() || null,
+      location:         document.getElementById('exp-location').value.trim() || null,
+      category:         document.getElementById('exp-category').value.trim() || null,
+      difficulty:       document.getElementById('exp-difficulty').value || null,
+      base_price:       parseFloat(document.getElementById('exp-price').value) || 0,
+      duration_hours:   parseFloat(document.getElementById('exp-duration')?.value) || null,
+      max_participants: parseInt(document.getElementById('exp-capacity')?.value, 10) || null,
+      cover_image_url:  document.getElementById('exp-cover').value.trim() || null,
+      is_active:        document.getElementById('exp-active').checked,
     };
 
     const { error } = await db.from('experiences').insert(payload);
     if (error) {
       console.warn('[admin-db] Erro ao salvar experiência:', error.message);
-      toast('Não foi possível salvar. Verifique os campos da tabela experiences.', 'error');
+      toast('Não foi possível salvar. ' + error.message, 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
       return;
     }
 
@@ -644,6 +686,252 @@ async function uploadExperienciaCover(file) {
 
   console.log('[upload] Capa enviada com sucesso:', url);
   toast('Imagem enviada!', 'success');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EDITAR EXPERIÊNCIA
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function openEditExperienciaModal(id) {
+  const db = window.anauaDb;
+  if (!db) { toast('Supabase não disponível.', 'error'); return; }
+
+  openDrawer('Editar experiência', `<div style="padding:24px;color:var(--adm-text-muted)">Carregando…</div>`);
+
+  const { data: row, error } = await db
+    .from('experiences')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !row) {
+    $('adm-drawer-body').innerHTML = `<p style="color:var(--adm-danger);padding:16px">Não foi possível carregar a experiência.</p>`;
+    return;
+  }
+
+  $('adm-drawer-title').textContent = 'Editar experiência';
+  $('adm-drawer-body').innerHTML = `
+    <form id="exp-form" style="display:flex;flex-direction:column;gap:14px">
+      <div class="adm-field"><label>Título *</label><input id="exp-title" class="adm-input" required value="${escHtml(row.title ?? '')}" /></div>
+      <div class="adm-field">
+        <label>Slug *</label>
+        <input id="exp-slug" class="adm-input" required value="${escHtml(row.slug ?? '')}" />
+      </div>
+      <div class="adm-field"><label>Subtítulo</label><input id="exp-subtitle" class="adm-input" value="${escHtml(row.subtitle ?? '')}" /></div>
+      <div class="adm-field"><label>Descrição</label><textarea id="exp-description" class="adm-input" rows="3">${escHtml(row.description ?? '')}</textarea></div>
+      <div class="adm-grid-2">
+        <div class="adm-field"><label>Local</label><input id="exp-location" class="adm-input" value="${escHtml(row.location ?? '')}" /></div>
+        <div class="adm-field"><label>Categoria</label>
+          <select id="exp-category" class="adm-input">
+            <option value="">— selecione —</option>
+            <option value="day-experience" ${row.category === 'day-experience' ? 'selected' : ''}>Experiência de 1 dia</option>
+            <option value="expedition" ${row.category === 'expedition' ? 'selected' : ''}>Expedição</option>
+            <option value="event" ${row.category === 'event' ? 'selected' : ''}>Evento</option>
+            <option value="kids" ${row.category === 'kids' ? 'selected' : ''}>Kids</option>
+          </select>
+        </div>
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field"><label>Dificuldade</label>
+          <select id="exp-difficulty" class="adm-input">
+            <option value="">— selecione —</option>
+            <option value="iniciante" ${row.difficulty === 'iniciante' ? 'selected' : ''}>Iniciante (Fácil)</option>
+            <option value="moderado" ${row.difficulty === 'moderado' ? 'selected' : ''}>Moderado</option>
+            <option value="aventura" ${row.difficulty === 'aventura' ? 'selected' : ''}>Aventura (Difícil)</option>
+          </select>
+        </div>
+        <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" value="${row.base_price ?? 0}" /></div>
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field"><label>Duração (horas)</label><input id="exp-duration" class="adm-input" type="number" min="0.5" step="0.5" value="${row.duration_hours ?? ''}" /></div>
+        <div class="adm-field"><label>Capacidade máxima</label><input id="exp-capacity" class="adm-input" type="number" min="1" step="1" value="${row.max_participants ?? ''}" /></div>
+      </div>
+      <div class="adm-field">
+        <label>URL da imagem de capa</label>
+        <input id="exp-cover" class="adm-input" type="url" value="${escHtml(row.cover_image_url ?? '')}" placeholder="https://..." />
+        <span style="font-size:11px;color:var(--adm-text-muted)">Cole a URL ou use o botão abaixo para fazer upload.</span>
+        <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" style="margin-top:6px" onclick="document.getElementById('exp-cover-file-edit').click()">📷 Trocar imagem</button>
+        <input type="file" id="exp-cover-file-edit" accept="image/*" style="display:none" />
+      </div>
+      <div class="adm-field" style="flex-direction:row;align-items:center;gap:10px">
+        <input id="exp-active" type="checkbox" style="width:18px;height:18px" ${row.is_active !== false ? 'checked' : ''} />
+        <label for="exp-active" style="margin:0">Ativa (visível no site)</label>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button type="submit" id="exp-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar alterações</button>
+        <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
+      </div>
+    </form>`;
+
+  // Upload de imagem no modo edição
+  document.getElementById('exp-cover-file-edit')?.addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file || !db) return;
+    const statusEl = document.getElementById('exp-cover');
+    if (statusEl) statusEl.placeholder = 'Enviando…';
+    const ext  = file.name.split('.').pop();
+    const path = `covers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+    if (upErr) { toast('Erro no upload: ' + upErr.message, 'error'); return; }
+    const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
+    if (statusEl) statusEl.value = pub.publicUrl;
+    toast('Imagem enviada!', 'success');
+  });
+
+  document.getElementById('exp-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('exp-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
+
+    const payload = {
+      title:            document.getElementById('exp-title').value.trim(),
+      slug:             document.getElementById('exp-slug').value.trim(),
+      subtitle:         document.getElementById('exp-subtitle')?.value.trim() || null,
+      description:      document.getElementById('exp-description')?.value.trim() || null,
+      location:         document.getElementById('exp-location').value.trim() || null,
+      category:         document.getElementById('exp-category').value.trim() || null,
+      difficulty:       document.getElementById('exp-difficulty').value || null,
+      base_price:       parseFloat(document.getElementById('exp-price').value) || 0,
+      duration_hours:   parseFloat(document.getElementById('exp-duration')?.value) || null,
+      max_participants: parseInt(document.getElementById('exp-capacity')?.value, 10) || null,
+      cover_image_url:  document.getElementById('exp-cover').value.trim() || null,
+      is_active:        document.getElementById('exp-active').checked,
+    };
+
+    const { error: updErr } = await db.from('experiences').update(payload).eq('id', id);
+    if (updErr) {
+      console.error('[admin-db] Erro ao atualizar experiência:', updErr.message);
+      toast('Não foi possível salvar. ' + updErr.message, 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
+      return;
+    }
+
+    console.log('[admin-db] Experiência atualizada:', id);
+    toast('Experiência atualizada!', 'success');
+    closeDrawer();
+    navigate('#experiencias');
+  });
+}
+
+async function deactivateExp(id, title) {
+  const db = window.anauaDb;
+  if (!db) { toast('Supabase não disponível.', 'error'); return; }
+
+  const row = _expCache.find(e => e.id === id);
+  const isActive = row ? row.is_active !== false : true;
+  const action = isActive ? 'desativar' : 'reativar';
+  const newState = !isActive;
+
+  openModal(
+    `${isActive ? 'Desativar' : 'Reativar'} experiência`,
+    `<p style="font-size:var(--text-sm);color:var(--adm-text-muted)">
+       Tem certeza que deseja <strong>${action}</strong> a experiência<br>
+       <strong>"${escHtml(title)}"</strong>?
+       ${isActive ? '<br><br>Ela ficará invisível no site público.' : ''}
+     </p>`,
+    `<button class="adm-btn adm-btn--secondary" onclick="closeModal()">Cancelar</button>
+     <button class="adm-btn adm-btn--${isActive ? 'danger' : 'primary'}" id="confirm-deactivate-btn">
+       ${isActive ? 'Desativar' : 'Reativar'}
+     </button>`
+  );
+
+  document.getElementById('confirm-deactivate-btn')?.addEventListener('click', async () => {
+    closeModal();
+    const { error } = await db.from('experiences').update({ is_active: newState }).eq('id', id);
+    if (error) {
+      toast('Não foi possível executar a ação. ' + error.message, 'error');
+      return;
+    }
+    toast(`Experiência ${newState ? 'reativada' : 'desativada'} com sucesso.`, 'success');
+    navigate('#experiencias');
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MODULE: LISTA DE ESPERA
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function renderListaEspera(root) {
+  root.innerHTML = `
+    <div class="adm-card">
+      <div class="adm-card__header">Lista de espera</div>
+      <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
+    </div>`;
+
+  const db = window.anauaDb;
+  if (!db) { root.innerHTML = `<div class="adm-empty"><p style="color:var(--adm-danger)">Supabase não disponível.</p></div>`; return; }
+
+  const { data, error } = await db
+    .from('waitlist_entries')
+    .select('id, created_at, name, email, phone, participants_count, message, status, experience_id, experiences(title)')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    root.innerHTML = `<div class="adm-empty" style="padding:48px;text-align:center"><p style="color:var(--adm-danger)">Erro ao carregar lista de espera.</p></div>`;
+    console.error('[admin-db] Lista de espera:', error.message);
+    return;
+  }
+
+  const entries = data ?? [];
+
+  if (entries.length === 0) {
+    root.innerHTML = `
+      <div class="adm-empty" style="padding:64px 32px;text-align:center">
+        <div style="font-size:2.5rem;margin-bottom:12px">📋</div>
+        <p style="font-weight:600;font-size:1.1rem">Nenhum interessado na lista de espera</p>
+        <p class="text-muted" style="margin-top:8px">Quando visitantes preencherem o formulário, aparecerão aqui.</p>
+      </div>`;
+    return;
+  }
+
+  const STATUS_WL = {
+    pending:    { label: 'Pendente',    cls: 'badge--pending' },
+    contacted:  { label: 'Contatado',   cls: 'badge--draft' },
+    converted:  { label: 'Convertido',  cls: 'badge--active' },
+    cancelled:  { label: 'Descartado',  cls: 'badge--cancelled' },
+  };
+
+  root.innerHTML = `
+    <div class="adm-card">
+      <div class="adm-card__header">Lista de espera <span class="adm-count">${entries.length}</span></div>
+      <div class="adm-table-wrap">
+        <table class="adm-table">
+          <thead><tr>
+            <th>Data</th><th>Experiência</th><th>Nome</th><th>E-mail</th>
+            <th>WhatsApp</th><th>Pax</th><th>Status</th><th></th>
+          </tr></thead>
+          <tbody>${entries.map(e => {
+            const s = STATUS_WL[e.status] ?? { label: e.status, cls: 'badge--draft' };
+            const expTitle = e.experiences?.title ?? e.experience_id ?? '—';
+            return `<tr>
+              <td class="text-small text-muted no-wrap">${fmtDate(e.created_at)}</td>
+              <td class="text-small">${escHtml(expTitle)}</td>
+              <td class="text-bold">${escHtml(e.name ?? '—')}</td>
+              <td class="text-small">${escHtml(e.email ?? '—')}</td>
+              <td class="text-small">${escHtml(e.phone ?? '—')}</td>
+              <td class="text-small" style="text-align:center">${e.participants_count ?? 1}</td>
+              <td><span class="badge ${s.cls}">${s.label}</span></td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${e.status !== 'contacted'  ? `<button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="setWlStatus('${e.id}','contacted')">Contatado</button>` : ''}
+                  ${e.status !== 'converted'  ? `<button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="setWlStatus('${e.id}','converted')">Convertido</button>` : ''}
+                  ${e.status !== 'cancelled'  ? `<button class="adm-btn adm-btn--danger adm-btn--sm" onclick="setWlStatus('${e.id}','cancelled')">Descartar</button>` : ''}
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+async function setWlStatus(id, status) {
+  const db = window.anauaDb;
+  if (!db) return;
+  const { error } = await db.from('waitlist_entries').update({ status }).eq('id', id);
+  if (error) { toast('Erro ao atualizar: ' + error.message, 'error'); return; }
+  toast('Status atualizado.', 'success');
+  navigate('#lista-espera');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

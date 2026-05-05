@@ -225,31 +225,40 @@ function getExperienceCoverUrl(url) {
 }
 
 export function renderExperienceCard(exp) {
-  // Prefere saída vinda do Supabase (nextDeparture); fallback para mock local
-  const supabaseDeparture = exp.nextDeparture ?? null;
-  const nextExit = supabaseDeparture ? null : getNextActiveExit(exp);
+  const dep = exp.nextDeparture ?? null;
 
-  // Com dados do Supabase, considera disponível se tiver próxima saída
-  const isSoldOut = supabaseDeparture
-    ? false
-    : (!nextExit && exp.status !== 'draft');
+  // Calcula vagas disponíveis apenas com dados reais do banco
+  let spotsAvailable = null;
+  if (dep) {
+    if (dep.spots_available != null) {
+      spotsAvailable = dep.spots_available;
+    }
+    // Não calcula via reserved_count — coluna não existe na tabela departures
+    // Se spots_available não existe, spotsAvailable permanece null e não assume esgotado
+  }
+
+  const isSoldOut  = dep !== null && spotsAvailable !== null && spotsAvailable <= 0;
+  const hasVacancy = dep !== null && !isSoldOut;
+  const noSchedule = dep === null;
 
   const price = formatBRL(exp.pricePerPerson ?? exp.price_per_person ?? 0);
 
-  // Label da próxima saída: usa Supabase → local → fallback texto
   let nextLabel;
-  if (supabaseDeparture) {
-    nextLabel = supabaseDeparture.dateLabel ?? formatDate(supabaseDeparture.start_at ?? supabaseDeparture.date);
-  } else if (nextExit) {
-    nextLabel = nextExit.dateLabel;
+  if (hasVacancy) {
+    nextLabel = dep.dateLabel ?? (dep.start_at ? formatDate(dep.start_at) : 'Em breve');
+  } else if (isSoldOut) {
+    nextLabel = dep.dateLabel ?? (dep.start_at ? formatDate(dep.start_at) : null);
   } else {
-    nextLabel = 'Agenda em breve';
+    nextLabel = null; // noSchedule
   }
+
+  console.log(`[components] Card renderizado com disponibilidade real: '${exp.title}' →`, noSchedule ? 'sem saída' : isSoldOut ? 'esgotado' : 'disponível');
 
   const difficultyLabel = { iniciante: 'Iniciante', moderado: 'Moderado', aventura: 'Aventura' }[exp.difficulty] ?? exp.difficulty ?? '';
   const levelBadge = difficultyLabel ? `<span class="badge badge--level-${exp.difficulty}">${difficultyLabel}</span>` : '';
   const categoryLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category ?? '';
 
+  // Links públicos sempre usam o slug; fallback para id apenas se slug não existir
   const expLink = exp.slug ?? exp.id;
 
   return `
@@ -281,20 +290,26 @@ export function renderExperienceCard(exp) {
           ${exp.durationLabel ? `<span class="card__meta-item">${Icon.clock} ${exp.durationLabel}</span>` : ''}
           ${exp.location     ? `<span class="card__meta-item">${Icon.map} ${exp.location}</span>` : ''}
           ${exp.maxParticipants ? `<span class="card__meta-item">${Icon.users} Máx. ${exp.maxParticipants}</span>` : ''}
-          ${(supabaseDeparture || nextExit) ? `
+          ${hasVacancy ? `
             <span class="card__next-exit">
               ${Icon.calendar} Próxima: ${nextLabel}
-              ${(supabaseDeparture?.spots_available ?? nextExit?.spotsAvailable ?? 99) <= 4
-                ? `· <strong style="color:var(--color-warning)">${supabaseDeparture?.spots_available ?? nextExit?.spotsAvailable} vagas</strong>`
+              ${spotsAvailable !== null && spotsAvailable <= 4
+                ? `· <strong style="color:var(--color-warning)">${spotsAvailable} vaga${spotsAvailable !== 1 ? 's' : ''}</strong>`
                 : ''}
             </span>
+          ` : isSoldOut ? `
+            <span class="card__next-exit" style="opacity:.7">${Icon.calendar} ${nextLabel ? `Saída: ${nextLabel}` : 'Esgotado'}</span>
           ` : `
-            <span class="card__next-exit" style="opacity:.7">${Icon.calendar} ${nextLabel}</span>
+            <span class="card__next-exit" style="opacity:.7">${Icon.calendar} Agenda em breve</span>
           `}
         </div>
       </div>
-      <a href="experiencia.html?id=${expLink}" class="card__cta" aria-label="Ver detalhes de ${exp.title}">
-        ${isSoldOut ? 'Lista de espera' : 'Ver detalhes'} ${Icon.arrow}
+      <a
+        href="${isSoldOut ? `reserva.html?id=${expLink}` : hasVacancy ? `reserva.html?id=${expLink}` : `experiencia.html?id=${expLink}`}"
+        class="card__cta"
+        aria-label="${isSoldOut ? 'Entrar na lista de espera para' : hasVacancy ? 'Reservar vaga em' : 'Ver detalhes de'} ${exp.title}"
+      >
+        ${isSoldOut ? 'Lista de espera' : hasVacancy ? 'Reservar vaga' : 'Ver detalhes'} ${Icon.arrow}
       </a>
     </article>
   `;

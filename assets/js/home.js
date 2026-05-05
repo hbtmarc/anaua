@@ -53,7 +53,7 @@ async function renderFeatured() {
     // Busca a próxima saída de cada experiência e anexa ao objeto
     await Promise.all(
       featured.map(async (exp) => {
-        const { data: deps } = await listDeparturesByExperience(exp.id);
+        const { data: deps } = await listDeparturesByExperience(exp.dbId ?? exp.id);
         if (deps && deps.length) {
           // Ordena por start_at e pega a mais próxima
           const sorted = deps.sort((a, b) => new Date(a.start_at) - new Date(b.start_at));

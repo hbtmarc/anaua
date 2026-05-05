@@ -17,7 +17,8 @@ import { initPage, renderBreadcrumb, showToast, maskPhone, maskCPF } from './com
 import {
   getSession, isLoggedIn, saveProfile, loadProfile,
 } from './services/UserService.js';
-import { EXPERIENCES, formatBRL, formatDate } from './data.js';
+import { formatBRL, formatDate } from './data.js';
+import { getExperienceBySlug } from './repositories/experienceRepo.js';
 import {
   PROFILES, PAYMENT_LABEL, TERMS_VERSION,
   STATUS_LABEL, STATUS_CLASS,
@@ -45,27 +46,15 @@ renderBreadcrumb([
   { label: 'Reservar' },
 ]);
 
-// ─── Read experience from URL ─────────────────────────────────────────────────
+// ─── Variáveis de módulo (preenchidas pelo init assíncrono) ───────────────────
 
-const params = new URLSearchParams(location.search);
-const expId  = params.get('id');
-const exp    = EXPERIENCES.find(e => e.id === expId);
+/** @type {object|null} Experiência carregada do Supabase */
+let exp = null;
 
-if (!exp) {
-  document.getElementById('wizard-wrap').innerHTML =
-    `<div class="empty-state"><p>Experiência não encontrada. <a href="experiencias.html">Ver todas</a></p></div>`;
-  throw new Error('Experience not found: ' + expId);
-}
+/** @type {Partial<import('./types/booking.types.js').Booking>|null} */
+let draft = null;
 
-// ─── Draft state ──────────────────────────────────────────────────────────────
-
-/** @type {Partial<import('./types/booking.types.js').Booking>} */
-let draft = loadDraft() ?? createDraft(exp.id);
-
-// Ensure draft belongs to this experience (user might have a stale draft)
-if (draft.experienceId !== exp.id) draft = createDraft(exp.id);
-
-let selectedPaymentMethod = draft.paymentMethod ?? null;
+let selectedPaymentMethod = null;
 let signalPct = 50;
 
 // ─── Wizard state ─────────────────────────────────────────────────────────────
@@ -1055,8 +1044,38 @@ function renderVoucher(booking, paymentResult, split) {
     </div>`;
 }
 
-// ─── Bootstrap ────────────────────────────────────────────────────────────────
+// ─── Bootstrap assíncrono ─────────────────────────────────────────────────────
 
-// Render first step
-renderStep1();
-goTo(1);
+(async function initReserva() {
+  const params  = new URLSearchParams(location.search);
+  const expSlug = params.get('id');
+  const wrap    = document.getElementById('wizard-wrap');
+
+  if (!expSlug) {
+    if (wrap) wrap.innerHTML = `<div class="empty-state"><p>Experiência não especificada. <a href="experiencias.html">Ver todas</a></p></div>`;
+    return;
+  }
+
+  // Mostra loading enquanto busca no Supabase
+  if (wrap) wrap.style.opacity = '0.5';
+
+  const { data: loadedExp, error } = await getExperienceBySlug(expSlug);
+
+  if (wrap) wrap.style.opacity = '';
+
+  if (!loadedExp || error) {
+    if (wrap) wrap.innerHTML = `<div class="empty-state"><p>Experiência não encontrada. <a href="experiencias.html">Ver todas</a></p></div>`;
+    return;
+  }
+
+  exp = loadedExp;
+  console.log('[reserva] Experiência carregada do Supabase ✓', exp.slug);
+
+  // Inicializa o rascunho usando o UUID (exp.id) como chave
+  draft = loadDraft() ?? createDraft(exp.id);
+  if (draft.experienceId !== exp.id) draft = createDraft(exp.id);
+  selectedPaymentMethod = draft.paymentMethod ?? null;
+
+  renderStep1();
+  goTo(1);
+})();

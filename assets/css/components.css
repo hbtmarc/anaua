@@ -404,7 +404,11 @@
   text-align: center;
   transition: background var(--transition-fast);
   text-decoration: none;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
 }
 
 .card__cta:hover { background: var(--color-deep); }
