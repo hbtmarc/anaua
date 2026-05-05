@@ -26,6 +26,7 @@ function adminLogout() {
   localStorage.removeItem('anaua_admin_session');
   sessionStorage.removeItem('anaua_admin_session');
   if (window.anauaDb) window.anauaDb.auth.signOut();
+  console.log('[auth] Logout realizado');
   location.replace('login.html');
 }
 
@@ -247,6 +248,7 @@ const MODULES = {
   participantes:  { title: 'Participantes',  render: renderParticipantes },
   financeiro:     { title: 'Financeiro',     render: renderFinanceiro },
   configuracoes:  { title: 'Configurações',  render: renderConfiguracoes },
+  usuarios:       { title: 'Usuários',       render: renderUsuarios },
 };
 
 let currentModule = '';
@@ -1366,8 +1368,122 @@ $('adm-global-search').addEventListener('keydown', e => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  MODULE: USUÁRIOS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function renderUsuarios(root) {
+  root.innerHTML = `
+    <div class="adm-card" style="max-width:900px">
+      <div class="adm-card__header">
+        Usuários
+        <span class="text-small text-muted" style="margin-left:8px" id="adm-user-count"></span>
+      </div>
+      <div id="adm-users-body" style="padding:var(--adm-sp-4)">
+        <p class="text-muted">Carregando usuários…</p>
+      </div>
+    </div>`;
+
+  const db = window.anauaDb;
+  if (!db) {
+    $('adm-users-body').innerHTML = `<p style="color:var(--adm-danger)">Supabase não disponível.</p>`;
+    return;
+  }
+
+  const { data: profiles, error } = await db
+    .from('profiles')
+    .select('id, email, display_name, role, created_at')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('[admin-users] Erro ao carregar usuários:', error.message);
+    $('adm-users-body').innerHTML = `
+      <p style="color:var(--adm-danger)">Não foi possível carregar os usuários.</p>
+      <p class="text-muted text-small">${error.message}</p>`;
+    return;
+  }
+
+  console.log('[admin-users] Usuários carregados:', profiles?.length ?? 0);
+  const countEl = document.getElementById('adm-user-count');
+  if (countEl) countEl.textContent = `(${profiles?.length ?? 0})`;
+
+  const ROLES = ['customer', 'operator', 'admin'];
+  const ROLE_LABEL = { customer: 'Cliente', operator: 'Operador', admin: 'Administrador' };
+  const fmtDt = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+
+  $('adm-users-body').innerHTML = `
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>E-mail</th>
+            <th>Perfil</th>
+            <th>Criado em</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(profiles ?? []).map(p => `
+            <tr>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div class="adm-avatar">${(p.display_name ?? p.email ?? '?')[0].toUpperCase()}</div>
+                  <span>${p.display_name ?? '—'}</span>
+                </div>
+              </td>
+              <td class="text-small text-muted">${p.email ?? '—'}</td>
+              <td>
+                <select
+                  style="padding:4px 8px;border:1px solid var(--adm-border);border-radius:6px;background:var(--adm-surface);color:var(--adm-text);font-size:var(--adm-text-sm,0.8rem);cursor:pointer"
+                  data-user-id="${p.id}"
+                  aria-label="Perfil de ${p.display_name ?? p.email}"
+                >
+                  ${ROLES.map(r => `<option value="${r}"${r === p.role ? ' selected' : ''}>${ROLE_LABEL[r] ?? r}</option>`).join('')}
+                </select>
+              </td>
+              <td class="text-small text-muted no-wrap">${fmtDt(p.created_at)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Role change handler
+  $('adm-users-body').querySelectorAll('select[data-user-id]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const userId  = sel.dataset.userId;
+      const newRole = sel.value;
+      sel.disabled  = true;
+
+      const { error: updErr } = await db
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', userId);
+
+      sel.disabled = false;
+
+      if (updErr) {
+        console.warn('[admin-users] Erro ao atualizar perfil:', updErr.message);
+        toast('Erro ao atualizar perfil do usuário.', 'error');
+        return;
+      }
+
+      console.log('[admin-users] Perfil atualizado — userId:', userId, '| role:', newRole);
+      toast('Perfil atualizado com sucesso.', 'success');
+    });
+  });
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 // seedMockBookings() removida — dashboard carrega dados do Supabase
+
+// Segurança: remover dados sensíveis da URL antes de qualquer render
+(function sanitizeAdminUrl() {
+  if (/[?&](password|senha)=/i.test(location.search)) {
+    console.warn('[security] Dados sensíveis removidos da URL');
+    history.replaceState(null, '', location.pathname + location.hash);
+    toast('Por segurança, removemos dados sensíveis da URL.', 'warn');
+  }
+})();
 
 // ─── Supabase Auth Guard (async) ──────────────────────────────────────────────
 // Inicializa o cliente Supabase reutilizando a mesma URL/key do projeto

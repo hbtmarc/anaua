@@ -11,6 +11,7 @@ import { supabase } from './supabaseClient.js';
 import { getUserReservations } from './repositories/reservationRepo.js';
 
 initPage('cliente.html');
+console.log('[cliente-auth] Inicializando área do cliente');
 
 // Expõe showToast em window para uso em onclick inline sem necessitar de import
 window.__anauaToast = showToast;
@@ -49,11 +50,23 @@ function renderReservationCard(r) {
   const total     = Number(r.total_amount ?? 0);
   const code      = r.reservation_code ?? r.id ?? '\u2014';
 
+  const priceHtml = paid > 0
+    ? formatBRL(paid)
+    : '<span style="font-size:var(--text-sm);font-weight:400;color:var(--color-text-muted)">R$ ' + total.toFixed(2).replace('.', ',') + ' a confirmar</span>';
+
+  const payBtnHtml = status === 'pending_payment'
+    ? '<button class="btn btn--primary btn--sm" onclick="window.__anauaToast(\'Pagamento em breve aqui.\',\'warn\',4000)">Pagar agora</button>'
+    : '';
+
+  const cancelBtnHtml = (status === 'confirmed' || status === 'reserved')
+    ? '<button class="btn btn--ghost-light btn--sm" style="color:var(--color-text-muted)" onclick="window.__anauaToast(\'Cancelamento via WhatsApp ou e-mail.\',\'info\',6000)">Cancelar</button>'
+    : '';
+
   return `
     <article class="reservation-card" aria-label="Reserva ${code}">
       <div>
         <p class="reservation-card__name">${expTitle}</p>
-        <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px">Código: <strong>${code}</strong></p>
+        <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-top:2px">C\u00f3digo: <strong>${code}</strong></p>
         <div class="reservation-card__meta">
           <span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -62,13 +75,11 @@ function renderReservationCard(r) {
           <span><span class="badge ${statusCls}">${statusLbl}</span></span>
         </div>
       </div>
-      <div class="reservation-card__price">
-        ${paid > 0 ? formatBRL(paid) : \`<span style="font-size:var(--text-sm);font-weight:400;color:var(--color-text-muted)">R$ ${total.toFixed(2).replace('.', ',')} a confirmar</span>\`}
-      </div>
+      <div class="reservation-card__price">${priceHtml}</div>
       <div class="reservation-card__actions">
-        <a href="${expHref}" class="btn btn--secondary btn--sm">Ver experiência</a>
-        ${status === 'pending_payment' ? \`<button class="btn btn--primary btn--sm" onclick="window.__anauaToast('Pagamento em breve aqui.','warn',4000)">Pagar agora</button>\` : ''}
-        ${(status === 'confirmed' || status === 'reserved') ? \`<button class="btn btn--ghost-light btn--sm" style="color:var(--color-text-muted)" onclick="window.__anauaToast('Cancelamento via WhatsApp ou e-mail.','info',6000)">Cancelar</button>\` : ''}
+        <a href="${expHref}" class="btn btn--secondary btn--sm">Ver experi\u00eancia</a>
+        ${payBtnHtml}
+        ${cancelBtnHtml}
       </div>
     </article>`;
 }
@@ -118,12 +129,13 @@ function checkAndShowDraftResumeBanner() {
 
 /* ── Auth state ───────────────────────────────────────────── */
 
-function showDashboard(user) {
+async function showDashboard(user) {
   document.getElementById('login-view').style.display     = 'none';
   document.getElementById('dashboard-view').classList.add('is-visible');
+  const profile = await loadProfile(user.id);
   const nameEl = document.getElementById('user-name');
   if (nameEl) {
-    const displayName = user.user_metadata?.full_name ?? user.email ?? 'visitante';
+    const displayName = profile?.display_name ?? user.email ?? 'visitante';
     nameEl.textContent = displayName.split(' ')[0];
   }
   renderReservations(user.id);
@@ -135,17 +147,47 @@ function showLogin() {
   document.getElementById('dashboard-view').classList.remove('is-visible');
 }
 
+/* ── Segurança: remover dados sensiveis da URL ───────────────────── */
+(function sanitizeUrl() {
+  if (/[?&](password|senha|email)=/i.test(location.search)) {
+    console.warn('[security] Dados sensíveis removidos da URL');
+    const clean = location.pathname + location.hash;
+    history.replaceState(null, '', clean);
+    showToast('Por segurança, removemos dados sensíveis da URL.', 'warn');
+  }
+})();
+
+/* ── Perfil: carrega public.profiles e exibe link ao backoffice ───── */
+async function loadProfile(userId) {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, email, display_name, role')
+    .eq('id', userId)
+    .single();
+  console.log('[auth] Perfil carregado');
+  if (profile) console.log('[cliente-auth] Role detectada:', profile.role);
+  const btn = document.getElementById('backoffice-link');
+  if (btn) {
+    const isAdmin = profile && ['admin', 'operator'].includes(profile.role);
+    btn.style.display = isAdmin ? 'inline-flex' : 'none';
+  }
+  return profile;
+}
+
 /* ── Boot: verificar sessão Supabase ───────────────────────────────── */
 
 (async function boot() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) showDashboard(session.user);
+    if (session?.user) {
+      console.log('[cliente-auth] Sessão encontrada');
+      await showDashboard(session.user);
+    }
   } catch (err) {
-    console.warn('[cliente] getSession error:', err);
+    console.warn('[cliente-auth] getSession error:', err);
   }
-  supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) showDashboard(session.user);
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    if (session?.user) await showDashboard(session.user);
     else showLogin();
   });
 })();
@@ -169,11 +211,15 @@ form?.addEventListener('submit', async (e) => {
   if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = 'Entrando…'; }
   if (globalErr) globalErr.textContent = '';
 
+  console.log('[cliente-auth] Login iniciado');
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email:    emailEl.value.trim(),
       password: passEl.value,
     });
+
+    // Limpar campo de senha imediatamente após tentativa
+    passEl.value = '';
 
     if (error || !data.user) {
       const msg = error?.message?.toLowerCase().includes('invalid login')
@@ -183,12 +229,12 @@ form?.addEventListener('submit', async (e) => {
       return;
     }
 
-    const displayName =
-      data.user.user_metadata?.full_name?.split(' ')[0]
-      ?? data.user.email.split('@')[0];
+    console.log('[cliente-auth] Login realizado com sucesso');
+    // Redirecionar sem query params
+    if (location.search) history.replaceState(null, '', location.pathname + location.hash);
 
-    showToast(`Bem-vinda(o), ${displayName}!`, 'success');
-    showDashboard(data.user);
+    showToast('Bem-vinda(o)!', 'success');
+    await showDashboard(data.user);
 
     const resumeParam = new URLSearchParams(location.search).get('resumeBooking');
     if (resumeParam) checkAndShowDraftResumeBanner();
@@ -203,7 +249,10 @@ form?.addEventListener('submit', async (e) => {
 
 /* ── Logout ──────────────────────────────────────────────── */
 document.getElementById('logout-btn')?.addEventListener('click', async () => {
+  localStorage.removeItem('anaua_admin_session');
+  sessionStorage.removeItem('anaua_admin_session');
   await supabase.auth.signOut();
+  console.log('[cliente-auth] Logout realizado');
   showLogin();
   showToast('Sessão encerrada.', 'info');
 });

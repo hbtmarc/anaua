@@ -204,6 +204,7 @@
       btn.textContent = 'Verificando…';
 
       try {
+        console.log('[auth] Login iniciado');
         // 1. Autenticar com Supabase
         const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password: pwd });
 
@@ -216,6 +217,7 @@
           return;
         }
 
+        console.log('[auth] Login realizado com sucesso');
         console.log('[admin-auth] Usuário autenticado encontrado:', data.user.email);
 
         // 2. Verificar role em public.profiles
@@ -234,6 +236,8 @@
           return;
         }
 
+        console.log('[auth] Perfil carregado');
+        console.log('[auth] Role detectada:', profile.role);
         console.log('[admin-auth] Perfil carregado — role:', profile.role);
 
         if (!['admin', 'operator'].includes(profile.role)) {

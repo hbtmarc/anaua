@@ -73,6 +73,10 @@
       <div class="dashboard-header">
         <div class="container">
           <p class="dashboard-greeting">Olá, <span id="user-name">visitante</span>!</p>
+          <a id="backoffice-link" href="admin/index.html"
+             class="btn btn--sm"
+             style="display:none;margin-right:8px;background:var(--color-earth,#8b5e3c);color:#fff"
+          >Ir para o Backoffice</a>
           <button class="dashboard-logout" id="logout-btn">Sair</button>
         </div>
       </div>
@@ -90,6 +94,15 @@
 
   <footer id="site-footer"></footer>
   <!-- Supabase JS v2 via CDN -->
+  <script>
+    // Defesa: remover credenciais da URL antes de qualquer script carregar
+    (function() {
+      if (/[?&](password|senha|email)=/i.test(location.search)) {
+        console.warn('[security] Dados sensíveis removidos da URL');
+        history.replaceState(null, '', location.pathname + location.hash);
+      }
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module" src="assets/js/cliente.js"></script>
 </body>
