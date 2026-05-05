@@ -131,7 +131,7 @@ $('adm-modal-overlay').addEventListener('click', closeModal);
 const MODULES = {
   dashboard:      { title: 'Dashboard',      render: renderDashboard },
   agenda:         { title: 'Agenda',         render: renderAgenda },
-  experiencias:   { title: 'Experiências',   render: renderExperiencias },
+  experiencias:   { title: 'Experiências',   render: renderExperiencias, primaryAction: pa => { pa.innerHTML = '<button class="adm-btn adm-btn--primary adm-btn--sm" onclick="openNovaExperienciaModal()">+ Nova experiência</button>'; pa.style.display = ''; } },
   saidas:         { title: 'Saídas',         render: renderSaidas },
   reservas:       { title: 'Reservas',       render: renderReservas },
   participantes:  { title: 'Participantes',  render: renderParticipantes },
@@ -154,7 +154,12 @@ function navigate(hash) {
   // Update topbar
   $('adm-title').textContent = m.title;
   $('adm-breadcrumb').textContent = '';
-  $('adm-primary-action').style.display = 'none';
+
+  // Primary action — reset and let each module configure if needed
+  const pa = $('adm-primary-action');
+  pa.style.display = 'none';
+  pa.innerHTML = '';
+  if (m.primaryAction) m.primaryAction(pa);
 
   // Render
   closeDrawer();
@@ -166,6 +171,14 @@ function navigate(hash) {
 }
 
 window.addEventListener('hashchange', () => navigate(location.hash));
+
+// Expõe funções ao escopo global para uso em onclick="" no HTML
+// (ES Modules não expõem automaticamente ao window)
+window.navigate               = navigate;
+window.adminLogout            = adminLogout;
+window.toast                  = toast;
+window.closeDrawer            = closeDrawer;
+window.openNovaExperienciaModal = openNovaExperienciaModal;
 
 // ─── Sidebar toggle ───────────────────────────────────────────────────────────
 
@@ -427,68 +440,132 @@ async function renderAgenda(root) {
 async function renderExperiencias(root) {
   root.innerHTML = `
     <div class="adm-card">
-      <div class="adm-card__header">
-        Experiências cadastradas
-        <div class="adm-card__actions">
-          <button class="adm-btn adm-btn--primary adm-btn--sm">+ Nova experiência</button>
-        </div>
-      </div>
+      <div class="adm-card__header">Experiências cadastradas</div>
       <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
     </div>`;
 
   const db = window.anauaDb;
   if (!db) {
-    root.querySelector('[style]').textContent = 'Supabase não disponível.';
+    root.innerHTML = `<div class="adm-empty"><p style="color:var(--adm-danger)">Supabase não disponível.</p></div>`;
     return;
   }
 
   const { data, error } = await db
     .from('experiences')
-    .select('id, title, location, category, difficulty, price_per_person, is_active, status')
+    .select('id, title, slug, location, category, difficulty, base_price, is_active, cover_image_url, created_at')
     .order('title');
 
   if (error) {
     console.warn('[admin-db] Erro ao carregar experiências:', error.message);
-    root.querySelector('[style]').innerHTML = `<p style="color:var(--adm-danger)">Não foi possível carregar as experiências.<br><small>${escHtml(error.message)}</small></p>`;
+    root.innerHTML = `
+      <div class="adm-empty" style="padding:48px;text-align:center">
+        <p style="color:var(--adm-danger);font-weight:600">Não foi possível carregar as experiências.</p>
+        <p class="text-small text-muted" style="margin-top:8px">Verifique o console para detalhes técnicos.</p>
+        <button class="adm-btn adm-btn--secondary" style="margin-top:16px" onclick="navigate('#experiencias')">Tentar novamente</button>
+      </div>`;
     return;
   }
 
-  console.log('[admin-db] Experiências carregadas:', data?.length ?? 0);
   const exps = data ?? [];
+
+  if (exps.length === 0) {
+    console.log('[admin-db] Nenhuma experiência cadastrada');
+    root.innerHTML = `
+      <div class="adm-empty" style="padding:64px 32px;text-align:center">
+        <div style="font-size:2.5rem;margin-bottom:12px">🌿</div>
+        <p style="font-weight:600;font-size:1.1rem">Nenhuma experiência cadastrada</p>
+        <p class="text-muted" style="margin-top:8px;max-width:360px;margin-inline:auto">Cadastre sua primeira experiência para começar a vender pelo site.</p>
+        <button class="adm-btn adm-btn--primary" style="margin-top:24px" onclick="openNovaExperienciaModal()">Cadastrar primeira experiência</button>
+      </div>`;
+    return;
+  }
+
+  console.log('[admin-db] Experiências carregadas:', exps.length);
 
   root.innerHTML = `
     <div class="adm-card">
-      <div class="adm-card__header">
-        Experiências cadastradas
-        <div class="adm-card__actions">
-          <button class="adm-btn adm-btn--primary adm-btn--sm">+ Nova experiência</button>
-        </div>
-      </div>
+      <div class="adm-card__header">Experiências cadastradas <span class="adm-count">${exps.length}</span></div>
       <div class="adm-table-wrap">
         <table class="adm-table">
-          <thead><tr><th>Título</th><th>Categoria</th><th>Dificuldade</th><th>Preço</th><th>Status</th><th></th></tr></thead>
-          <tbody>${exps.length ? exps.map(exp => {
-            const active = exp.is_active !== false && exp.status !== 'inactive';
-            return `<tr>
-              <td>
-                <div class="text-bold">${escHtml(exp.title ?? '—')}</div>
-                <div class="text-small text-muted">${escHtml(exp.location ?? '—')}</div>
-              </td>
-              <td class="text-small">${escHtml(exp.category ?? '—')}</td>
-              <td><span class="adm-tag">${escHtml(exp.difficulty ?? '—')}</span></td>
-              <td class="no-wrap">${fmt(exp.price_per_person ?? 0)}</td>
-              <td><span class="badge badge--${active ? 'active' : 'cancelled'}">${active ? 'Ativa' : 'Inativa'}</span></td>
-              <td>
-                <div style="display:flex;gap:6px">
-                  <a href="../experiencia.html?id=${exp.id}" target="_blank" class="adm-btn adm-btn--ghost adm-btn--sm">Ver</a>
-                  <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="toast('Edição em breve','info')">Editar</button>
-                </div>
-              </td>
-            </tr>`;
-          }).join('') : '<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma experiência cadastrada.</td></tr>'}</tbody>
+          <thead><tr><th>Título</th><th>Categoria</th><th>Dificuldade</th><th>Preço base</th><th>Status</th><th></th></tr></thead>
+          <tbody>${exps.map(exp => `<tr>
+            <td>
+              <div class="text-bold">${escHtml(exp.title ?? '—')}</div>
+              <div class="text-small text-muted">${escHtml(exp.location ?? '—')}</div>
+            </td>
+            <td class="text-small">${escHtml(exp.category ?? '—')}</td>
+            <td><span class="adm-tag">${escHtml(exp.difficulty ?? '—')}</span></td>
+            <td class="no-wrap">${fmt(exp.base_price ?? 0)}</td>
+            <td><span class="badge badge--${exp.is_active !== false ? 'active' : 'cancelled'}">${exp.is_active !== false ? 'Ativa' : 'Inativa'}</span></td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <a href="../experiencia.html?id=${escHtml(exp.slug ?? exp.id)}" target="_blank" class="adm-btn adm-btn--ghost adm-btn--sm">Ver</a>
+                <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="toast('Edição em breve','info')">Editar</button>
+              </div>
+            </td>
+          </tr>`).join('')}</tbody>
         </table>
       </div>
     </div>`;
+}
+
+function openNovaExperienciaModal() {
+  openDrawer('Nova experiência', `
+    <form id="exp-form" style="display:flex;flex-direction:column;gap:14px">
+      <div class="adm-field"><label>Título *</label><input id="exp-title" class="adm-input" required placeholder="Ex: Trilha do Pico" /></div>
+      <div class="adm-field"><label>Slug *</label><input id="exp-slug" class="adm-input" required placeholder="trilha-do-pico" /></div>
+      <div class="adm-grid-2">
+        <div class="adm-field"><label>Local</label><input id="exp-location" class="adm-input" placeholder="Ex: Serra da Canastra" /></div>
+        <div class="adm-field"><label>Categoria</label><input id="exp-category" class="adm-input" placeholder="Ex: Trilha" /></div>
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field"><label>Dificuldade</label>
+          <select id="exp-difficulty" class="adm-input">
+            <option value="">— selecione —</option>
+            <option>Fácil</option><option>Moderada</option><option>Difícil</option><option>Muito difícil</option>
+          </select>
+        </div>
+        <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" /></div>
+      </div>
+      <div class="adm-field"><label>URL da imagem de capa</label><input id="exp-cover" class="adm-input" placeholder="https://…" /></div>
+      <div class="adm-field" style="flex-direction:row;align-items:center;gap:10px">
+        <input id="exp-active" type="checkbox" checked style="width:18px;height:18px" />
+        <label for="exp-active" style="margin:0">Ativa (visível no site)</label>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button type="submit" class="adm-btn adm-btn--primary" style="flex:1">Salvar experiência</button>
+        <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
+      </div>
+    </form>`);
+
+  document.getElementById('exp-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const db = window.anauaDb;
+    if (!db) { toast('Supabase não disponível.', 'error'); return; }
+
+    const payload = {
+      title:           document.getElementById('exp-title').value.trim(),
+      slug:            document.getElementById('exp-slug').value.trim(),
+      location:        document.getElementById('exp-location').value.trim() || null,
+      category:        document.getElementById('exp-category').value.trim() || null,
+      difficulty:      document.getElementById('exp-difficulty').value || null,
+      base_price:      parseFloat(document.getElementById('exp-price').value) || 0,
+      cover_image_url: document.getElementById('exp-cover').value.trim() || null,
+      is_active:       document.getElementById('exp-active').checked,
+    };
+
+    const { error } = await db.from('experiences').insert(payload);
+    if (error) {
+      console.warn('[admin-db] Erro ao salvar experiência:', error.message);
+      toast('Não foi possível salvar. Verifique os campos da tabela experiences.', 'error');
+      return;
+    }
+
+    console.log('[admin-db] Nova experiência salva:', payload.title);
+    toast('Experiência cadastrada com sucesso!', 'success');
+    closeDrawer();
+    navigate('#experiencias');
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
