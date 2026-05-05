@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Backoffice — Anauá Ecoturismo</title>
+  <style>
+    body { margin: 0; background: #0d1f0d; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: system-ui, sans-serif; }
+    .guard { text-align: center; color: #cde8cd; }
+    .guard p { font-size: 0.9rem; opacity: 0.7; margin-top: 8px; }
+    .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,.2); border-top-color: #6aaa6a; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="guard">
+    <div class="spinner"></div>
+    <p>Verificando acesso…</p>
+  </div>
+
+  <!-- Supabase JS v2 via CDN — necessário antes do módulo admin.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module" src="assets/js/admin.js"></script>
+</body>
+</html>

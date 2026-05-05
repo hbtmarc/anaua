@@ -15,7 +15,7 @@
 
 import { initPage, renderBreadcrumb, showToast, maskPhone, maskCPF } from './components.js';
 import {
-  getSession, isLoggedIn, createAccount, saveProfile, loadProfile, updateAccountProfile,
+  getSession, isLoggedIn, saveProfile, loadProfile,
 } from './services/UserService.js';
 import { EXPERIENCES, formatBRL, formatDate } from './data.js';
 import {
@@ -28,6 +28,10 @@ import {
   validateStep4, validateStep5, validateStep6, validateStep7,
   computeTotal, computeSplit, submitBooking,
 } from './services/BookingService.js';
+import { supabase } from './supabaseClient.js';
+import {
+  insertReservation, insertParticipants, insertPaymentRecord,
+} from './repositories/reservationRepo.js';
 
 // Expõe showToast globalmente para onclick inline em templates de string
 window.__anauaToast = showToast;
@@ -413,19 +417,30 @@ function collectPayer() {
 })();
 
 // ── Show/hide account section based on login state ───────────────────────────
-(function setupAccountSection() {
-  const session      = getSession();
-  const loggedNotice = $('account-logged-notice');
+(async function setupAccountSection() {
+  const loggedNotice  = $('account-logged-notice');
   const createSection = $('account-create-section');
 
-  if (session) {
-    // User is already logged in: show notice, hide create-account section
+  // Verificar sessão Supabase (real) — com fallback para sessionStorage legado
+  let displayName = null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      displayName = user.user_metadata?.full_name ?? user.email.split('@')[0];
+    }
+  } catch (_) {
+    const legacy = getSession();
+    if (legacy) displayName = legacy.name;
+  }
+
+  if (displayName) {
+    // Usuário logado: exibe aviso, oculta seção de criar conta
     const nameEl = document.getElementById('account-logged-name');
-    if (nameEl) nameEl.textContent = session.name.split(' ')[0];
+    if (nameEl) nameEl.textContent = displayName.split(' ')[0];
     loggedNotice.style.display  = '';
     createSection.style.display = 'none';
   } else {
-    // Not logged in: show create-account section
+    // Não logado: exibe seção de criar conta
     loggedNotice.style.display  = 'none';
     createSection.style.display = '';
   }
@@ -485,19 +500,41 @@ $('next-4').addEventListener('click', async () => {
     }
     if (hasErr) { showError('Corrija os campos destacados.'); return; }
 
-    const result = createAccount(payer, pwd);
-    if (!result.ok) {
-      setInlineError('account-password', result.error);
-      showError(result.error);
+    // ── Criar conta no Supabase ────────────────────────────────────────────
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email:   payer.email,
+      password: pwd,
+      options: { data: { full_name: payer.fullName } },
+    });
+
+    if (signUpError) {
+      const jaExiste = signUpError.message.toLowerCase().includes('already')
+        || signUpError.message.toLowerCase().includes('exist');
+      if (jaExiste) {
+        // E-mail já cadastrado — salva rascunho e redireciona para login
+        sessionStorage.setItem('anaua_booking_resume', JSON.stringify({
+          ...draft, payer, experienceId: draft.experienceId ?? expId,
+        }));
+        showToast(
+          'Esse e-mail já possui cadastro. Faça login para continuar sua reserva.',
+          'warn', 6000,
+        );
+        setTimeout(() => {
+          location.href = `cliente.html?resumeBooking=1&id=${draft.experienceId ?? expId}`;
+        }, 2500);
+        return;
+      }
+      setInlineError('account-password', signUpError.message);
+      showError(signUpError.message);
       return;
     }
-    showToast('Conta criada com sucesso! Bem-vindo(a) à Anauá.');
-  } else if (isLoggedIn()) {
-    // Logged in — update profile with any changes made
-    const session = getSession();
-    if (session) updateAccountProfile(session.email, payer);
+
+    if (signUpData?.user) {
+      console.log('[reserva] Conta Supabase criada ✓', signUpData.user.id);
+      showToast('Conta criada! Verifique seu e-mail para confirmar.');
+    }
   } else {
-    // Not creating account, not logged in — just save profile for next time
+    // Sem criar conta — apenas salva dados do payer para auto-preenchimento futuro
     saveProfile(payer);
   }
 
@@ -838,6 +875,48 @@ $('next-8').addEventListener('click', async () => {
       pending_payment: 'Solicitação recebida. Finalize o pagamento para garantir sua vaga.',
     };
     showToast(STATUS_TOAST[booking.status] ?? 'Solicitação recebida!', 'success', 6000);
+
+    // ── Persistir no Supabase (silencioso se RLS ou rede bloquear) ──────────
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const code = booking.voucherCode ?? booking.id;
+
+      const { ok: resOk, id: resId, error: resErr } = await insertReservation({
+        userId:            user?.id ?? null,
+        reservationCode:   code,
+        experienceId:      draft.experienceId,
+        exitId:            draft.exitId ?? null,
+        meetingPointId:    draft.meetingPointId ?? null,
+        payer:             booking.payer,
+        totalAmount:       booking.totalAmount,
+        amountPaid:        booking.paidAmount,
+        paymentStatus:     booking.paidAmount > 0 ? 'partial' : 'pending',
+        reservationStatus: booking.status,
+        paymentMethod:     booking.paymentMethod ?? null,
+        termsAccepted:     !!(draft.termsAcceptance?.terms),
+        notes:             draft.observations ?? null,
+      });
+
+      if (resOk && resId) {
+        await insertParticipants(resId, booking.participants ?? []);
+        if (booking.paymentMethod) {
+          await insertPaymentRecord({
+            reservationId: resId,
+            method:        paymentResult.method ?? booking.paymentMethod,
+            amountPaid:    booking.paidAmount,
+            status:        booking.paidAmount > 0 ? 'paid' : 'pending',
+            notes:         null,
+          });
+        }
+        console.log('[reserva] Reserva persistida no Supabase ✓ id:', resId);
+      } else if (resErr) {
+        console.warn('[reserva] Supabase insert falhou (reserva salva localmente):', resErr);
+      }
+    } catch (supaErr) {
+      // Supabase persist é best-effort; não bloqueia o fluxo do usuário
+      console.warn('[reserva] Supabase persist silenciou:', supaErr?.message ?? supaErr);
+    }
+
   } catch (err) {
     setProcessing(false);
     showError('Erro ao processar reserva. Tente novamente.');

@@ -1,13 +1,14 @@
 /**
- * @fileoverview Área do Cliente — Anauá Ecoturismo
- * Login + dashboard with reservations.
+ * @fileoverview cliente.js — Área do Cliente — Anauá Ecoturismo
+ *
+ * Auth: Supabase Auth (email + senha)
+ * Reservas: public.reservations por user_id (RLS)
+ * Fallback: usuário sem reservas no Supabase vê mensagem "Nenhuma reserva"
  */
 import { initPage, validateField, VALIDATORS, showToast } from './components.js';
 import { EXPERIENCES, formatBRL, formatDate } from './data.js';
-import {
-  getSession, clearSession, login,
-  createAccount,
-} from './services/UserService.js';
+import { supabase } from './supabaseClient.js';
+import { getUserReservations } from './repositories/reservationRepo.js';
 
 initPage('cliente.html');
 
@@ -116,14 +117,17 @@ function checkAndShowDraftResumeBanner() {
 }
 
 /* ── Auth state ───────────────────────────────────────────── */
-// getSession / setSession / clearSession imported from UserService
 
 function showDashboard(user) {
   document.getElementById('login-view').style.display     = 'none';
   document.getElementById('dashboard-view').classList.add('is-visible');
   const nameEl = document.getElementById('user-name');
-  if (nameEl) nameEl.textContent = user.name.split(' ')[0];
-  renderReservations(user.name);
+  if (nameEl) {
+    const displayName = user.user_metadata?.full_name ?? user.email ?? 'visitante';
+    nameEl.textContent = displayName.split(' ')[0];
+  }
+  renderReservations(user.id);
+  checkAndShowDraftResumeBanner();
 }
 
 function showLogin() {
@@ -131,9 +135,20 @@ function showLogin() {
   document.getElementById('dashboard-view').classList.remove('is-visible');
 }
 
-/* ── Boot ─────────────────────────────────────────────────── */
-const existingSession = getSession();
-if (existingSession) showDashboard(existingSession);
+/* ── Boot: verificar sessão Supabase ───────────────────────────────── */
+
+(async function boot() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) showDashboard(session.user);
+  } catch (err) {
+    console.warn('[cliente] getSession error:', err);
+  }
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) showDashboard(session.user);
+    else showLogin();
+  });
+})();
 
 /* ── Login form ──────────────────────────────────────────── */
 const form      = document.getElementById('login-form');
@@ -154,25 +169,41 @@ form?.addEventListener('submit', async (e) => {
   if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = 'Entrando…'; }
   if (globalErr) globalErr.textContent = '';
 
-  await new Promise(r => setTimeout(r, 800));
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email:    emailEl.value.trim(),
+      password: passEl.value,
+    });
 
-  const result = login(emailEl.value.trim(), passEl.value);
+    if (error || !data.user) {
+      const msg = error?.message?.toLowerCase().includes('invalid login')
+        ? 'E-mail ou senha incorretos.'
+        : (error?.message ?? 'Erro ao fazer login. Tente novamente.');
+      if (globalErr) { globalErr.textContent = msg; globalErr.style.display = 'flex'; }
+      return;
+    }
 
-  if (!result.ok) {
-    if (globalErr) { globalErr.textContent = result.error; globalErr.style.display = 'flex'; }
+    const displayName =
+      data.user.user_metadata?.full_name?.split(' ')[0]
+      ?? data.user.email.split('@')[0];
+
+    showToast(`Bem-vinda(o), ${displayName}!`, 'success');
+    showDashboard(data.user);
+
+    const resumeParam = new URLSearchParams(location.search).get('resumeBooking');
+    if (resumeParam) checkAndShowDraftResumeBanner();
+
+  } catch (err) {
+    console.error('[cliente] login error:', err);
+    if (globalErr) { globalErr.textContent = 'Erro inesperado. Tente novamente.'; globalErr.style.display = 'flex'; }
+  } finally {
     if (loginBtn) { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; }
-    return;
   }
-
-  const { user } = result;
-  showToast(`Bem-vinda(o), ${user.name.split(' ')[0]}!`, 'success');
-  showDashboard(user);
-  if (loginBtn) { loginBtn.disabled = false; loginBtn.textContent = 'Entrar'; }
 });
 
 /* ── Logout ──────────────────────────────────────────────── */
-document.getElementById('logout-btn')?.addEventListener('click', () => {
-  clearSession();
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+  await supabase.auth.signOut();
   showLogin();
   showToast('Sessão encerrada.', 'info');
 });
