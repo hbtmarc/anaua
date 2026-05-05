@@ -371,8 +371,8 @@ function renderExitItem(dep, bpMap = {}) {
       ? new Date(bps[0].pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       : null;
     const bpSummary = bps.length === 1
-      ? bps[0].label
-      : `${bps[0].label} +${bps.length - 1} ponto${bps.length - 1 > 1 ? 's' : ''} de embarque`;
+      ? bps[0].displayName
+      : `${bps[0].displayName} +${bps.length - 1} ponto${bps.length - 1 > 1 ? 's' : ''} de embarque`;
     meetLabel = `<p class="exit-item__meeting">${Icon.map} ${bpSummary}${firstPickup ? ' às ' + firstPickup : ''}</p>`;
   } else {
     meetLabel = dep.meeting_point ? `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>` : '';

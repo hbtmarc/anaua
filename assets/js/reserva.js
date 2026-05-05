@@ -246,9 +246,9 @@ function renderStep2() {
            data-bp="${bp.id}" role="button" tabindex="0"
            aria-pressed="${sel}" style="cursor:pointer">
         <div class="exit-card__info">
-          <p class="exit-card__title">${bp.label}</p>
+          <p class="exit-card__title">${bp.displayName}</p>
           <p class="exit-card__meta">⏰ Embarque: ${timeStr}</p>
-          ${bp.address ? `<p class="exit-card__meta" style="font-size:12px;color:var(--color-muted)">${bp.address}</p>` : ''}
+          ${bp.displayAddress ? `<p class="exit-card__meta" style="font-size:12px;color:var(--color-muted)">${bp.displayAddress}</p>` : ''}
           ${bp.notes   ? `<p class="exit-card__meta" style="font-size:11px;color:var(--color-muted);font-style:italic">${bp.notes}</p>` : ''}
         </div>
       </div>`;
@@ -1021,7 +1021,7 @@ function renderVoucher(booking, paymentResult, split) {
               const timeStr = bp.pickupAt
                 ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                 : null;
-              return `${bp.label}${bp.address ? ' — ' + bp.address : ''}${timeStr ? ' às ' + timeStr : ''}`;
+              return `${bp.displayName}${bp.displayAddress ? ' — ' + bp.displayAddress : ''}${timeStr ? ' às ' + timeStr : ''}`;
             })()}</dd>
           </div>
           <div class="voucher__field">

@@ -7,17 +7,20 @@
 -- ── Helper: verifica se o usuário logado é admin ou operator ─────────────────
 CREATE OR REPLACE FUNCTION public.is_staff()
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
+SET row_security = OFF
 AS $$
-  SELECT EXISTS (
+BEGIN
+  RETURN EXISTS (
     SELECT 1
     FROM public.profiles
     WHERE id   = auth.uid()
       AND role IN ('admin', 'operator')
   );
+END;
 $$;
 
 -- Permite que usuários autenticados (e anon) executem a função nas políticas RLS

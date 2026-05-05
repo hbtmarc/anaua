@@ -11,7 +11,14 @@
 import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
 import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus, createExperienceBundle, getExperienceById } from '../assets/js/repositories/experienceRepo.js';
-import { listAllBoardingPointsByDeparture, createBoardingPoints, replaceBoardingPoints } from '../assets/js/repositories/boardingPointRepo.js';
+import {
+  listActiveBoardingPoints, listAllBoardingPoints,
+  createBoardingPoint, updateBoardingPoint, deleteBoardingPoint,
+  listAllBoardingPointsByDeparture,
+  saveDepartureBoardingPoints,
+  // aliases legados
+  createBoardingPoints, replaceBoardingPoints,
+} from '../assets/js/repositories/boardingPointRepo.js';
 // ReservationStore removido — dados vêm do Supabase
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
@@ -138,6 +145,7 @@ const MODULES = {
   agenda:         { title: 'Agenda',         render: renderAgenda },
   experiencias:   { title: 'Experiências',   render: renderExperiencias, primaryAction: pa => { pa.innerHTML = '<button class="adm-btn adm-btn--primary adm-btn--sm" onclick="openNovaExperienciaModal()">+ Nova experiência</button>'; pa.style.display = ''; } },
   saidas:         { title: 'Saídas',         render: renderSaidas },
+  embarque:       { title: 'Pontos de embarque', render: renderBoardingPoints, primaryAction: pa => { pa.innerHTML = '<button class="adm-btn adm-btn--primary adm-btn--sm" onclick="openBpFormDrawer(null)">+ Novo ponto</button>'; pa.style.display = ''; } },
   reservas:       { title: 'Reservas',       render: renderReservas },
   participantes:  { title: 'Participantes',  render: renderParticipantes },
   financeiro:     { title: 'Financeiro',     render: renderFinanceiro },
@@ -643,11 +651,13 @@ function openNovaExperienciaModal() {
 
         <!-- Pontos de embarque -->
         <div style="margin-top:4px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <label style="font-weight:600;font-size:13px">Pontos de embarque</label>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-dep-add-bp-btn">+ Adicionar ponto</button>
+          <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px">Pontos de embarque (catálogo)</label>
+          <div id="ne-dep-bp-catalog-list" style="display:flex;flex-direction:column;gap:6px"><p style="font-size:11px;color:var(--adm-text-muted)">Ative «Criar primeira saída» para carregar os pontos.</p></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;margin-bottom:6px">
+            <label style="font-size:12px;color:var(--adm-text-muted)">Ponto personalizado (não catalogado)</label>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-dep-add-custom-bp-btn">+ Ponto avulso</button>
           </div>
-          <div id="ne-dep-bp-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          <div id="ne-dep-bp-custom-list" style="display:flex;flex-direction:column;gap:10px"></div>
         </div>
       </div>
 
@@ -742,50 +752,75 @@ function openNovaExperienciaModal() {
     if (depCap && !depCap.value) depCap.value = e.target.value;
   });
 
-  // ── Section B: boarding point rows ──────────────────────────────────────
-  let neBpCount = 0;
-  function addNeBpRow() {
-    const i = neBpCount++;
+  // ── Section B: pontos de embarque ────────────────────────────────────────
+  let neCustomBpCount = 0;
+  function addNeCustomBpRow() {
+    const i = neCustomBpCount++;
     const row = document.createElement('div');
-    row.id = `ne-dep-bp-row-${i}`;
+    row.id = `ne-dep-custom-bp-${i}`;
     row.style.cssText = 'background:var(--adm-surface-2,#f8f8f8);border:1px solid var(--adm-border);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px';
     row.innerHTML = `
       <div class="adm-grid-2" style="gap:8px">
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Local / ponto *</label>
-          <input id="ne-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
+          <input id="ne-custom-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
         </div>
-        <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque *</label>
-          <input id="ne-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque</label>
+          <input id="ne-custom-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Endereço</label>
-          <input id="ne-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
+          <input id="ne-custom-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Obs.</label>
-          <input id="ne-bp-notes-${i}" class="adm-input adm-input--sm" placeholder="Opcional" />
+          <input id="ne-custom-bp-notes-${i}" class="adm-input adm-input--sm" placeholder="Opcional" />
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
-          <input id="ne-bp-active-${i}" type="checkbox" checked style="width:14px;height:14px" /> Ativo
-        </label>
-        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ne-dep-bp-row-${i}').remove()">Remover</button>
+      <div style="display:flex;justify-content:flex-end">
+        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ne-dep-custom-bp-${i}').remove()">Remover</button>
       </div>`;
-    document.getElementById('ne-dep-bp-list')?.appendChild(row);
+    document.getElementById('ne-dep-bp-custom-list')?.appendChild(row);
   }
-  document.getElementById('ne-dep-add-bp-btn')?.addEventListener('click', addNeBpRow);
+  document.getElementById('ne-dep-add-custom-bp-btn')?.addEventListener('click', addNeCustomBpRow);
 
   // ── Section B toggle ───────────────────────────────────────────────────────
-  document.getElementById('ne-dep-check')?.addEventListener('change', e => {
+  document.getElementById('ne-dep-check')?.addEventListener('change', async e => {
     const sec = document.getElementById('ne-dep-section');
     if (sec) sec.style.display = e.target.checked ? 'flex' : 'none';
-    // Default departure values from experience fields
     if (e.target.checked) {
       const depPrice = document.getElementById('ne-dep-price');
       const depCap   = document.getElementById('ne-dep-capacity');
       if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ne-price')?.value ?? '';
       if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ne-maxpax')?.value ?? '';
-      // Add a default boarding point row
-      if (document.getElementById('ne-dep-bp-list')?.children.length === 0) addNeBpRow();
+      const listEl = document.getElementById('ne-dep-bp-catalog-list');
+      if (listEl && !listEl.dataset.loaded) {
+        listEl.innerHTML = '<p style="font-size:11px;color:var(--adm-text-muted)">Carregando catálogo…</p>';
+        const { data: catalog = [] } = await listActiveBoardingPoints();
+        if (catalog.length === 0) {
+          listEl.innerHTML = '<p style="font-size:11px;color:var(--adm-text-muted)">Nenhum ponto no catálogo. Use ponto avulso abaixo.</p>';
+        } else {
+          listEl.innerHTML = catalog.map(bp => `
+            <div style="display:flex;flex-direction:column;gap:4px;padding:8px;background:var(--adm-surface-2,#f8f8f8);border:1px solid var(--adm-border);border-radius:6px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+                <input type="checkbox" id="ne-bpcat-${bp.id}" data-bp-id="${bp.id}" data-bp-name="${bp.name}" style="width:14px;height:14px" />
+                <strong>${bp.name}</strong>${bp.city ? ` — ${bp.city}` : ''}
+              </label>
+              <div id="ne-bpcat-${bp.id}-details" style="display:none;padding-left:22px;flex-wrap:wrap;gap:8px">
+                <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Horário de embarque</label>
+                  <input id="ne-bpcat-${bp.id}-pickup" class="adm-input adm-input--sm" type="datetime-local" />
+                </div>
+                <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Obs. nesta saída</label>
+                  <input id="ne-bpcat-${bp.id}-notes" class="adm-input adm-input--sm" placeholder="Opcional" />
+                </div>
+              </div>
+            </div>`).join('');
+          catalog.forEach(bp => {
+            document.getElementById(`ne-bpcat-${bp.id}`)?.addEventListener('change', ev => {
+              const det = document.getElementById(`ne-bpcat-${bp.id}-details`);
+              if (det) det.style.display = ev.target.checked ? 'flex' : 'none';
+            });
+          });
+        }
+        listEl.dataset.loaded = '1';
+      }
     }
   });
 
@@ -898,29 +933,49 @@ function openNovaExperienciaModal() {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
         return;
       }
-      // Collect boarding point rows
-      const neBpRows = Array.from(document.querySelectorAll('[id^="ne-dep-bp-row-"]'));
-      const neBpPoints = neBpRows.map((r, idx) => {
-        const i = r.id.replace('ne-dep-bp-row-', '');
-        return {
-          label:       document.getElementById(`ne-bp-label-${i}`)?.value.trim() || null,
-          pickup_at:   document.getElementById(`ne-bp-pickup-${i}`)?.value ? new Date(document.getElementById(`ne-bp-pickup-${i}`).value).toISOString() : null,
-          address:     document.getElementById(`ne-bp-address-${i}`)?.value.trim() || null,
-          notes:       document.getElementById(`ne-bp-notes-${i}`)?.value.trim() || null,
-          is_active:   document.getElementById(`ne-bp-active-${i}`)?.checked ?? true,
-          order_index: idx,
-        };
-      }).filter(p => p.label && p.pickup_at);
-      const firstBpLabel = neBpPoints.find(p => p.is_active)?.label ?? null;
+      // Collect boarding points (catalog + custom)
+      let neSortIdx = 0;
+      const neBpSelections = [];
+      document.querySelectorAll('#ne-dep-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
+        const bpId = cb.dataset.bpId;
+        const pickupEl = document.getElementById(`ne-bpcat-${bpId}-pickup`);
+        const notesEl  = document.getElementById(`ne-bpcat-${bpId}-notes`);
+        neBpSelections.push({
+          boardingPointId: bpId,
+          pickupAt:  pickupEl?.value ? new Date(pickupEl.value).toISOString() : null,
+          notes:     notesEl?.value.trim() || null,
+          isActive:  true,
+          sortOrder: neSortIdx++,
+        });
+      });
+      document.querySelectorAll('[id^="ne-dep-custom-bp-"]').forEach(r => {
+        const i = r.id.replace('ne-dep-custom-bp-', '');
+        const lbl = document.getElementById(`ne-custom-bp-label-${i}`)?.value.trim() || null;
+        if (!lbl) return;
+        neBpSelections.push({
+          boardingPointId: null,
+          customLabel:   lbl,
+          customAddress: document.getElementById(`ne-custom-bp-address-${i}`)?.value.trim() || null,
+          pickupAt:      document.getElementById(`ne-custom-bp-pickup-${i}`)?.value ? new Date(document.getElementById(`ne-custom-bp-pickup-${i}`).value).toISOString() : null,
+          notes:         document.getElementById(`ne-custom-bp-notes-${i}`)?.value.trim() || null,
+          isActive:      true,
+          sortOrder:     neSortIdx++,
+        });
+      });
+      const firstBpName = neBpSelections[0]
+        ? (neBpSelections[0].boardingPointId
+            ? (document.querySelector(`#ne-dep-bp-catalog-list input[data-bp-id="${neBpSelections[0].boardingPointId}"]`)?.dataset.bpName ?? null)
+            : neBpSelections[0].customLabel)
+        : null;
       departure = {
         start_at:      new Date(startVal).toISOString(),
         end_at:        document.getElementById('ne-dep-end')?.value ? new Date(document.getElementById('ne-dep-end').value).toISOString() : null,
-        meeting_point: firstBpLabel,
+        meeting_point: firstBpName,
         capacity:      parseInt(document.getElementById('ne-dep-capacity')?.value, 10) || experience.max_participants || null,
         price:         parseFloat(document.getElementById('ne-dep-price')?.value) || experience.base_price || null,
         status:        document.getElementById('ne-dep-status')?.value || 'scheduled',
         title:         document.getElementById('ne-dep-title')?.value.trim() || null,
-        _bpPoints:     neBpPoints,
+        _bpPoints:     neBpSelections,
       };
     }
 
@@ -1182,11 +1237,13 @@ async function openEditExperienciaModal(id) {
 
         <!-- Pontos de embarque -->
         <div style="margin-top:4px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <label style="font-weight:600;font-size:13px">Pontos de embarque</label>
-            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-dep-add-bp-btn">+ Adicionar ponto</button>
+          <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px">Pontos de embarque (catálogo)</label>
+          <div id="ee-dep-bp-catalog-list" style="display:flex;flex-direction:column;gap:6px"><p style="font-size:11px;color:var(--adm-text-muted)">Ative «Nova saída» para carregar os pontos.</p></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;margin-bottom:6px">
+            <label style="font-size:12px;color:var(--adm-text-muted)">Ponto personalizado (não catalogado)</label>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-dep-add-custom-bp-btn">+ Ponto avulso</button>
           </div>
-          <div id="ee-dep-bp-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          <div id="ee-dep-bp-custom-list" style="display:flex;flex-direction:column;gap:10px"></div>
         </div>
       </div>
 
@@ -1292,40 +1349,37 @@ async function openEditExperienciaModal(id) {
     toast('Imagem enviada!', 'success');
   });
 
-  // ── Section B: boarding point rows ─────────────────────────────────────
-  let eeBpCount = 0;
-  function addEeBpRow() {
-    const i = eeBpCount++;
+  // ── Section B: pontos de embarque ────────────────────────────────────────
+  let eeCustomBpCount = 0;
+  function addEeCustomBpRow() {
+    const i = eeCustomBpCount++;
     const row = document.createElement('div');
-    row.id = `ee-dep-bp-row-${i}`;
+    row.id = `ee-dep-custom-bp-${i}`;
     row.style.cssText = 'background:var(--adm-surface-2,#f8f8f8);border:1px solid var(--adm-border);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px';
     row.innerHTML = `
       <div class="adm-grid-2" style="gap:8px">
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Local / ponto *</label>
-          <input id="ee-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
+          <input id="ee-custom-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
         </div>
-        <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque *</label>
-          <input id="ee-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque</label>
+          <input id="ee-custom-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Endereço</label>
-          <input id="ee-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
+          <input id="ee-custom-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Obs.</label>
-          <input id="ee-bp-notes-${i}" class="adm-input adm-input--sm" placeholder="Opcional" />
+          <input id="ee-custom-bp-notes-${i}" class="adm-input adm-input--sm" placeholder="Opcional" />
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
-          <input id="ee-bp-active-${i}" type="checkbox" checked style="width:14px;height:14px" /> Ativo
-        </label>
-        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ee-dep-bp-row-${i}').remove()">Remover</button>
+      <div style="display:flex;justify-content:flex-end">
+        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ee-dep-custom-bp-${i}').remove()">Remover</button>
       </div>`;
-    document.getElementById('ee-dep-bp-list')?.appendChild(row);
+    document.getElementById('ee-dep-bp-custom-list')?.appendChild(row);
   }
-  document.getElementById('ee-dep-add-bp-btn')?.addEventListener('click', addEeBpRow);
+  document.getElementById('ee-dep-add-custom-bp-btn')?.addEventListener('click', addEeCustomBpRow);
 
   // ── Section B toggle ──────────────────────────────────────────────────────
-  document.getElementById('ee-dep-check')?.addEventListener('change', e => {
+  document.getElementById('ee-dep-check')?.addEventListener('change', async e => {
     const sec = document.getElementById('ee-dep-section');
     if (sec) sec.style.display = e.target.checked ? 'flex' : 'none';
     if (e.target.checked) {
@@ -1333,7 +1387,37 @@ async function openEditExperienciaModal(id) {
       const depCap   = document.getElementById('ee-dep-capacity');
       if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ee-price')?.value ?? '';
       if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ee-maxpax')?.value ?? '';
-      if (document.getElementById('ee-dep-bp-list')?.children.length === 0) addEeBpRow();
+      const listEl = document.getElementById('ee-dep-bp-catalog-list');
+      if (listEl && !listEl.dataset.loaded) {
+        listEl.innerHTML = '<p style="font-size:11px;color:var(--adm-text-muted)">Carregando catálogo…</p>';
+        const { data: catalog = [] } = await listActiveBoardingPoints();
+        if (catalog.length === 0) {
+          listEl.innerHTML = '<p style="font-size:11px;color:var(--adm-text-muted)">Nenhum ponto no catálogo. Use ponto avulso abaixo.</p>';
+        } else {
+          listEl.innerHTML = catalog.map(bp => `
+            <div style="display:flex;flex-direction:column;gap:4px;padding:8px;background:var(--adm-surface-2,#f8f8f8);border:1px solid var(--adm-border);border-radius:6px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+                <input type="checkbox" id="ee-bpcat-${bp.id}" data-bp-id="${bp.id}" data-bp-name="${bp.name}" style="width:14px;height:14px" />
+                <strong>${bp.name}</strong>${bp.city ? ` — ${bp.city}` : ''}
+              </label>
+              <div id="ee-bpcat-${bp.id}-details" style="display:none;padding-left:22px;flex-wrap:wrap;gap:8px">
+                <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Horário de embarque</label>
+                  <input id="ee-bpcat-${bp.id}-pickup" class="adm-input adm-input--sm" type="datetime-local" />
+                </div>
+                <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Obs. nesta saída</label>
+                  <input id="ee-bpcat-${bp.id}-notes" class="adm-input adm-input--sm" placeholder="Opcional" />
+                </div>
+              </div>
+            </div>`).join('');
+          catalog.forEach(bp => {
+            document.getElementById(`ee-bpcat-${bp.id}`)?.addEventListener('change', ev => {
+              const det = document.getElementById(`ee-bpcat-${bp.id}-details`);
+              if (det) det.style.display = ev.target.checked ? 'flex' : 'none';
+            });
+          });
+        }
+        listEl.dataset.loaded = '1';
+      }
     }
   });
 
@@ -1449,24 +1533,44 @@ async function openEditExperienciaModal(id) {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
         return;
       }
-      const eeBpRows = Array.from(document.querySelectorAll('[id^="ee-dep-bp-row-"]'));
-      const eeBpPoints = eeBpRows.map((r, idx) => {
-        const i = r.id.replace('ee-dep-bp-row-', '');
-        return {
-          label:       document.getElementById(`ee-bp-label-${i}`)?.value.trim() || null,
-          pickup_at:   document.getElementById(`ee-bp-pickup-${i}`)?.value ? new Date(document.getElementById(`ee-bp-pickup-${i}`).value).toISOString() : null,
-          address:     document.getElementById(`ee-bp-address-${i}`)?.value.trim() || null,
-          notes:       document.getElementById(`ee-bp-notes-${i}`)?.value.trim() || null,
-          is_active:   document.getElementById(`ee-bp-active-${i}`)?.checked ?? true,
-          order_index: idx,
-        };
-      }).filter(p => p.label && p.pickup_at);
-      const firstEeBpLabel = eeBpPoints.find(p => p.is_active)?.label ?? null;
+      let eeSortIdx = 0;
+      const eeBpSelections = [];
+      document.querySelectorAll('#ee-dep-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
+        const bpId = cb.dataset.bpId;
+        const pickupEl = document.getElementById(`ee-bpcat-${bpId}-pickup`);
+        const notesEl  = document.getElementById(`ee-bpcat-${bpId}-notes`);
+        eeBpSelections.push({
+          boardingPointId: bpId,
+          pickupAt:  pickupEl?.value ? new Date(pickupEl.value).toISOString() : null,
+          notes:     notesEl?.value.trim() || null,
+          isActive:  true,
+          sortOrder: eeSortIdx++,
+        });
+      });
+      document.querySelectorAll('[id^="ee-dep-custom-bp-"]').forEach(r => {
+        const i = r.id.replace('ee-dep-custom-bp-', '');
+        const lbl = document.getElementById(`ee-custom-bp-label-${i}`)?.value.trim() || null;
+        if (!lbl) return;
+        eeBpSelections.push({
+          boardingPointId: null,
+          customLabel:   lbl,
+          customAddress: document.getElementById(`ee-custom-bp-address-${i}`)?.value.trim() || null,
+          pickupAt:      document.getElementById(`ee-custom-bp-pickup-${i}`)?.value ? new Date(document.getElementById(`ee-custom-bp-pickup-${i}`).value).toISOString() : null,
+          notes:         document.getElementById(`ee-custom-bp-notes-${i}`)?.value.trim() || null,
+          isActive:      true,
+          sortOrder:     eeSortIdx++,
+        });
+      });
+      const firstEeBpName = eeBpSelections[0]
+        ? (eeBpSelections[0].boardingPointId
+            ? (document.querySelector(`#ee-dep-bp-catalog-list input[data-bp-id="${eeBpSelections[0].boardingPointId}"]`)?.dataset.bpName ?? null)
+            : eeBpSelections[0].customLabel)
+        : null;
       const depPayload = {
         experience_id: id,
         start_at:      new Date(startVal).toISOString(),
         end_at:        document.getElementById('ee-dep-end')?.value ? new Date(document.getElementById('ee-dep-end').value).toISOString() : null,
-        meeting_point: firstEeBpLabel,
+        meeting_point: firstEeBpName,
         capacity:      parseInt(document.getElementById('ee-dep-capacity')?.value, 10) || expPayload.max_participants || null,
         price:         parseFloat(document.getElementById('ee-dep-price')?.value) || expPayload.base_price || null,
         status:        document.getElementById('ee-dep-status')?.value || 'scheduled',
@@ -1476,10 +1580,10 @@ async function openEditExperienciaModal(id) {
       if (depErr) toast('Saída não criada: ' + depErr.message, 'error');
       else {
         msgs.push('Saída criada.');
-        if (eeBpPoints.length > 0 && newDep?.id) {
-          const { error: bpErr } = await createBoardingPoints(newDep.id, eeBpPoints);
+        if (eeBpSelections.length > 0 && newDep?.id) {
+          const { error: bpErr } = await createBoardingPoints(newDep.id, eeBpSelections);
           if (bpErr) toast('Pontos de embarque não salvos: ' + bpErr.message, 'error');
-          else msgs.push(`${eeBpPoints.length} ponto(s) de embarque criados.`);
+          else msgs.push(`${eeBpSelections.length} ponto(s) de embarque criados.`);
         }
       }
     }
@@ -1653,6 +1757,177 @@ async function setWlStatus(id, status) {
   toast('Status atualizado.', 'success');
   navigate('#lista-espera');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MODULE: PONTOS DE EMBARQUE (catálogo reutilizável)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function renderBoardingPoints(root) {
+  root.innerHTML = '<div style="padding:24px;color:var(--adm-text-muted)">Carregando…</div>';
+  const { data: bps, error } = await listAllBoardingPoints();
+  if (error) {
+    root.innerHTML = `<p style="color:var(--adm-danger);padding:16px">Erro ao carregar: ${escHtml(error.message)}</p>`;
+    return;
+  }
+
+  if (!bps || bps.length === 0) {
+    root.innerHTML = `
+      <div class="adm-card" style="text-align:center;padding:48px 24px">
+        <p style="color:var(--adm-text-muted)">Nenhum ponto de embarque cadastrado.</p>
+        <button class="adm-btn adm-btn--primary" style="margin-top:16px" onclick="openBpFormDrawer(null)">Cadastrar primeiro ponto</button>
+      </div>`;
+    return;
+  }
+
+  root.innerHTML = `
+    <div class="adm-card">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Endereço / Referência</th>
+            <th>Cidade/UF</th>
+            <th>Ordem</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="bp-table-body"></tbody>
+      </table>
+    </div>`;
+
+  const tbody = document.getElementById('bp-table-body');
+  bps.forEach(bp => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:600">${escHtml(bp.name)}</td>
+      <td style="font-size:12px;color:var(--adm-text-muted)">${escHtml([bp.address, bp.reference].filter(Boolean).join(' · '))}</td>
+      <td style="font-size:12px">${escHtml([bp.city, bp.state].filter(Boolean).join('/'))||'—'}</td>
+      <td style="text-align:center">${bp.sortOrder}</td>
+      <td><span class="badge ${bp.isActive ? 'badge--active' : 'badge--inactive'}">${bp.isActive ? 'Ativo' : 'Inativo'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="openBpFormDrawer('${bp.id}')">Editar</button>
+        <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="toggleBpActive('${bp.id}', ${bp.isActive},'${escHtml(bp.name)}')"
+          style="color:var(--adm-${bp.isActive ? 'warning' : 'success'})">
+          ${bp.isActive ? 'Desativar' : 'Reativar'}
+        </button>
+        <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="tryDeleteBp('${bp.id}','${escHtml(bp.name)}')"
+          style="color:var(--adm-danger)">Excluir</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+window.openBpFormDrawer = async function openBpFormDrawer(idOrNull) {
+  let bp = null;
+  if (idOrNull) {
+    const { data: all } = await listAllBoardingPoints();
+    bp = all?.find(b => b.id === idOrNull) ?? null;
+  }
+  const isEdit = bp !== null;
+  const v = (field) => escHtml(bp?.[field] ?? '');
+
+  openDrawer(isEdit ? 'Editar ponto de embarque' : 'Novo ponto de embarque', `
+    <form id="bp-form" autocomplete="off">
+      <div class="adm-field">
+        <label>Nome do ponto *</label>
+        <input id="bp-name" class="adm-input" required value="${v('name')}" placeholder="Ex: Terminal Central" />
+      </div>
+      <div class="adm-field">
+        <label>Endereço</label>
+        <input id="bp-address" class="adm-input" value="${v('address')}" placeholder="Rua, número" />
+      </div>
+      <div class="adm-field">
+        <label>Referência / ponto de encontro</label>
+        <input id="bp-reference" class="adm-input" value="${v('reference')}" placeholder="Ex: Em frente ao Banco X" />
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field">
+          <label>Cidade</label>
+          <input id="bp-city" class="adm-input" value="${v('city')}" placeholder="Ex: São João del Rei" />
+        </div>
+        <div class="adm-field">
+          <label>UF</label>
+          <input id="bp-state" class="adm-input" maxlength="2" value="${v('state')}" placeholder="MG" style="text-transform:uppercase" />
+        </div>
+      </div>
+      <div class="adm-grid-2" style="margin-top:4px">
+        <div class="adm-field">
+          <label>Ordem de exibição</label>
+          <input id="bp-order" class="adm-input" type="number" min="0" value="${bp?.sortOrder ?? 0}" />
+        </div>
+        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px;padding-top:20px">
+          <input id="bp-active" type="checkbox" ${bp?.isActive !== false ? 'checked' : ''} style="width:16px;height:16px" />
+          <label for="bp-active" style="margin:0;font-weight:400">Ativo</label>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--adm-border)">
+        <button type="submit" id="bp-save-btn" class="adm-btn adm-btn--primary" style="flex:1">${isEdit ? 'Salvar alterações' : 'Criar ponto'}</button>
+        <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
+      </div>
+    </form>
+  `);
+
+  document.getElementById('bp-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const saveBtn = document.getElementById('bp-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
+
+    const payload = {
+      name:       document.getElementById('bp-name')?.value.trim(),
+      address:    document.getElementById('bp-address')?.value.trim() || null,
+      reference:  document.getElementById('bp-reference')?.value.trim() || null,
+      city:       document.getElementById('bp-city')?.value.trim() || null,
+      state:      document.getElementById('bp-state')?.value.trim().toUpperCase() || null,
+      sort_order: parseInt(document.getElementById('bp-order')?.value, 10) || 0,
+      is_active:  document.getElementById('bp-active')?.checked ?? true,
+    };
+    if (!payload.name) {
+      toast('Nome é obrigatório.', 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Salvar alterações' : 'Criar ponto'; }
+      return;
+    }
+
+    let error;
+    if (isEdit) ({ error } = await updateBoardingPoint(bp.id, payload));
+    else         ({ error } = await createBoardingPoint(payload));
+
+    if (error) {
+      toast('Erro: ' + error.message, 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Salvar alterações' : 'Criar ponto'; }
+      return;
+    }
+    toast(isEdit ? 'Ponto atualizado!' : 'Ponto criado!', 'success');
+    closeDrawer();
+    navigate('#embarque');
+  });
+};
+
+window.toggleBpActive = async function toggleBpActive(id, isActive, name) {
+  const { error } = await updateBoardingPoint(id, { is_active: !isActive });
+  if (error) { toast('Erro: ' + error.message, 'error'); return; }
+  toast(`Ponto "${name}" ${isActive ? 'desativado' : 'reativado'}.`, 'success');
+  navigate('#embarque');
+};
+
+window.tryDeleteBp = function tryDeleteBp(id, name) {
+  openModal(
+    'Excluir ponto de embarque',
+    `<p style="font-size:var(--text-sm);color:var(--adm-text-muted)">
+       Excluir <strong>${escHtml(name)}</strong>?<br><br>
+       Só é possível excluir se o ponto não estiver vinculado a nenhuma saída.
+     </p>`,
+    `<button class="adm-btn adm-btn--secondary" onclick="closeModal()">Cancelar</button>
+     <button class="adm-btn adm-btn--danger" id="confirm-del-bp">Excluir</button>`
+  );
+  document.getElementById('confirm-del-bp')?.addEventListener('click', async () => {
+    closeModal();
+    const { deleted, error } = await deleteBoardingPoint(id);
+    if (!deleted) { toast(error?.message ?? 'Não foi possível excluir.', 'error'); return; }
+    toast('Ponto excluído.', 'success');
+    navigate('#embarque');
+  });
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: SAÍDAS
@@ -2428,8 +2703,8 @@ async function openExitDrawer(exitId) {
           : '—';
         const activeTag = bp.isActive ? '' : ' <span style="font-size:10px;background:#999;color:#fff;border-radius:3px;padding:0 4px">inativo</span>';
         return `<div style="border-left:3px solid var(--adm-primary,#2d6a4f);padding:6px 10px;margin-bottom:6px;line-height:1.5">
-          <strong>${escHtml(bp.label)}</strong>${activeTag}<br>
-          <span style="font-size:12px;color:var(--adm-text-muted)">🕐 Embarque: ${pickupStr}${bp.address ? ' · ' + escHtml(bp.address) : ''}</span>
+          <strong>${escHtml(bp.displayName)}</strong>${activeTag}<br>
+          <span style="font-size:12px;color:var(--adm-text-muted)">🕐 Embarque: ${pickupStr}${bp.displayAddress ? ' · ' + escHtml(bp.displayAddress) : ''}</span>
           ${bp.notes ? `<br><span style="font-size:11px;color:var(--adm-text-muted)">${escHtml(bp.notes)}</span>` : ''}
         </div>`;
       }).join('')
@@ -2595,64 +2870,105 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     </form>
   `);
 
-  // ── Boarding point rows ──────────────────────────────────────────────────
-  let bpCount = 0;
+  // ── Load BP catalog and pre-fill from existing selections ────────────────
+  let _existingBPs = [];
+  if (isEdit && exit.id) {
+    const { data: exBps } = await listAllBoardingPointsByDeparture(exit.id);
+    _existingBPs = exBps ?? [];
+  }
 
-  function addBpRow(point) {
-    const i = bpCount++;
-    const pickupVal = point?.pickupAt ? new Date(point.pickupAt).toISOString().slice(0, 16)
-      : point?.pickup_at ? new Date(point.pickup_at).toISOString().slice(0, 16) : '';
-    const row = document.createElement('div');
-    row.className = 'adm-bp-row';
-    row.id = `ef-bp-row-${i}`;
-    row.style.cssText = 'background:var(--adm-bg-alt,#f8f8f8);border:1px solid var(--adm-border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px';
-    row.innerHTML = `
+  const { data: catalog } = await listActiveBoardingPoints();
+  const catalogListEl = document.getElementById('ef-bp-catalog-list');
+  if (!catalog || catalog.length === 0) {
+    if (catalogListEl) catalogListEl.innerHTML =
+      '<p style="font-size:12px;color:var(--adm-warning)">Nenhum ponto no catálogo. '
+      + '<a href="#embarque" onclick="closeDrawer()">Cadastre primeiro</a> ou use ponto personalizado abaixo.</p>';
+  } else {
+    if (catalogListEl) catalogListEl.innerHTML = '';
+    catalog.forEach(bp => {
+      const existing  = _existingBPs.find(e => e.boardingPointId === bp.id);
+      const pickupVal = existing?.pickupAt ? new Date(existing.pickupAt).toISOString().slice(0, 16) : '';
+      const isChecked = !!existing;
+      const addrLine  = [bp.address, bp.reference].filter(Boolean).join(' · ');
+      const cityLine  = [bp.city, bp.state].filter(Boolean).join('/');
+
+      const item = document.createElement('div');
+      item.style.cssText = 'border:1px solid var(--adm-border);border-radius:6px;overflow:hidden';
+      item.innerHTML = `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;cursor:pointer;background:var(--adm-bg)">
+          <input type="checkbox" id="ef-bpcat-${bp.id}" data-bpid="${bp.id}"
+            ${isChecked ? 'checked' : ''} style="margin-top:2px;width:16px;height:16px;flex-shrink:0" />
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px">${escHtml(bp.name)}</div>
+            ${addrLine ? `<div style="font-size:11px;color:var(--adm-text-muted)">${escHtml(addrLine)}</div>` : ''}
+            ${cityLine ? `<div style="font-size:11px;color:var(--adm-text-muted)">${escHtml(cityLine)}</div>` : ''}
+          </div>
+        </label>
+        <div id="ef-bpcat-detail-${bp.id}" style="display:${isChecked ? 'block' : 'none'};padding:0 12px 12px 14px">
+          <div class="adm-grid-2" style="gap:8px">
+            <div class="adm-field" style="margin:0">
+              <label style="font-size:11px">Horário de embarque *</label>
+              <input id="ef-bpcat-pickup-${bp.id}" class="adm-input adm-input--sm"
+                type="datetime-local" value="${pickupVal}" />
+            </div>
+            <div class="adm-field" style="margin:0">
+              <label style="font-size:11px">Obs. para esta saída</label>
+              <input id="ef-bpcat-notes-${bp.id}" class="adm-input adm-input--sm"
+                value="${escHtml(existing?.notes ?? '')}" placeholder="Opcional" />
+            </div>
+          </div>
+        </div>`;
+      catalogListEl?.appendChild(item);
+      item.querySelector(`#ef-bpcat-${bp.id}`)?.addEventListener('change', ev => {
+        const det = document.getElementById(`ef-bpcat-detail-${bp.id}`);
+        if (det) det.style.display = ev.target.checked ? 'block' : 'none';
+      });
+    });
+  }
+
+  // Custom (non-catalog) BP rows
+  let customBpCount = 0;
+  function addCustomBpRow(existing = null) {
+    const i = customBpCount++;
+    const pickupVal = existing?.pickupAt ? new Date(existing.pickupAt).toISOString().slice(0, 16) : '';
+    const div = document.createElement('div');
+    div.id = `ef-custom-bp-${i}`;
+    div.style.cssText = 'background:var(--adm-bg-alt,#f9f9f9);border:1px solid var(--adm-border);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px';
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;font-weight:600;color:var(--adm-text-muted)">Ponto personalizado</span>
+        <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm"
+          onclick="document.getElementById('ef-custom-bp-${i}').remove()"
+          style="color:var(--adm-danger)">Remover</button>
+      </div>
       <div class="adm-grid-2" style="gap:8px">
         <div class="adm-field" style="margin:0">
           <label style="font-size:11px">Nome do ponto *</label>
-          <input id="ef-bp-label-${i}" class="adm-input adm-input--sm"
-            placeholder="Ex: Terminal Central" value="${escHtml(point?.label ?? '')}" />
+          <input id="ef-cust-label-${i}" class="adm-input adm-input--sm"
+            value="${escHtml(existing?.displayName ?? '')}" placeholder="Ex: Estacionamento do Parque" />
         </div>
         <div class="adm-field" style="margin:0">
-          <label style="font-size:11px">Horário de embarque *</label>
-          <input id="ef-bp-pickup-${i}" class="adm-input adm-input--sm"
+          <label style="font-size:11px">Horário *</label>
+          <input id="ef-cust-pickup-${i}" class="adm-input adm-input--sm"
             type="datetime-local" value="${pickupVal}" />
         </div>
         <div class="adm-field" style="margin:0">
           <label style="font-size:11px">Endereço / referência</label>
-          <input id="ef-bp-address-${i}" class="adm-input adm-input--sm"
-            placeholder="Rua, nº ou ponto de referência" value="${escHtml(point?.address ?? '')}" />
+          <input id="ef-cust-address-${i}" class="adm-input adm-input--sm"
+            value="${escHtml(existing?.displayAddress ?? '')}" placeholder="Opcional" />
         </div>
         <div class="adm-field" style="margin:0">
-          <label style="font-size:11px">Observações</label>
-          <input id="ef-bp-notes-${i}" class="adm-input adm-input--sm"
-            placeholder="Info adicional" value="${escHtml(point?.notes ?? '')}" />
+          <label style="font-size:11px">Obs.</label>
+          <input id="ef-cust-notes-${i}" class="adm-input adm-input--sm"
+            value="${escHtml(existing?.notes ?? '')}" placeholder="Opcional" />
         </div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-          <input id="ef-bp-active-${i}" type="checkbox" ${point?.isActive !== false ? 'checked' : ''} style="width:14px;height:14px" />
-          Ativo
-        </label>
-        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm"
-          onclick="document.getElementById('ef-bp-row-${i}').remove()">Remover</button>
       </div>`;
-    document.getElementById('ef-bp-list')?.appendChild(row);
+    document.getElementById('ef-custom-bp-list')?.appendChild(div);
   }
 
-  document.getElementById('ef-add-bp-btn')?.addEventListener('click', () => addBpRow(null));
-
-  // Pre-load existing boarding points on edit
-  if (isEdit && exit.id) {
-    const { data: existingBps } = await listAllBoardingPointsByDeparture(exit.id);
-    if (existingBps?.length) {
-      existingBps.forEach(bp => addBpRow(bp));
-    } else {
-      addBpRow(null); // default empty row
-    }
-  } else {
-    addBpRow(null); // default empty row for create
-  }
+  // Pre-load any existing custom (non-catalog) BPs on edit
+  _existingBPs.filter(e => !e.boardingPointId).forEach(addCustomBpRow);
+  document.getElementById('ef-add-custom-bp-btn')?.addEventListener('click', () => addCustomBpRow());
 
   // ── Auto-fill from experience on select ─────────────────────────────────
   async function autofillFromExp(expId) {
@@ -2698,34 +3014,43 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     const price    = parseFloat(document.getElementById('ef-price')?.value) || null;
     const status   = document.getElementById('ef-status')?.value ?? 'scheduled';
 
-    // Collect boarding points
-    const bpRows   = document.querySelectorAll('[id^="ef-bp-row-"]');
-    const bpPoints = Array.from(bpRows).map(r => {
-      const i = r.id.replace('ef-bp-row-', '');
-      const label    = document.getElementById(`ef-bp-label-${i}`)?.value.trim();
-      const pickupRaw = document.getElementById(`ef-bp-pickup-${i}`)?.value;
-      const address  = document.getElementById(`ef-bp-address-${i}`)?.value.trim() || null;
-      const notes    = document.getElementById(`ef-bp-notes-${i}`)?.value.trim() || null;
-      const isActive = document.getElementById(`ef-bp-active-${i}`)?.checked ?? true;
-      return { label, pickup_at: pickupRaw ? new Date(pickupRaw).toISOString() : null, address, notes, is_active: isActive };
-    }).filter(p => p.label && p.pickup_at);
+    // Collect selections from catalog checkboxes
+    const selections = [];
+    document.querySelectorAll('#ef-bp-catalog-list [id^="ef-bpcat-"]').forEach(cb => {
+      if (cb.type !== 'checkbox' || !cb.checked) return;
+      const bpId      = cb.dataset.bpid;
+      const pickupRaw = document.getElementById(`ef-bpcat-pickup-${bpId}`)?.value;
+      const notes     = document.getElementById(`ef-bpcat-notes-${bpId}`)?.value.trim() || null;
+      if (!pickupRaw) return;
+      selections.push({ boardingPointId: bpId, pickupAt: new Date(pickupRaw).toISOString(), notes, isActive: true, sortOrder: selections.length });
+    });
+    // Collect custom BP rows
+    document.querySelectorAll('#ef-custom-bp-list > div[id^="ef-custom-bp-"]').forEach(div => {
+      const i      = div.id.replace('ef-custom-bp-', '');
+      const label  = document.getElementById(`ef-cust-label-${i}`)?.value.trim();
+      const pickupRaw = document.getElementById(`ef-cust-pickup-${i}`)?.value;
+      if (!label || !pickupRaw) return;
+      const address = document.getElementById(`ef-cust-address-${i}`)?.value.trim() || null;
+      const notes   = document.getElementById(`ef-cust-notes-${i}`)?.value.trim() || null;
+      selections.push({ boardingPointId: null, customLabel: label, customAddress: address, pickupAt: new Date(pickupRaw).toISOString(), notes, isActive: true, sortOrder: selections.length });
+    });
 
     // Validate
-    if (!expId)             { toast('Selecione uma experiência.', 'error'); return; }
-    if (!startAt)           { toast('Informe a data e hora de início.', 'error'); return; }
+    if (!expId)   { toast('Selecione uma experiência.', 'error'); return; }
+    if (!startAt) { toast('Informe a data e hora de início.', 'error'); return; }
     if (!capacity || capacity < 1) { toast('Capacidade deve ser ≥ 1.', 'error'); return; }
-    const activeBps = bpPoints.filter(p => p.is_active);
-    if (activeBps.length === 0) { toast('Adicione ao menos um ponto de embarque ativo.', 'error'); return; }
+    if (selections.length === 0)   { toast('Adicione ao menos um ponto de embarque ativo com horário.', 'error'); return; }
 
     const saveBtn = document.getElementById('ef-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
 
+    const firstBpLabel = selections[0]?.customLabel || null; // meeting_point compat
     const depPayload = {
       experience_id: expId,
       title:         depTitle,
       start_at:      new Date(startAt).toISOString(),
       end_at:        endAt ? new Date(endAt).toISOString() : null,
-      meeting_point: activeBps[0]?.label ?? null, // keep meeting_point for backwards compat
+      meeting_point: firstBpLabel,
       capacity,
       price,
       status: isEdit ? status : 'scheduled',
@@ -2750,14 +3075,12 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
       departureId = created.id;
     }
 
-    // Boarding points
-    const bpFn = isEdit ? replaceBoardingPoints : createBoardingPoints;
-    const { error: bpErr } = await bpFn(departureId, bpPoints);
+    // Save boarding point selections
+    const { error: bpErr } = await saveDepartureBoardingPoints(departureId, selections);
     if (bpErr) {
-      // Rollback: delete department if we just created it
       if (!isEdit && departureId) {
         await window.anauaDb?.from('departures').delete().eq('id', departureId);
-        toast(`Pontos de embarque falharam e a saída foi revertida. ${bpErr.message}`, 'error');
+        toast(`Pontos de embarque falharam — saída revertida. ${bpErr.message}`, 'error');
       } else {
         toast('Saída salva, mas pontos de embarque falharam: ' + bpErr.message, 'error');
       }
