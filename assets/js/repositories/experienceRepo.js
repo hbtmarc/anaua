@@ -313,21 +313,99 @@ export async function deleteExperience(id) {
  * @returns {Promise<{ data: object[]|null, error: object|null }>}
  */
 export async function listDeparturesByExperience(experienceId) {
-  const now = new Date().toISOString(); // ISO completo para comparar com start_at (timestamptz)
+  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from('departures')
-    .select('*')
+    .select('id, experience_id, title, start_at, capacity, price, status, created_at, updated_at')
     .eq('experience_id', experienceId)
     .eq('status', 'scheduled')
     .gte('start_at', now)
     .order('start_at', { ascending: true });
 
   if (error) {
-    console.error(`[experienceRepo] Erro ao carregar saídas (experience: ${experienceId}):`, error.message);
+    console.error(`[hardening-2.1] Erro ao carregar saídas (experience: ${experienceId}):`, error.message);
     return { data: null, error };
   }
 
-  console.log(`[experienceRepo] Saídas carregadas com sucesso ✓ (${data.length} para experiência ${experienceId})`);
+  console.log(`[hardening-2.1] Saídas carregadas ✓ (${data.length} para experiência ${experienceId})`);
+  return { data, error: null };
+}
+
+/**
+ * Lista todas as saídas (todos os status, todas as datas). Uso exclusivo do backoffice.
+ */
+export async function listAllDepartures() {
+  const { data, error } = await supabase
+    .from('departures')
+    .select('id, experience_id, title, start_at, capacity, price, status, created_at, updated_at, experiences(title)')
+    .order('start_at', { ascending: false });
+
+  if (error) {
+    console.error('[hardening-2.1] Erro ao carregar todas as saídas:', error.message);
+    return { data: null, error };
+  }
+  console.log(`[hardening-2.1] Saídas carregadas ✓ (total: ${data.length})`);
+  return { data, error: null };
+}
+
+/**
+ * Cria uma nova saída.
+ * @param {{ experience_id, title, start_at, capacity, price, status }} payload
+ */
+export async function createDeparture(payload) {
+  const { data, error } = await supabase
+    .from('departures')
+    .insert(payload)
+    .select('id, experience_id, title, start_at, capacity, price, status')
+    .single();
+
+  if (error) {
+    console.error('[hardening-2.1] Erro ao criar saída:', error.message);
+    return { data: null, error };
+  }
+  console.log('[hardening-2.1] Saída criada ✓', data.id);
+  return { data, error: null };
+}
+
+/**
+ * Atualiza campos de uma saída existente.
+ * @param {string} id
+ * @param {object} payload
+ */
+export async function updateDeparture(id, payload) {
+  const { data, error } = await supabase
+    .from('departures')
+    .update(payload)
+    .eq('id', id)
+    .select('id, experience_id, title, start_at, capacity, price, status')
+    .single();
+
+  if (error) {
+    console.error('[hardening-2.1] Erro ao atualizar saída:', error.message);
+    return { data: null, error };
+  }
+  console.log('[hardening-2.1] Saída atualizada ✓', id);
+  return { data, error: null };
+}
+
+/**
+ * Altera o status de uma saída (scheduled | cancelled | sold_out).
+ * @param {string} id
+ * @param {'scheduled'|'cancelled'|'sold_out'} status
+ */
+export async function setDepartureStatus(id, status) {
+  const { data, error } = await supabase
+    .from('departures')
+    .update({ status })
+    .eq('id', id)
+    .select('id, status')
+    .single();
+
+  if (error) {
+    console.error('[hardening-2.1] Erro ao alterar status da saída:', error.message);
+    return { data: null, error };
+  }
+  console.log(`[hardening-2.1] Saída atualizada ✓ status=${status}`, id);
   return { data, error: null };
 }

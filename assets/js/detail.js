@@ -7,7 +7,7 @@ import {
   initPage, renderBreadcrumb, renderExperienceCard, renderSkeletonCards,
   Icon, showToast, openModal, observeAnimations,
 } from './components.js';
-import { getExperienceBySlug } from './repositories/experienceRepo.js';
+import { getExperienceBySlug, listDeparturesByExperience } from './repositories/experienceRepo.js';
 
 initPage('experiencias.html');
 
@@ -55,7 +55,11 @@ function showNotFound() {
 
   if (!exp || error) { showNotFound(); return; }
 
-  console.log('[detail] Experiência carregada do Supabase ✓', exp.slug);
+  // Carrega saídas reais do banco
+  const { data: departures } = await listDeparturesByExperience(exp.id);
+  exp.departures = departures ?? [];
+  console.log('[detail] Experiência carregada do Supabase ✓', exp.slug, '— saídas:', exp.departures.length);
+
   renderPage(exp);
 })();
 
@@ -119,18 +123,14 @@ const expSlug = exp.slug ?? exp.id;
   // Content
   renderContent(exp);
 
-  // Booking sidebar
-  renderBookingBox(exp);
+  // Booking sidebar + sticky CTA
+  const isSoldOut = renderBookingBox(exp);
+  const stickyPrice = document.getElementById('sticky-price');
+  if (stickyPrice) stickyPrice.textContent = formatBRL(exp.pricePerPerson);
+  initStickyCTA(exp, isSoldOut);
 
   // Related
   renderRelated(exp);
-
-  // Sticky CTA price
-  const stickyPrice = document.getElementById('sticky-price');
-  if (stickyPrice) stickyPrice.textContent = formatBRL(exp.pricePerPerson);
-
-  // Sticky CTA show/hide
-  initStickyCTA();
 
   observeAnimations();
 }
@@ -214,7 +214,7 @@ function renderContent(exp) {
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">Saídas disponíveis</h2>
       <div class="exit-list" id="exit-list">
-        ${(exp.nextExits ?? []).map(exit => renderExitItem(exit, exp)).join('')
+        ${(exp.departures ?? []).map(dep => renderExitItem(dep)).join('')
           || '<p style="color:var(--color-muted);font-size:var(--text-sm)">Nenhuma saída programada no momento.</p>'}
       </div>
     </div>
@@ -350,25 +350,25 @@ function openGalleryModal(images, startIndex, alt) {
 }
 
 /* ── Exit item ───────────────────────────────────────────── */
-function renderExitItem(exit, exp) {
-  const isSoldOut = exit.status === 'sold_out' || exit.spotsAvailable === 0;
-  const isLow     = exit.spotsAvailable > 0 && exit.spotsAvailable <= 4;
+function renderExitItem(dep) {
+  const isSoldOut = dep.status !== 'scheduled';
+  const dateLabel = dep.start_at ? dep.start_at.split('T')[0] : '—';
 
   return `
     <div
       class="exit-item ${isSoldOut ? 'exit-item--sold-out' : ''}"
-      data-exit-id="${exit.id}"
+      data-exit-id="${dep.id}"
       role="radio"
       aria-checked="false"
       tabindex="${isSoldOut ? -1 : 0}"
     >
       <div>
-        <p class="exit-item__date">${Icon.calendar} ${exit.dateLabel}</p>
+        <p class="exit-item__date">${Icon.calendar} ${dateLabel}</p>
       </div>
       <div>
         ${isSoldOut
           ? '<span class="badge badge--sold-out">Esgotado</span>'
-          : `<span class="exit-item__spots ${isLow ? 'is-low' : ''}">${exit.spotsAvailable} vaga${exit.spotsAvailable !== 1 ? 's' : ''} disponível${exit.spotsAvailable !== 1 ? 'is' : ''}</span>`
+          : `<span class="exit-item__spots">${dep.capacity ?? '?'} vaga${dep.capacity !== 1 ? 's' : ''} disponível${dep.capacity !== 1 ? 'is' : ''}</span>`
         }
       </div>
     </div>
@@ -381,8 +381,8 @@ function initExitSelection(exp) {
   if (!exitList) return;
 
   function selectExit(exitId) {
-    const exit = exp.nextExits.find(e => e.id === exitId);
-    if (!exit || exit.spotsAvailable === 0) return;
+    const dep = (exp.departures ?? []).find(d => d.id === exitId);
+    if (!dep || dep.status !== 'scheduled') return;
 
     exitList.querySelectorAll('.exit-item').forEach(el => {
       const isThis = el.getAttribute('data-exit-id') === exitId;
@@ -393,9 +393,6 @@ function initExitSelection(exp) {
     // Update booking box select
     const bookingSelect = document.getElementById('exit-select');
     if (bookingSelect instanceof HTMLSelectElement) bookingSelect.value = exitId;
-
-    // Show meeting points
-    showMeetingPoints(exit);
   }
 
   exitList.querySelectorAll('.exit-item:not(.exit-item--sold-out)').forEach(item => {
@@ -404,7 +401,7 @@ function initExitSelection(exp) {
   });
 
   // Auto-select first available
-  const firstAvailable = exp.nextExits.find(e => e.spotsAvailable > 0);
+  const firstAvailable = (exp.departures ?? []).find(d => d.status === 'scheduled');
   if (firstAvailable) selectExit(firstAvailable.id);
 }
 
@@ -434,8 +431,10 @@ function renderBookingBox(exp) {
   const box = document.getElementById('booking-box');
   if (!box) return;
 
-  const activeExits = exp.nextExits.filter(e => e.spotsAvailable > 0);
+  const activeDeps = (exp.departures ?? []).filter(d => d.status === 'scheduled');
+  const isSoldOut  = activeDeps.length === 0;
 
+  // Ocultar/mostrar sticky CTA conforme disponibilidade
   box.innerHTML = `
     <div class="booking-box__price">
       <p class="booking-box__from">a partir de</p>
@@ -443,11 +442,11 @@ function renderBookingBox(exp) {
       <p class="booking-box__per">por pessoa</p>
     </div>
 
-    ${activeExits.length ? `
+    ${!isSoldOut ? `
       <div class="booking-box__row">
         <label class="booking-box__label" for="exit-select">Saída</label>
         <select id="exit-select" class="booking-box__select" aria-label="Selecionar data da saída">
-          ${activeExits.map(e => `<option value="${e.id}">${e.dateLabel} — ${e.spotsAvailable} vaga${e.spotsAvailable !== 1 ? 's' : ''}</option>`).join('')}
+          ${activeDeps.map(d => { const label = d.start_at ? d.start_at.split('T')[0] : '—'; return `<option value="${d.id}">${label} — ${d.capacity ?? '?'} vaga${d.capacity !== 1 ? 's' : ''}</option>`; }).join('')}
         </select>
       </div>
 
@@ -475,6 +474,7 @@ function renderBookingBox(exp) {
     ` : `
       <div style="text-align:center;padding:var(--sp-6) 0">
         <p style="font-family:var(--font-serif);font-size:var(--text-lg);color:var(--color-deep);margin-bottom:var(--sp-3)">Esgotado</p>
+
         <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">Todas as vagas foram preenchidas. Entre na lista de espera — avisamos se abrirem novas vagas.</p>
         <button class="btn btn--secondary btn--full" id="waitlist-btn">Entrar na lista de espera</button>
       </div>
@@ -499,8 +499,9 @@ function renderBookingBox(exp) {
     if (!(exitSelect instanceof HTMLSelectElement) || !(paxSelect instanceof HTMLSelectElement)) return;
     const exitId = exitSelect.value;
     const pax    = paxSelect.value;
-    const exit   = exp.nextExits.find(e => e.id === exitId);
-    if (!exit) return;
+    const dep    = (exp.departures ?? []).find(d => d.id === exitId);
+    if (!dep) return;
+    const depLabel = dep.start_at ? dep.start_at.split('T')[0] : '—';
 
     const { close } = openModal({
       title: 'Confirmar reserva',
@@ -508,7 +509,7 @@ function renderBookingBox(exp) {
         <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">Você está pré-reservando:</p>
         <div style="background:var(--color-offwhite);border-radius:var(--radius-lg);padding:var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-3)">
           <p><strong>${exp.title}</strong></p>
-          <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.calendar} Saída: ${exit.dateLabel}</p>
+          <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.calendar} Saída: ${depLabel}</p>
           <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.users} ${pax} participante${Number(pax) !== 1 ? 's' : ''}</p>
           <p style="font-size:var(--text-sm);font-weight:600;color:var(--color-deep)">Total: ${formatBRL(exp.pricePerPerson * Number(pax))}</p>
         </div>
@@ -531,104 +532,109 @@ function renderBookingBox(exp) {
     });
   });
 
-  // Waitlist button
-  document.getElementById('waitlist-btn')?.addEventListener('click', () => {
-    const { close } = openModal({
-      title: 'Entrar na lista de espera',
-      body: `
-        <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">
-          Preencha seus dados e avisaremos quando houver disponibilidade para
-          <strong>${exp.title}</strong>.
-        </p>
-        <form id="waitlist-form" style="display:flex;flex-direction:column;gap:var(--sp-4)">
-          <div>
-            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Nome *</label>
-            <input id="wl-name" type="text" required placeholder="Seu nome completo"
-              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
-          </div>
-          <div>
-            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">E-mail *</label>
-            <input id="wl-email" type="email" required placeholder="seu@email.com"
-              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
-          </div>
-          <div>
-            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">WhatsApp</label>
-            <input id="wl-phone" type="tel" placeholder="(99) 99999-9999"
-              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
-          </div>
-          <div>
-            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Quantidade de participantes</label>
-            <select id="wl-participants"
-              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box">
-              <option value="1">1 pessoa</option>
-              <option value="2">2 pessoas</option>
-              <option value="3">3 pessoas</option>
-              <option value="4">4 pessoas</option>
-              <option value="5+">5 ou mais</option>
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Mensagem (opcional)</label>
-            <textarea id="wl-message" rows="3" placeholder="Alguma preferência de data ou informação adicional?"
-              style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);resize:vertical;box-sizing:border-box"></textarea>
-          </div>
-          <p id="wl-error" style="color:var(--color-danger,#c0392b);font-size:var(--text-sm);display:none"></p>
-        </form>
-      `,
-      footer: `
-        <button class="btn btn--secondary" id="wl-cancel-btn">Cancelar</button>
-        <button class="btn btn--primary" id="wl-submit-btn">Entrar na lista</button>
-      `,
+  // Waitlist button (inside booking-box, visible on desktop)
+  document.getElementById('waitlist-btn')?.addEventListener('click', () => openWaitlistModal(exp));
+
+  return isSoldOut;
+}
+
+/* ── Waitlist modal ──────────────────────────────────────── */
+function openWaitlistModal(exp) {
+  const { close } = openModal({
+    title: 'Entrar na lista de espera',
+    body: `
+      <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">
+        Preencha seus dados e avisaremos quando houver disponibilidade para
+        <strong>${exp.title}</strong>.
+      </p>
+      <form id="waitlist-form" style="display:flex;flex-direction:column;gap:var(--sp-4)">
+        <div>
+          <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Nome *</label>
+          <input id="wl-name" type="text" required placeholder="Seu nome completo"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
+        </div>
+        <div>
+          <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">E-mail *</label>
+          <input id="wl-email" type="email" required placeholder="seu@email.com"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
+        </div>
+        <div>
+          <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">WhatsApp</label>
+          <input id="wl-phone" type="tel" placeholder="(99) 99999-9999"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box" />
+        </div>
+        <div>
+          <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Quantidade de participantes</label>
+          <select id="wl-participants"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);box-sizing:border-box">
+            <option value="1">1 pessoa</option>
+            <option value="2">2 pessoas</option>
+            <option value="3">3 pessoas</option>
+            <option value="4">4 pessoas</option>
+            <option value="5+">5 ou mais</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:var(--text-sm);font-weight:600;margin-bottom:4px">Mensagem (opcional)</label>
+          <textarea id="wl-message" rows="3" placeholder="Alguma preferência de data ou informação adicional?"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-stone);border-radius:var(--radius-md);font-size:var(--text-sm);resize:vertical;box-sizing:border-box"></textarea>
+        </div>
+        <p id="wl-error" style="color:var(--color-danger,#c0392b);font-size:var(--text-sm);display:none"></p>
+      </form>
+    `,
+    footer: `
+      <button class="btn btn--secondary" id="wl-cancel-btn">Cancelar</button>
+      <button class="btn btn--primary" id="wl-submit-btn">Entrar na lista</button>
+    `,
+  });
+
+  document.getElementById('wl-cancel-btn')?.addEventListener('click', close);
+
+  document.getElementById('wl-submit-btn')?.addEventListener('click', async () => {
+    const name         = document.getElementById('wl-name')?.value.trim();
+    const email        = document.getElementById('wl-email')?.value.trim();
+    const phone        = document.getElementById('wl-phone')?.value.trim() || null;
+    const participants = document.getElementById('wl-participants')?.value ?? '1';
+    const message      = document.getElementById('wl-message')?.value.trim() || null;
+    const errEl        = document.getElementById('wl-error');
+
+    if (!name || !email) {
+      if (errEl) { errEl.textContent = 'Por favor, preencha nome e e-mail.'; errEl.style.display = 'block'; }
+      return;
+    }
+    if (errEl) errEl.style.display = 'none';
+
+    const submitBtn = document.getElementById('wl-submit-btn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Enviando…'; }
+
+    const db = window.anauaDb;
+    if (!db) {
+      if (errEl) { errEl.textContent = 'Serviço indisponível. Tente novamente.'; errEl.style.display = 'block'; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar na lista'; }
+      return;
+    }
+
+    const { error: insertError } = await db.from('waitlist_entries').insert({
+      experience_id:      exp.id,
+      departure_id:       null,
+      name,
+      email,
+      phone,
+      participants_count: parseInt(participants, 10) || 1,
+      message,
+      status:             'pending',
+      source:             'site',
     });
 
-    document.getElementById('wl-cancel-btn')?.addEventListener('click', close);
+    if (insertError) {
+      console.error('[waitlist] Erro ao inserir lista de espera:', insertError.message);
+      if (errEl) { errEl.textContent = 'Não foi possível enviar. Tente novamente em breve.'; errEl.style.display = 'block'; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar na lista'; }
+      return;
+    }
 
-    document.getElementById('wl-submit-btn')?.addEventListener('click', async () => {
-      const name         = document.getElementById('wl-name')?.value.trim();
-      const email        = document.getElementById('wl-email')?.value.trim();
-      const phone        = document.getElementById('wl-phone')?.value.trim() || null;
-      const participants = document.getElementById('wl-participants')?.value ?? '1';
-      const message      = document.getElementById('wl-message')?.value.trim() || null;
-      const errEl        = document.getElementById('wl-error');
-
-      if (!name || !email) {
-        if (errEl) { errEl.textContent = 'Por favor, preencha nome e e-mail.'; errEl.style.display = 'block'; }
-        return;
-      }
-      if (errEl) errEl.style.display = 'none';
-
-      const submitBtn = document.getElementById('wl-submit-btn');
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Enviando…'; }
-
-      const db = window.anauaDb;
-      if (!db) {
-        if (errEl) { errEl.textContent = 'Serviço indisponível. Tente novamente.'; errEl.style.display = 'block'; }
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar na lista'; }
-        return;
-      }
-
-      const { error: insertError } = await db.from('waitlist_entries').insert({
-        experience_id:      exp.id,
-        departure_id:       exp.nextDeparture?.id ?? null,
-        name,
-        email,
-        phone,
-        participants_count: parseInt(participants, 10) || 1,
-        message,
-        status:             'pending',
-        source:             'site',
-      });
-
-      if (insertError) {
-        console.error('[waitlist] Erro ao inserir lista de espera:', insertError.message);
-        if (errEl) { errEl.textContent = 'Não foi possível enviar. Tente novamente em breve.'; errEl.style.display = 'block'; }
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Entrar na lista'; }
-        return;
-      }
-
-      close();
-      showToast('Recebemos seu interesse. Entraremos em contato quando houver disponibilidade!', 'success');
-    });
+    close();
+    showToast('Recebemos seu interesse. Entraremos em contato quando houver disponibilidade!', 'success');
   });
 }
 
@@ -639,19 +645,35 @@ function renderRelated(_exp) {
 }
 
 /* ── Sticky CTA ──────────────────────────────────────────── */
-function initStickyCTA() {
-  const cta     = document.getElementById('sticky-cta');
+function initStickyCTA(exp, isSoldOut) {
+  const cta = document.getElementById('sticky-cta');
+  if (!cta) return;
+
+  // On desktop the sidebar is visible — observe the booking-box to auto-hide the CTA.
+  // On mobile the sidebar is hidden, so the CTA should stay visible.
   const bookBox = document.getElementById('booking-box');
-  if (!cta || !bookBox) return;
+  if (bookBox && window.matchMedia('(min-width: 1024px)').matches) {
+    const obs = new IntersectionObserver(([entry]) => {
+      cta.classList.toggle('is-hidden', entry.isIntersecting);
+    }, { threshold: 0.5 });
+    obs.observe(bookBox);
+  }
 
-  const obs = new IntersectionObserver(([entry]) => {
-    cta.classList.toggle('is-hidden', entry.isIntersecting);
-  }, { threshold: 0.5 });
+  const btn = document.getElementById('sticky-reserve-btn');
+  if (!btn) return;
 
-  obs.observe(bookBox);
-
-  document.getElementById('sticky-reserve-btn')?.addEventListener('click', e => {
-    e.preventDefault();
-    bookBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
+  if (isSoldOut) {
+    btn.textContent = 'Lista de espera';
+    btn.addEventListener('click', e => { e.preventDefault(); openWaitlistModal(exp); });
+  } else {
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      // On mobile go straight to checkout; on desktop scroll to booking box
+      if (window.matchMedia('(max-width: 1023px)').matches) {
+        location.href = `reserva.html?id=${exp.slug ?? exp.id}`;
+      } else if (bookBox) {
+        bookBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }
 }

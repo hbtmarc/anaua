@@ -10,7 +10,7 @@
 
 import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
-import { createExperience, updateExperience } from '../assets/js/repositories/experienceRepo.js';
+import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus } from '../assets/js/repositories/experienceRepo.js';
 // ReservationStore removido — dados vêm do Supabase
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
@@ -74,8 +74,11 @@ function occFill(pct) {
   </div>`;
 }
 
-// findExit — retorna null (EXPERIENCES local removido; dados vêm do Supabase)
-function findExit(_exitId) { return null; }
+// findExit — busca no cache carregado por renderSaidas / renderAgenda
+let _exitsCache = [];
+function findExit(exitId) {
+  return _exitsCache.find(r => r.exit.id === exitId) ?? null;
+}
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -247,7 +250,7 @@ async function renderDashboard(root) {
     safeCount('reservations', q => q.in('reservation_status', ['confirmed', 'reserved'])),
     safeCount('reservations', q => q.eq('reservation_status', 'pending_payment')),
     safeCount('reservations', q => q.eq('reservation_status', 'cancelled')),
-    db.from('reservations').select('id, reservation_status, total_amount, created_at').order('created_at', { ascending: false }).limit(6),
+    db.from('reservations').select('id, reservation_status, total_amount, created_at, customer_name').order('created_at', { ascending: false }).limit(6),
     db.from('departures').select('id, start_at, status, capacity, experience_id, experiences(title)').gte('start_at', new Date().toISOString().split('T')[0]).eq('status', 'scheduled').order('start_at').limit(5),
     db.from('payments').select('amount').eq('status', 'paid'),
   ]);
@@ -273,7 +276,7 @@ async function renderDashboard(root) {
         <tbody>${recent.length
           ? recent.map(r => `<tr>
               <td class="no-wrap text-small text-muted">${escHtml(r.id)}</td>
-              <td class="text-bold">—</td>
+              <td class="text-bold">${escHtml(r.customer_name ?? '—')}</td>
               <td>${badge(r.reservation_status ?? 'pending_payment')}</td>
               <td class="no-wrap text-bold">${fmt(r.total_amount ?? 0)}</td>
             </tr>`).join('')
@@ -337,8 +340,9 @@ async function renderAgenda(root) {
     if (!error) {
       allExits = (data ?? []).map(d => ({
         exp:  { title: d.experiences?.title ?? d.experience_id ?? '—', id: d.experience_id },
-        exit: { id: d.id, start_at: d.start_at, status: d.status, spotsTotal: d.capacity ?? 0, spotsAvailable: d.capacity ?? 0 },
+        exit: { id: d.id, start_at: d.start_at, status: d.status, capacity: d.capacity ?? 0 },
       }));
+      _exitsCache = allExits;
       console.log('[admin-db] Saídas carregadas (agenda):', allExits.length);
     } else {
       console.warn('[admin-db] Erro ao carregar saídas:', error.message);
@@ -363,8 +367,7 @@ async function renderAgenda(root) {
       const dayEx = allExits.filter(x => (x.exit.start_at ?? '').slice(0, 10) === ds);
       const isToday = ds === todayStr;
       const evts = dayEx.map(({ exp, exit }) => {
-        const pct = exit.spotsTotal ? ((exit.spotsTotal - exit.spotsAvailable) / exit.spotsTotal) * 100 : 0;
-        const cls = exit.spotsAvailable === 0 ? 'is-sold' : pct >= 70 ? 'is-hot' : '';
+        const cls = exit.status === 'sold_out' ? 'is-sold' : exit.status === 'cancelled' ? 'is-hot' : '';
         return `<span class="adm-cal__evt ${cls}" data-exit="${exit.id}" title="${escHtml(exp.title)}">${escHtml(exp.title.slice(0,18))}</span>`;
       }).join('');
       return `<div class="adm-cal__day ${isToday ? 'is-today' : ''}" data-date="${ds}"><div class="adm-cal__daynum">${d}</div>${evts}</div>`;
@@ -415,15 +418,15 @@ async function renderAgenda(root) {
         </div>
         <div class="adm-table-wrap">
           <table class="adm-table">
-            <thead><tr><th>Data</th><th>Experiência</th><th>Vagas</th><th>Ocupação</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Data</th><th>Experiência</th><th>Vagas</th><th>Status</th><th></th></tr></thead>
             <tbody>${sorted.length ? sorted.map(({ exp, exit }) => {
-              const st = exit.status === 'cancelled' ? 'cancelled' : 'active';
+              const statusLabel = exit.status === 'cancelled' ? 'Cancelada' : exit.status === 'sold_out' ? 'Esgotada' : 'Aberta';
+              const statusCls   = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'sold-out' : 'active';
               return `<tr>
                 <td class="no-wrap">${fmtDate(exit.start_at)}</td>
                 <td>${escHtml(exp.title)}</td>
-                <td>${exit.spotsTotal} vagas</td>
-                <td class="text-muted text-small">—</td>
-                <td><span class="badge badge--${st}">${st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
+                <td>${exit.capacity ?? '—'} vagas</td>
+                <td><span class="badge badge--${statusCls}">${statusLabel}</span></td>
                 <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
               </tr>`;
             }).join('') : '<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída cadastrada.</td></tr>'}</tbody>
@@ -939,18 +942,19 @@ async function renderSaidas(root) {
   root.innerHTML = `
     <div class="adm-card">
       <div class="adm-filter-bar">
-        <input type="search" class="adm-input" id="saidas-filter" placeholder="Filtrar por experiência ou data…" />
+        <input type="search" class="adm-input" id="saidas-filter" placeholder="Filtrar por experiência, título ou data…" />
         <select id="saidas-status">
           <option value="">Todos os status</option>
           <option value="scheduled">Aberta</option>
           <option value="sold_out">Esgotada</option>
           <option value="cancelled">Cancelada</option>
         </select>
+        <button class="adm-btn adm-btn--primary" id="saidas-new-btn">➕ Nova Saída</button>
         <span class="adm-filter-count" id="saidas-count"></span>
       </div>
       <div class="adm-table-wrap">
         <table class="adm-table">
-          <thead><tr><th>Data</th><th>Experiência</th><th>Vagas</th><th>Ocupação</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Data</th><th>Título / Experiência</th><th>Capacidade</th><th>Preço</th><th>Status</th><th></th></tr></thead>
           <tbody id="saidas-tbody"><tr><td colspan="6" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
         </table>
       </div>
@@ -958,23 +962,29 @@ async function renderSaidas(root) {
 
   const db = window.anauaDb;
   let allExits = [];
+  let experiences = [];
 
   if (db) {
-    const { data, error } = await db
-      .from('departures')
-      .select('id, start_at, status, capacity, experience_id, experiences(title)')
-      .order('start_at', { ascending: false });
-    if (!error) {
-      allExits = (data ?? []).map(d => ({
-        exp:  { title: d.experiences?.title ?? d.experience_id ?? '—' },
-        exit: { id: d.id, start_at: d.start_at, status: d.status ?? 'scheduled', spotsTotal: d.capacity ?? 0, spotsAvailable: d.capacity ?? 0 },
-      }));
-      console.log('[admin-db] Saídas carregadas:', allExits.length);
-    } else {
-      console.warn('[admin-db] Erro ao carregar saídas:', error.message);
+    const [exitsRes, expsRes] = await Promise.all([
+      db.from('departures')
+        .select('id, experience_id, title, start_at, capacity, price, status, experiences(title)')
+        .order('start_at', { ascending: false }),
+      db.from('experiences').select('id, title').eq('is_active', true).order('title'),
+    ]);
+
+    if (exitsRes.error) {
+      console.warn('[hardening-2.1] Erro ao carregar saídas:', exitsRes.error.message);
       $('saidas-tbody').innerHTML = `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Não foi possível carregar as saídas.</td></tr>`;
       return;
     }
+
+    allExits = (exitsRes.data ?? []).map(d => ({
+      exp:  { title: d.experiences?.title ?? d.experience_id ?? '—', id: d.experience_id },
+      exit: { id: d.id, start_at: d.start_at, status: d.status ?? 'scheduled', capacity: d.capacity ?? 0, title: d.title ?? '', price: d.price ?? null },
+    }));
+    _exitsCache = allExits;
+    experiences = expsRes.data ?? [];
+    console.log('[hardening-2.1] Saídas carregadas ✓', allExits.length);
   }
 
   function renderRows(data) {
@@ -982,12 +992,17 @@ async function renderSaidas(root) {
     $('saidas-count').textContent = `${data.length} saída(s)`;
     tbody.innerHTML = data.map(({ exp, exit }) => {
       const st = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'soldout' : 'active';
+      const stLabel = st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta';
+      const depTitle = exit.title ?? exp.title;
       return `<tr>
         <td class="no-wrap">${fmtDate(exit.start_at)}</td>
-        <td class="text-bold">${escHtml(exp.title)}</td>
-        <td>${exit.spotsTotal} vagas</td>
-        <td class="text-muted text-small">—</td>
-        <td><span class="badge badge--${st}">${st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
+        <td>
+          <div class="text-bold">${escHtml(depTitle)}</div>
+          <div class="text-small text-muted">${escHtml(exp.title)}</div>
+        </td>
+        <td>${exit.capacity} vagas</td>
+        <td class="no-wrap">${exit.price != null ? fmt(exit.price) : '<span class="text-muted">—</span>'}</td>
+        <td><span class="badge badge--${st}">${stLabel}</span></td>
         <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
       </tr>`;
     }).join('') || `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída encontrada.</td></tr>`;
@@ -998,7 +1013,9 @@ async function renderSaidas(root) {
     const q = $('saidas-filter').value.toLowerCase();
     const s = $('saidas-status').value;
     return allExits.filter(({ exp, exit }) => {
-      const matchQ = !q || exp.title.toLowerCase().includes(q) || (exit.start_at ?? '').includes(q);
+      const matchQ = !q || exp.title.toLowerCase().includes(q)
+        || (exit.title ?? '').toLowerCase().includes(q)
+        || (exit.start_at ?? '').includes(q);
       const matchS = !s || exit.status === s;
       return matchQ && matchS;
     });
@@ -1006,6 +1023,22 @@ async function renderSaidas(root) {
 
   $('saidas-filter').addEventListener('input',  () => renderRows(filtered()));
   $('saidas-status').addEventListener('change', () => renderRows(filtered()));
+
+  $('saidas-new-btn').addEventListener('click', async () => {
+    if (!experiences.length) {
+      const { data: freshExps } = await db.from('experiences').select('id, title').eq('is_active', true).order('title');
+      experiences = freshExps ?? [];
+    }
+    openExitFormModal(null, null, experiences, async (payload) => {
+      const { data: created, error } = await createDeparture(payload);
+      if (error) { toast('Erro ao criar saída: ' + error.message, 'error'); return false; }
+      toast('Saída criada com sucesso!', 'success');
+      closeModal();
+      renderSaidas(root);
+      return true;
+    });
+  });
+
   renderRows(allExits);
 }
 
@@ -1046,7 +1079,7 @@ async function renderReservas(root, openId) {
   if (db) {
     const { data, error } = await db
       .from('reservations')
-      .select('id, experience_id, reservation_status, total_amount, amount_paid, created_at')
+      .select('id, experience_id, reservation_status, total_amount, amount_paid, created_at, customer_name, customer_email, departure_id')
       .order('created_at', { ascending: false });
     if (!error) {
       allBookings = data ?? [];
@@ -1076,7 +1109,10 @@ async function renderReservas(root, openId) {
     return allBookings.filter(b => {
       const matchTab = activeTab === 'all' || b.reservation_status === activeTab;
       const q = search.toLowerCase();
-      const matchSearch = !q || b.id.toLowerCase().includes(q);
+      const matchSearch = !q
+        || b.id.toLowerCase().includes(q)
+        || (b.customer_name  ?? '').toLowerCase().includes(q)
+        || (b.customer_email ?? '').toLowerCase().includes(q);
       return matchTab && matchSearch;
     });
   }
@@ -1087,8 +1123,11 @@ async function renderReservas(root, openId) {
       <td class="no-wrap text-small text-muted">${escHtml(b.id)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:7px">
-          <div class="adm-avatar">?</div>
-          <div class="text-bold text-muted">—</div>
+          <div class="adm-avatar">${escHtml((b.customer_name ?? '?')[0].toUpperCase())}</div>
+          <div>
+            <div class="text-bold">${escHtml(b.customer_name ?? '—')}</div>
+            <div class="text-small text-muted">${escHtml(b.customer_email ?? '')}</div>
+          </div>
         </div>
       </td>
       <td class="text-small">${escHtml(b.experience_id ?? '—')}</td>
@@ -1661,67 +1700,182 @@ function openBookingDrawer(bookingId) {
 
 function openExitDrawer(exitId) {
   const ref = findExit(exitId);
-  if (!ref) { toast('Saída não encontrada', 'error'); return; }
+  if (!ref) { toast('Saída não encontrada no cache. Recarregue a lista.', 'error'); return; }
   const { exp, exit } = ref;
 
-  const bookings = []; // DB-first: detalhes de reservas por saída serão implementados no próximo sprint
-
-  const mpHtml = (exit.meetingPoints ?? []).map(mp => `
-    <div style="padding:8px 0;border-bottom:1px solid var(--adm-border);font-size:13px">
-      <div class="text-bold">${mp.name}</div>
-      <div class="text-small text-muted">${mp.address} · ${mp.time}</div>
-    </div>`).join('');
-
-  const bkHtml = bookings.length ? bookings.map(b => `
-    <div class="adm-pay-row" style="cursor:pointer" data-booking="${b.id}">
-      <div class="adm-avatar">${initials(b.payer?.fullName)}</div>
-      <div class="adm-pay-row__info">
-        <div class="text-bold">${b.payer?.fullName ?? '—'}</div>
-        <div class="text-small text-muted">${b.voucherCode ?? b.id} · ${(b.participants ?? []).length} pax</div>
-      </div>
-      ${badge(b.status)}
-    </div>`).join('') : '<div class="text-muted text-small">Nenhuma reserva ainda.</div>';
+  const st = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'soldout' : 'active';
+  const stLabel = st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta';
 
   const html = `
     <div class="adm-section">
       <div class="adm-section__title">Saída</div>
       <div class="adm-dl">
-        <dt>Experiência</dt><dd class="text-bold">${exp.title}</dd>
-        <dt>Data</dt><dd>${fmtDate(exit.start_at)}</dd>
-        <dt>Status</dt><dd>${exit.status === 'cancelled' ? '<span class="badge badge--cancelled">Cancelada</span>' : exit.status === 'sold_out' ? '<span class="badge badge--soldout">Esgotada</span>' : '<span class="badge badge--active">Aberta</span>'}</dd>
+        <dt>Experiência</dt><dd class="text-bold">${escHtml(exp.title)}</dd>
+        ${exit.title ? `<dt>Título</dt><dd>${escHtml(exit.title)}</dd>` : ''}
+        <dt>Data/Hora</dt><dd>${fmtDate(exit.start_at)}</dd>
+        <dt>Capacidade</dt><dd>${exit.capacity} vagas</dd>
+        ${exit.price != null ? `<dt>Preço</dt><dd>${fmt(exit.price)}</dd>` : ''}
+        <dt>Status</dt><dd><span class="badge badge--${st}">${stLabel}</span></dd>
       </div>
     </div>
 
     <div class="adm-section">
-      <div class="adm-section__title">Capacidade</div>
-      <div class="text-small text-muted mt-12">${exit.spotsTotal} vagas</div>
+      <div class="adm-section__title">Ações</div>
+      <div style="display:flex;flex-direction:column;gap:var(--sp-3)">
+        <button class="adm-btn adm-btn--secondary" id="exit-edit-btn">✏️ Editar saída</button>
+        ${exit.status !== 'scheduled'
+          ? `<button class="adm-btn adm-btn--secondary" data-set-status="scheduled">✅ Reabrir saída</button>`
+          : ''}
+        ${exit.status !== 'sold_out'
+          ? `<button class="adm-btn adm-btn--secondary" data-set-status="sold_out">🔒 Marcar como esgotada</button>`
+          : ''}
+        ${exit.status !== 'cancelled'
+          ? `<button class="adm-btn adm-btn--danger" data-set-status="cancelled">🚫 Cancelar saída</button>`
+          : ''}
+      </div>
     </div>
 
     <div class="adm-section">
-      <div class="adm-section__title">Pontos de encontro</div>
-      ${mpHtml}
-    </div>
-
-    <div class="adm-section">
-      <div class="adm-section__title">Reservas nesta saída (${bookings.length})</div>
-      ${bkHtml}
+      <div class="adm-section__title">Reservas nesta saída</div>
+      <div class="text-muted text-small">Visualização por saída disponível em breve.</div>
     </div>
   `;
 
   openDrawer(`${exp.title} — ${fmtDate(exit.start_at)}`, html);
 
-  document.querySelectorAll('[data-booking]').forEach(el => {
-    el.addEventListener('click', () => {
-      closeDrawer();
-      setTimeout(() => openBookingDrawer(el.dataset.booking), 200);
+  // Edit button
+  document.getElementById('exit-edit-btn')?.addEventListener('click', async () => {
+    const db = window.anauaDb;
+    const { data: exps } = db ? await db.from('experiences').select('id, title').eq('is_active', true).order('title') : { data: [] };
+    closeDrawer();
+    openExitFormModal(exit, exp, exps ?? [], async (payload) => {
+      const { error } = await updateDeparture(exit.id, payload);
+      if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return false; }
+      toast('Saída atualizada!', 'success');
+      closeModal();
+      // Refresh cache entry
+      const r = findExit(exit.id);
+      if (r) { Object.assign(r.exit, { ...payload, capacity: payload.capacity ?? r.exit.capacity }); }
+      return true;
     });
+  });
+
+  // Status change buttons
+  document.querySelectorAll('[data-set-status]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const newStatus = btn.dataset.setStatus;
+      const label = { scheduled: 'reaberta', sold_out: 'marcada como esgotada', cancelled: 'cancelada' }[newStatus];
+      const { error } = await setDepartureStatus(exit.id, newStatus);
+      if (error) { toast('Erro: ' + error.message, 'error'); return; }
+      exit.status = newStatus;
+      const r = findExit(exit.id);
+      if (r) r.exit.status = newStatus;
+      toast(`Saída ${label} com sucesso!`, 'success');
+      closeDrawer();
+    });
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EXIT FORM MODAL  (create / edit Saída)
+// ─────────────────────────────────────────────────────────────────────────────
+function openExitFormModal(exit, expObj, experiences, onSave) {
+  const isEdit = exit !== null;
+  const modalTitle = isEdit ? 'Editar Saída' : 'Nova Saída';
+
+  const startAtValue = exit?.start_at
+    ? new Date(exit.start_at).toISOString().slice(0, 16)
+    : '';
+
+  const expOptions = experiences.map(e =>
+    `<option value="${e.id}" ${exit?.experience_id === e.id ? 'selected' : ''}>${escHtml(e.title)}</option>`
+  ).join('');
+
+  const statusOptions = [
+    { v: 'scheduled', l: 'Aberta' },
+    { v: 'sold_out',  l: 'Esgotada' },
+    { v: 'cancelled', l: 'Cancelada' },
+  ].map(o =>
+    `<option value="${o.v}" ${(exit?.status ?? 'scheduled') === o.v ? 'selected' : ''}>${o.l}</option>`
+  ).join('');
+
+  openModal(modalTitle, `
+    <div class="adm-field">
+      <label>Experiência *</label>
+      <select class="adm-select" id="ef-exp">
+        <option value="">Selecione…</option>${expOptions}
+      </select>
+    </div>
+    <div class="adm-field">
+      <label>Título (opcional)</label>
+      <input class="adm-input" type="text" id="ef-title"
+        value="${escHtml(exit?.title ?? '')}"
+        placeholder="Ex: Saída especial de verão" />
+    </div>
+    <div class="adm-field">
+      <label>Data e hora *</label>
+      <input class="adm-input" type="datetime-local" id="ef-start" value="${startAtValue}" />
+    </div>
+    <div class="adm-field">
+      <label>Capacidade (vagas) *</label>
+      <input class="adm-input" type="number" id="ef-capacity"
+        value="${exit?.capacity ?? ''}" min="1" placeholder="10" />
+    </div>
+    <div class="adm-field">
+      <label>Preço (R$)</label>
+      <input class="adm-input" type="number" id="ef-price"
+        value="${exit?.price ?? ''}" min="0" step="0.01" placeholder="180.00" />
+    </div>
+    ${isEdit ? `
+    <div class="adm-field">
+      <label>Status</label>
+      <select class="adm-select" id="ef-status">${statusOptions}</select>
+    </div>` : ''}
+    <p id="ef-error" style="color:var(--adm-danger,#e53e3e);font-size:13px;display:none"></p>
+  `,
+  `<button class="adm-btn adm-btn--secondary" id="ef-cancel">Cancelar</button>
+   <button class="adm-btn adm-btn--primary"   id="ef-save">${isEdit ? 'Salvar alterações' : 'Criar saída'}</button>`
+  );
+
+  $('ef-cancel')?.addEventListener('click', closeModal);
+
+  $('ef-save')?.addEventListener('click', async () => {
+    const expId    = $('ef-exp')?.value;
+    const depTitle = $('ef-title')?.value.trim() || null;
+    const startAt  = $('ef-start')?.value;
+    const capacity = parseInt($('ef-capacity')?.value, 10);
+    const price    = parseFloat($('ef-price')?.value) || null;
+    const status   = $('ef-status')?.value ?? 'scheduled';
+    const errEl    = $('ef-error');
+
+    if (!expId)          { errEl.textContent = 'Selecione uma experiência.';         errEl.style.display = 'block'; return; }
+    if (!startAt)        { errEl.textContent = 'Informe a data e hora.';             errEl.style.display = 'block'; return; }
+    if (!capacity || capacity < 1) { errEl.textContent = 'Capacidade deve ser ≥ 1.'; errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+
+    const saveBtn = $('ef-save');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
+
+    const payload = {
+      experience_id: expId,
+      title:         depTitle,
+      start_at:      new Date(startAt).toISOString(),
+      capacity,
+      price,
+      status: isEdit ? status : 'scheduled',
+    };
+
+    const ok = await onSave(payload);
+    if (!ok && saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = isEdit ? 'Salvar alterações' : 'Criar saída';
+    }
   });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  REGISTER PAYMENT MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-
 function openRegisterPaymentModal(bookingId) {
   const b = getBooking(bookingId);
   if (!b) return;

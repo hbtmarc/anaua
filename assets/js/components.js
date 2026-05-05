@@ -227,29 +227,18 @@ function getExperienceCoverUrl(url) {
 export function renderExperienceCard(exp) {
   const dep = exp.nextDeparture ?? null;
 
-  // Calcula vagas disponíveis apenas com dados reais do banco
-  let spotsAvailable = null;
-  if (dep) {
-    if (dep.spots_available != null) {
-      spotsAvailable = dep.spots_available;
-    }
-    // Não calcula via reserved_count — coluna não existe na tabela departures
-    // Se spots_available não existe, spotsAvailable permanece null e não assume esgotado
-  }
-
-  const isSoldOut  = dep !== null && spotsAvailable !== null && spotsAvailable <= 0;
-  const hasVacancy = dep !== null && !isSoldOut;
+  // Disponibilidade baseada somente em departure.status — sem spots_available nem reserved_count
+  const isSoldOut  = dep !== null && dep.status !== 'scheduled';
+  const hasVacancy = dep !== null && dep.status === 'scheduled';
   const noSchedule = dep === null;
 
   const price = formatBRL(exp.pricePerPerson ?? exp.price_per_person ?? 0);
 
   let nextLabel;
-  if (hasVacancy) {
-    nextLabel = dep.dateLabel ?? (dep.start_at ? formatDate(dep.start_at) : 'Em breve');
-  } else if (isSoldOut) {
-    nextLabel = dep.dateLabel ?? (dep.start_at ? formatDate(dep.start_at) : null);
+  if (dep) {
+    nextLabel = dep.title ?? (dep.start_at ? formatDate(dep.start_at) : 'Em breve');
   } else {
-    nextLabel = null; // noSchedule
+    nextLabel = null;
   }
 
   console.log(`[components] Card renderizado com disponibilidade real: '${exp.title}' →`, noSchedule ? 'sem saída' : isSoldOut ? 'esgotado' : 'disponível');
@@ -293,9 +282,6 @@ export function renderExperienceCard(exp) {
           ${hasVacancy ? `
             <span class="card__next-exit">
               ${Icon.calendar} Próxima: ${nextLabel}
-              ${spotsAvailable !== null && spotsAvailable <= 4
-                ? `· <strong style="color:var(--color-warning)">${spotsAvailable} vaga${spotsAvailable !== 1 ? 's' : ''}</strong>`
-                : ''}
             </span>
           ` : isSoldOut ? `
             <span class="card__next-exit" style="opacity:.7">${Icon.calendar} ${nextLabel ? `Saída: ${nextLabel}` : 'Esgotado'}</span>
@@ -396,9 +382,12 @@ export function openModal({ title, body, footer = '' }) {
   `;
 
   const close = () => {
-    backdrop.style.animation = 'fadeIn 200ms reverse forwards';
-    backdrop.addEventListener('animationend', () => backdrop.remove(), { once: true });
+    // Disable pointer-events immediately so nothing blocks while fading out
+    backdrop.style.pointerEvents = 'none';
     document.body.style.overflow = '';
+    backdrop.style.animation = 'fadeOut 180ms var(--ease-out) forwards';
+    const fallback = setTimeout(() => backdrop.remove(), 220);
+    backdrop.addEventListener('animationend', () => { clearTimeout(fallback); backdrop.remove(); }, { once: true });
   };
 
   backdrop.querySelector('.modal__close')?.addEventListener('click', close);

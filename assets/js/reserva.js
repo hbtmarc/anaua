@@ -18,7 +18,7 @@ import {
   getSession, isLoggedIn, saveProfile, loadProfile,
 } from './services/UserService.js';
 import { formatBRL, formatDate } from './data.js';
-import { getExperienceBySlug } from './repositories/experienceRepo.js';
+import { getExperienceBySlug, listDeparturesByExperience } from './repositories/experienceRepo.js';
 import {
   PROFILES, PAYMENT_LABEL, TERMS_VERSION,
   STATUS_LABEL, STATUS_CLASS,
@@ -144,20 +144,16 @@ function renderContext() {
   if (currentStep < 2) { $context.style.display = 'none'; return; }
   $context.style.display = '';
 
-  const exitObj = currentStep >= 2
-    ? (exp.nextExits ?? []).find(e => e.id === draft.exitId)
-    : null;
-  const mpObj = currentStep >= 3 && exitObj
-    ? (exitObj.meetingPoints ?? []).find(m => m.id === draft.meetingPointId)
+  const dep   = currentStep >= 2
+    ? (exp.departures ?? []).find(d => d.id === draft.exitId)
     : null;
   const total = computeTotal(draft.profileQtys ?? []);
 
   $context.innerHTML = `
     <div class="booking-context__title">${exp.title}</div>
     <div class="booking-context__meta">
-      ${exitObj ? `<span>📅 ${formatDate(exitObj.date)}</span>` : ''}
-      ${mpObj   ? `<span>📍 ${mpObj.name}</span>` : ''}
-      ${total   ? `<span>💰 ${formatBRL(total)}</span>` : ''}
+      ${dep   ? `<span>📅 ${dep.start_at.split('T')[0]}</span>` : ''}
+      ${total ? `<span>💰 ${formatBRL(total)}</span>` : ''}
     </div>`;
 }
 
@@ -182,23 +178,23 @@ function goTo(step) {
 // ─── STEP 1: Exits ────────────────────────────────────────────────────────────
 
 function renderStep1() {
-  const exits = exp.nextExits ?? [];
+  const exits = exp.departures ?? [];
   if (!exits.length) {
-    $('exit-cards').innerHTML = `<div class="empty-state"><p>Nenhuma saída disponível.</p></div>`;
+    $('exit-cards').innerHTML = `<div class="empty-state"><p>Nenhuma saída disponível no momento.</p></div>`;
     return;
   }
-  $('exit-cards').innerHTML = exits.map(exit => {
-    const soldOut = exit.spotsAvailable === 0 || exit.status !== 'active';
-    const low     = exit.spotsAvailable > 0 && exit.spotsAvailable <= 3;
-    const sel     = draft.exitId === exit.id;
+  $('exit-cards').innerHTML = exits.map(dep => {
+    const soldOut = dep.status !== 'scheduled';
+    const sel     = draft.exitId === dep.id;
+    const dateStr = dep.start_at?.split('T')[0] ?? '';
     return `
       <div class="exit-card ${sel ? 'is-selected' : ''} ${soldOut ? 'is-soldout' : ''}"
-           data-exit="${exit.id}" role="button" tabindex="${soldOut ? -1 : 0}"
+           data-exit="${dep.id}" role="button" tabindex="${soldOut ? -1 : 0}"
            aria-pressed="${sel}" aria-disabled="${soldOut}">
         <span class="exit-card__check" aria-hidden="true">✓</span>
-        <p class="exit-card__date">${formatDate(exit.date)}</p>
-        <p class="exit-card__spots ${low ? 'is-low' : ''}">
-          ${soldOut ? 'Esgotado' : `${exit.spotsAvailable} vaga${exit.spotsAvailable !== 1 ? 's' : ''}`}
+        <p class="exit-card__date">${formatDate(dateStr)}</p>
+        <p class="exit-card__spots">
+          ${soldOut ? 'Esgotado' : `${dep.capacity ?? '?'} vaga${dep.capacity !== 1 ? 's' : ''}`}
         </p>
       </div>`;
   }).join('');
@@ -213,48 +209,24 @@ function renderStep1() {
     card.classList.add('is-selected');
     card.setAttribute('aria-pressed', 'true');
     draft.exitId = card.dataset.exit;
-    draft.meetingPointId = null; // reset downstream
     clearError();
   });
 }
 
 $('next-1').addEventListener('click', () => {
-  const errs = validateStep1({ exitId: draft.exitId, meetingPointId: 'pending' });
-  if (errs.exitId) { showError(errs.exitId); return; }
-  goTo(2);
-  renderStep2();
+  if (!draft.exitId) { showError('Selecione uma saída.'); return; }
+  draft.meetingPointId = null; // nenhum ponto de encontro no DB ainda
+  goTo(3); // pula etapa 2 (pontos de encontro) — não há dados no DB
+  renderStep3();
 });
 
 // ─── STEP 2: Meeting points ───────────────────────────────────────────────────
 
 function renderStep2() {
-  const exitObj = (exp.nextExits ?? []).find(e => e.id === draft.exitId);
-  const mps     = exitObj?.meetingPoints ?? [];
-  $('mp-cards').innerHTML = mps.map(mp => {
-    const sel = draft.meetingPointId === mp.id;
-    return `
-      <div class="mp-card ${sel ? 'is-selected' : ''}" data-mp="${mp.id}" role="button" tabindex="0">
-        <div class="mp-card__radio" aria-hidden="true"></div>
-        <div>
-          <p class="mp-card__name">${mp.name}</p>
-          <p class="mp-card__addr">${mp.address}</p>
-          <p class="mp-card__time">⏰ ${mp.time} — tolerância ${mp.toleranceMinutes} min</p>
-        </div>
-      </div>`;
-  }).join('');
-
-  $('mp-cards').addEventListener('click', (e) => {
-    const card = e.target.closest('.mp-card');
-    if (!card) return;
-    document.querySelectorAll('.mp-card').forEach(c => c.classList.remove('is-selected'));
-    card.classList.add('is-selected');
-    draft.meetingPointId = card.dataset.mp;
-    clearError();
-  });
+  // Etapa 2 (pontos de encontro) não possui dados no DB — etapa pulada via next-1.
 }
 
 $('next-2').addEventListener('click', () => {
-  if (!draft.meetingPointId) { showError('Selecione um ponto de encontro.'); return; }
   goTo(3);
   renderStep3();
 });
@@ -306,8 +278,8 @@ function updatePriceSummary(containerId) {
 }
 
 function renderStep3() {
-  const exitObj = (exp.nextExits ?? []).find(e => e.id === draft.exitId);
-  const maxSpots = exitObj?.spotsAvailable ?? 9;
+  const dep      = (exp.departures ?? []).find(d => d.id === draft.exitId);
+  const maxSpots = dep?.capacity ?? 9;
   const hasChildren = exp.priceChildren !== null;
 
   $('profile-rows').innerHTML = Object.entries(PROFILES).map(([key, profile]) => {
@@ -362,7 +334,7 @@ $('next-3').addEventListener('click', () => {
   goTo(4);
 });
 
-$('back-3').addEventListener('click', () => goTo(2));
+$('back-3').addEventListener('click', () => goTo(1)); // pula passo-2 ao voltar
 
 // ─── STEP 4: Payer ────────────────────────────────────────────────────────────
 
@@ -865,24 +837,19 @@ $('next-8').addEventListener('click', async () => {
     };
     showToast(STATUS_TOAST[booking.status] ?? 'Solicitação recebida!', 'success', 6000);
 
-    // ── Persistir no Supabase (silencioso se RLS ou rede bloquear) ──────────
+    // ── Persistir no Supabase (destino primário — erros são logados mas não bloqueiam a UI) ──────────
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      const code = booking.voucherCode ?? booking.id;
 
       const { ok: resOk, id: resId, error: resErr } = await insertReservation({
         userId:            user?.id ?? null,
-        reservationCode:   code,
         experienceId:      draft.experienceId,
         exitId:            draft.exitId ?? null,
-        meetingPointId:    draft.meetingPointId ?? null,
         payer:             booking.payer,
         totalAmount:       booking.totalAmount,
-        amountPaid:        booking.paidAmount,
-        paymentStatus:     booking.paidAmount > 0 ? 'partial' : 'pending',
+        amountPaid:        booking.paidAmount ?? 0,
         reservationStatus: booking.status,
         paymentMethod:     booking.paymentMethod ?? null,
-        termsAccepted:     !!(draft.termsAcceptance?.terms),
         notes:             draft.observations ?? null,
       });
 
@@ -925,8 +892,8 @@ $('back-8').addEventListener('click', () => goTo(7));
  * @returns {string} URL wa.me
  */
 function buildWhatsAppCancelLink(booking, experience) {
-  const exitObj   = (experience.nextExits ?? []).find(e => e.id === booking.exitId);
-  const dateLabel = exitObj?.dateLabel ?? booking.exitId ?? 'data a confirmar';
+  const dep = (experience.departures ?? []).find(d => d.id === booking.exitId);
+  const dateLabel = dep?.start_at?.split('T')[0] ? formatDate(dep.start_at.split('T')[0]) : 'data a confirmar';
   const msg = [
     `Olá! Gostaria de cancelar minha reserva.`,
     `Código: ${booking.voucherCode ?? booking.id}`,
@@ -940,8 +907,8 @@ function buildWhatsAppCancelLink(booking, experience) {
 }
 
 function renderVoucher(booking, paymentResult, split) {
-  const exitObj = (exp.nextExits ?? []).find(e => e.id === booking.exitId);
-  const mpObj   = exitObj?.meetingPoints?.find(m => m.id === booking.meetingPointId);
+  const dep    = (exp.departures ?? []).find(d => d.id === booking.exitId);
+  const depDate = dep?.start_at?.split('T')[0] ?? null;
   const status  = booking.status;
   const hasPending = booking.pendingAmount > 0;
 
@@ -977,15 +944,15 @@ function renderVoucher(booking, paymentResult, split) {
           </div>
           <div class="voucher__field">
             <dt>Data</dt>
-            <dd>${exitObj ? formatDate(exitObj.date) : '-'}</dd>
+            <dd>${depDate ? formatDate(depDate) : '— a confirmar'}</dd>
           </div>
           <div class="voucher__field">
             <dt>Ponto de encontro</dt>
-            <dd>${mpObj ? mpObj.name : '-'}</dd>
+            <dd>A confirmar com o guia</dd>
           </div>
           <div class="voucher__field">
             <dt>Horário</dt>
-            <dd>${mpObj ? mpObj.time : '-'}</dd>
+            <dd>A confirmar</dd>
           </div>
           <div class="voucher__field">
             <dt>Responsável</dt>
@@ -1070,6 +1037,26 @@ function renderVoucher(booking, paymentResult, split) {
 
   exp = loadedExp;
   console.log('[reserva] Experiência carregada do Supabase ✓', exp.slug);
+
+  // Carrega saídas reais do banco
+  const { data: departures } = await listDeparturesByExperience(exp.id);
+  exp.departures = departures ?? [];
+  console.log('[hardening-2.1] Saídas carregadas ✓', exp.departures.length);
+
+  // Guard: sem saídas futuras → estado vazio com link para lista de espera
+  if (exp.departures.length === 0) {
+    if (wrap) wrap.innerHTML = `
+      <div class="empty-state">
+        <p class="empty-state__title">Nenhuma saída disponível</p>
+        <p class="empty-state__desc">Não há vagas abertas para esta experiência no momento.</p>
+        <div style="display:flex;gap:var(--sp-4);justify-content:center;flex-wrap:wrap;margin-top:var(--sp-6)">
+          <a href="experiencia.html?id=${exp.slug ?? exp.id}" class="btn btn--secondary">Ver detalhes</a>
+        </div>
+      </div>`;
+    return;
+  }
+
+  console.log('[hardening-2.1] Próxima saída vinculada ✓', exp.departures[0]?.start_at);
 
   // Inicializa o rascunho usando o UUID (exp.id) como chave
   draft = loadDraft() ?? createDraft(exp.id);

@@ -1,13 +1,14 @@
 /**
  * @fileoverview reservationRepo.js — Operações Supabase para reservas, participantes e pagamentos.
  *
- * Tabelas necessárias em public:
- *   - reservations
- *   - participants
- *   - payments
+ * Colunas confirmadas no schema:
+ *   reservations : id, user_id, experience_id, departure_id, customer_name,
+ *                  customer_email, customer_phone, reservation_status,
+ *                  total_amount, amount_paid, payment_method, notes, created_at
+ *   participants : id, reservation_id, name, profile_type, birthdate
+ *   payments     : id, reservation_id, amount, payment_method, status, paid_at
  *
- * Todas as operações são defensivas: erros de RLS são registrados no console
- * mas não quebram a UI — o fluxo de reserva continua com fallback localStorage.
+ * Execute supabase/migrations/booking_schema.sql antes de usar em produção.
  */
 
 import { supabase } from '../supabaseClient.js';
@@ -35,29 +36,23 @@ import { supabase } from '../supabaseClient.js';
  * @returns {Promise<{ ok: boolean, id: string|null, error: string|null }>}
  */
 export async function insertReservation({
-  userId, reservationCode, experienceId, exitId, meetingPointId,
-  payer, totalAmount, amountPaid, paymentStatus, reservationStatus,
-  paymentMethod, termsAccepted, notes,
+  userId, experienceId, exitId,
+  payer, totalAmount, amountPaid, reservationStatus,
+  paymentMethod, notes,
 }) {
   const { data, error } = await supabase
     .from('reservations')
     .insert({
       user_id:            userId ?? null,
-      reservation_code:   reservationCode,
       experience_id:      experienceId,
-      exit_id:            exitId ?? null,
-      meeting_point_id:   meetingPointId ?? null,
-      customer_name:      payer.fullName,
-      customer_email:     payer.email,
-      customer_phone:     payer.phone ?? null,
-      customer_cpf:       payer.cpf ?? null,
-      customer_birthdate: payer.birthdate ?? null,
+      departure_id:       exitId ?? null,      // exitId = departure UUID
+      customer_name:      payer?.fullName ?? null,
+      customer_email:     payer?.email ?? null,
+      customer_phone:     payer?.phone ?? null,
       total_amount:       totalAmount,
-      amount_paid:        amountPaid,
-      payment_status:     paymentStatus,
-      reservation_status: reservationStatus,
+      amount_paid:        amountPaid ?? 0,
+      reservation_status: reservationStatus ?? 'reserved',
       payment_method:     paymentMethod ?? null,
-      terms_accepted:     termsAccepted ?? false,
       notes:              notes ?? null,
     })
     .select('id')
@@ -67,6 +62,7 @@ export async function insertReservation({
     console.warn('[reservationRepo] insertReservation erro:', error.message);
     return { ok: false, id: null, error: error.message };
   }
+  console.log('[reservationRepo] Reserva inserida ✓ id:', data.id);
   return { ok: true, id: data.id, error: null };
 }
 
@@ -82,14 +78,12 @@ export async function insertReservation({
 export async function insertParticipants(reservationId, participants) {
   if (!participants?.length) return { ok: true, error: null };
 
+  // Confirmed columns: id, reservation_id, name, profile_type, birthdate
   const rows = participants.map(p => ({
     reservation_id: reservationId,
-    full_name:      p.fullName,
-    doc_number:     p.docNumber ?? null,
+    name:           p.fullName ?? p.name ?? null,
+    profile_type:   p.profile  ?? p.profile_type ?? null,
     birthdate:      p.birthdate ?? null,
-    profile:        p.profile,
-    is_responsible: p.isResponsible ?? false,
-    observations:   p.observations ?? null,
   }));
 
   const { error } = await supabase.from('participants').insert(rows);
@@ -97,6 +91,7 @@ export async function insertParticipants(reservationId, participants) {
     console.warn('[reservationRepo] insertParticipants erro:', error.message);
     return { ok: false, error: error.message };
   }
+  console.log('[reservationRepo] Participantes inseridos ✓', rows.length);
   return { ok: true, error: null };
 }
 
@@ -116,18 +111,18 @@ export async function insertParticipants(reservationId, participants) {
  */
 export async function insertPaymentRecord({ reservationId, method, amountPaid, status, notes }) {
   const { error } = await supabase.from('payments').insert({
-    reservation_id: reservationId,
-    method:         method ?? null,
-    amount:         amountPaid,
-    status:         status,
-    notes:          notes ?? null,
-    paid_at:        status === 'paid' ? new Date().toISOString() : null,
+    reservation_id:   reservationId,
+    payment_method:   method ?? null,
+    amount:           amountPaid ?? 0,
+    status:           status ?? 'pending',
+    paid_at:          (status === 'paid' || status === 'partial') ? new Date().toISOString() : null,
   });
 
   if (error) {
     console.warn('[reservationRepo] insertPaymentRecord erro:', error.message);
     return { ok: false, error: error.message };
   }
+  console.log('[reservationRepo] Pagamento registrado ✓ status:', status);
   return { ok: true, error: null };
 }
 
