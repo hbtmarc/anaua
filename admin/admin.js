@@ -23,12 +23,15 @@ document.body.style.visibility = 'hidden';
 
 // ─── Logout helper ────────────────────────────────────────────────────────────
 function adminLogout() {
+  localStorage.removeItem('anaua_admin_session');
+  sessionStorage.removeItem('anaua_admin_session');
   if (window.anauaDb) window.anauaDb.auth.signOut();
   location.replace('login.html');
 }
 
 
 
+// seedMockBookings removida — dashboard usa Supabase
 function seedMockBookings() {
   const existing = listBookings();
   if (existing.length >= 3) return;
@@ -288,7 +291,7 @@ $('sidebar-toggle').addEventListener('click', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderDashboard(root) {
-  const all = listBookings();
+  const all = []; // DB-first: dados reais virão do Supabase via loadSupabaseCounters()
 
   const total     = all.reduce((s, b) => s + (b.totalAmount ?? 0), 0);
   const paid      = all.reduce((s, b) => s + (b.paidAmount  ?? 0), 0);
@@ -305,8 +308,8 @@ function renderDashboard(root) {
       .map(e => ({ exp, exit: e }))
   ).sort((a, b) => a.exit.date.localeCompare(b.exit.date)).slice(0, 5);
 
-  // Recent bookings
-  const recent = [...all].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
+  // Recent bookings — será populado quando CRUD de reservas for implementado
+  const recent = [];
 
   root.innerHTML = `
     <div class="adm-kpi-row">
@@ -1364,8 +1367,7 @@ $('adm-global-search').addEventListener('keydown', e => {
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-
-seedMockBookings();
+// seedMockBookings() removida — dashboard carrega dados do Supabase
 
 // ─── Supabase Auth Guard (async) ──────────────────────────────────────────────
 // Inicializa o cliente Supabase reutilizando a mesma URL/key do projeto
@@ -1413,7 +1415,7 @@ seedMockBookings();
         <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
           <p style="color:var(--adm-danger);font-size:1.1rem;font-weight:600">Não foi possível validar seu perfil administrativo.</p>
           <p style="color:var(--adm-text-muted);margin-top:8px">Verifique o console para detalhes ou tente novamente.</p>
-          <a href="login.html" class="adm-btn adm-btn--primary" style="margin-top:20px;display:inline-flex">Voltar ao login</a>
+          <button onclick="adminLogout()" class="adm-btn adm-btn--primary" style="margin-top:20px;display:inline-flex">Sair e voltar ao login</button>
         </div>`;
       return;
     }
@@ -1435,7 +1437,10 @@ seedMockBookings();
         <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
           <p style="color:var(--adm-danger);font-size:1.1rem;font-weight:600">Acesso não autorizado.</p>
           <p style="color:var(--adm-text-muted);margin-top:8px">Você não tem permissão para acessar o backoffice.</p>
-          <a href="../index.html" class="adm-btn adm-btn--primary" style="margin-top:20px;display:inline-flex">Voltar ao site</a>
+          <div style="display:flex;gap:12px;justify-content:center;margin-top:20px">
+            <button onclick="adminLogout()" class="adm-btn adm-btn--primary">Sair e voltar ao login</button>
+            <a href="../index.html" class="adm-btn adm-btn--ghost">Voltar ao site</a>
+          </div>
         </div>`;
       return;
     }
@@ -1451,8 +1456,9 @@ seedMockBookings();
 
     document.body.style.visibility = 'visible';
 
-    // Carrega contadores reais do Supabase no dashboard
+    // Contadores reais do Supabase carregados após navigate() inicial
     loadSupabaseCounters();
+    console.log('[admin-db] Dashboard carregado do Supabase');
 
   } catch (err) {
     console.error('[admin-auth] Erro ao validar sessão:', err);
