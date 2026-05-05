@@ -246,12 +246,15 @@ export function renderExperienceCard(exp) {
     nextLabel = 'Agenda em breve';
   }
 
-  const levelBadge = `<span class="badge badge--level-${exp.difficulty}">${exp.difficulty}</span>`;
-  const categoryLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category;
+  const difficultyLabel = { iniciante: 'Iniciante', moderado: 'Moderado', aventura: 'Aventura' }[exp.difficulty] ?? exp.difficulty ?? '';
+  const levelBadge = difficultyLabel ? `<span class="badge badge--level-${exp.difficulty}">${difficultyLabel}</span>` : '';
+  const categoryLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category ?? '';
+
+  const expLink = exp.slug ?? exp.id;
 
   return `
     <article class="card ${isSoldOut ? 'card--sold-out' : ''}">
-      <a href="experiencia.html?id=${exp.id}" class="card__thumb" tabindex="-1" aria-hidden="true">
+      <a href="experiencia.html?id=${expLink}" class="card__thumb" tabindex="-1" aria-hidden="true">
         <img
           src="${getExperienceCoverUrl(exp.coverImage ?? exp.cover_image_url)}"
           alt=""
@@ -271,13 +274,13 @@ export function renderExperienceCard(exp) {
       <div class="card__body">
         <p class="card__category">${categoryLabel}</p>
         <h3 class="card__title">
-          <a href="experiencia.html?id=${exp.id}">${exp.title}</a>
+          <a href="experiencia.html?id=${expLink}">${exp.title}</a>
         </h3>
-        <p class="card__desc">${exp.subtitle}</p>
+        ${exp.subtitle ? `<p class="card__desc">${exp.subtitle}</p>` : ''}
         <div class="card__meta">
-          <span class="card__meta-item">${Icon.clock} ${exp.durationLabel}</span>
-          <span class="card__meta-item">${Icon.map} ${exp.location}</span>
-          <span class="card__meta-item">${Icon.users} Máx. ${exp.maxParticipants}</span>
+          ${exp.durationLabel ? `<span class="card__meta-item">${Icon.clock} ${exp.durationLabel}</span>` : ''}
+          ${exp.location     ? `<span class="card__meta-item">${Icon.map} ${exp.location}</span>` : ''}
+          ${exp.maxParticipants ? `<span class="card__meta-item">${Icon.users} Máx. ${exp.maxParticipants}</span>` : ''}
           ${(supabaseDeparture || nextExit) ? `
             <span class="card__next-exit">
               ${Icon.calendar} Próxima: ${nextLabel}
@@ -290,7 +293,7 @@ export function renderExperienceCard(exp) {
           `}
         </div>
       </div>
-      <a href="experiencia.html?id=${exp.id}" class="card__cta" aria-label="Ver detalhes de ${exp.title}">
+      <a href="experiencia.html?id=${expLink}" class="card__cta" aria-label="Ver detalhes de ${exp.title}">
         ${isSoldOut ? 'Lista de espera' : 'Ver detalhes'} ${Icon.arrow}
       </a>
     </article>

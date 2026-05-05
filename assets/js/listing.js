@@ -1,7 +1,9 @@
 /**
  * @fileoverview Listing page — Anauá Ecoturismo
+ * Dados carregados dinamicamente do Supabase (não mais mock estático).
  */
-import { EXPERIENCES, CATEGORIES } from './data.js';
+import './supabaseClient.js'; // garante window.anauaDb
+import { listExperiences } from './repositories/experienceRepo.js';
 import { initPage, renderExperienceCard, renderSkeletonCards, observeAnimations } from './components.js';
 
 initPage('experiencias.html');
@@ -12,6 +14,9 @@ let currentPage = 1;
 let activeCategoryFilter = 'all';
 let activeDifficultyFilter = 'all';
 let sortValue = 'featured';
+
+/** @type {object[]} Experiências carregadas do banco */
+let EXPERIENCES = [];
 
 /* ── Read URL params ─────────────────────────────────────── */
 const params = new URLSearchParams(location.search);
@@ -61,7 +66,7 @@ sortSelect?.addEventListener('change', () => {
 
 /* ── Filter + sort ───────────────────────────────────────── */
 function getFiltered() {
-  let list = EXPERIENCES.filter(e => e.status !== 'draft');
+  let list = EXPERIENCES; // Supabase já filtra is_active=true
 
   if (activeCategoryFilter !== 'all') {
     list = list.filter(e => e.category === activeCategoryFilter);
@@ -103,12 +108,8 @@ function renderPagination(total) {
 }
 
 /* ── Main render ─────────────────────────────────────────── */
-async function render() {
+function render() {
   if (!grid) return;
-  grid.setAttribute('aria-busy', 'true');
-  grid.innerHTML = renderSkeletonCards(PAGE_SIZE);
-
-  await new Promise(r => setTimeout(r, 350));
 
   let filtered;
   try {
@@ -156,5 +157,27 @@ async function render() {
 }
 
 /* ── Init ────────────────────────────────────────────────── */
-syncChips();
-render();
+async function init() {
+  syncChips();
+
+  // Mostra skeletons enquanto carrega do banco
+  if (grid) {
+    grid.setAttribute('aria-busy', 'true');
+    grid.innerHTML = renderSkeletonCards(PAGE_SIZE);
+  }
+
+  const { data, error } = await listExperiences();
+
+  if (error || !data) {
+    if (grid) grid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <p class="empty-state__desc">Não foi possível carregar as experiências. Tente recarregar a página.</p>
+      </div>`;
+    return;
+  }
+
+  EXPERIENCES = data;
+  render();
+}
+
+init();

@@ -18,37 +18,75 @@ import { supabase } from '../supabaseClient.js';
  * @param {object} row - Linha retornada pelo Supabase
  * @returns {object} - Objeto no formato esperado pelos componentes
  */
+/**
+ * Mapeia dificuldade do banco (PT livre) para os slugs usados nos filtros do site.
+ * Garante compatibilidade entre o que o backoffice salva e o que a listagem filtra.
+ */
+const DIFFICULTY_MAP = {
+  'fácil':        'iniciante',
+  'facil':        'iniciante',
+  'easy':         'iniciante',
+  'iniciante':    'iniciante',
+  'moderada':     'moderado',
+  'moderado':     'moderado',
+  'moderate':     'moderado',
+  'difícil':      'aventura',
+  'dificil':      'aventura',
+  'hard':         'aventura',
+  'aventura':     'aventura',
+  'muito difícil':'aventura',
+  'muito dificil':'aventura',
+};
+
+/**
+ * Mapeia categoria do banco para os slugs usados nos filtros do site.
+ */
+const CATEGORY_MAP = {
+  'day-experience':  'day-experience',
+  'trilha':          'day-experience',
+  'caminhada':       'day-experience',
+  'expedition':      'expedition',
+  'expedição':       'expedition',
+  'expedicao':       'expedition',
+  'event':           'event',
+  'evento':          'event',
+  'kids':            'kids',
+};
+
 function normalizeExperience(row) {
+  const rawDifficulty = (row.difficulty ?? '').toLowerCase().trim();
+  const rawCategory   = (row.category   ?? '').toLowerCase().trim();
+
   return {
-    id:               row.id,
-    slug:             row.slug,
-    category:         row.category,
-    status:           row.status,
-    title:            row.title,
-    subtitle:         row.subtitle,
-    description:      row.description,
+    id:               row.slug ?? row.id,   // usa slug como ID para URLs
+    slug:             row.slug ?? row.id,
+    dbId:             row.id,
+    category:         CATEGORY_MAP[rawCategory]   ?? rawCategory   ?? 'day-experience',
+    status:           row.is_active ? 'active' : 'draft',
+    title:            row.title        ?? '',
+    subtitle:         row.subtitle     ?? row.description?.slice(0, 100) ?? '',
+    description:      row.description  ?? '',
     coverImage:       row.cover_image_url ?? row.cover_image ?? null,
-    gallery:          row.gallery ?? [],
-    durationHours:    row.duration_hours,
-    durationLabel:    row.duration_label ?? `${row.duration_hours}h`,
-    minAge:           row.min_age,
-    maxParticipants:  row.max_participants,
-    difficulty:       row.difficulty,
-    distanceKm:       row.distance_km,
-    elevationGainM:   row.elevation_gain_m,
-    location:         row.location,
-    region:           row.region,
-    pricePerPerson:   row.price_per_person,
-    priceChildren:    row.price_children,
-    currency:         row.currency ?? 'BRL',
-    includes:         row.includes ?? [],
-    excludes:         row.excludes ?? [],
-    whatToBring:      row.what_to_bring ?? [],
-    cancellationPolicy: row.cancellation_policy,
-    isFeatured:       row.featured,
-    isNew:            row.is_new ?? false,
-    departures:       row.departures ?? [],
-    // Supabase retorna timestamps ISO — mantém como está
+    gallery:          row.gallery      ?? [],
+    durationHours:    row.duration_hours  ?? null,
+    durationLabel:    row.duration_label  ?? (row.duration_hours ? `${row.duration_hours}h` : '—'),
+    minAge:           row.min_age          ?? null,
+    maxParticipants:  row.max_participants ?? null,
+    difficulty:       DIFFICULTY_MAP[rawDifficulty] ?? rawDifficulty ?? null,
+    distanceKm:       row.distance_km      ?? null,
+    elevationGainM:   row.elevation_gain_m ?? null,
+    location:         row.location         ?? '',
+    region:           row.region           ?? '',
+    pricePerPerson:   row.price_per_person ?? row.base_price ?? 0,
+    priceChildren:    row.price_children   ?? null,
+    currency:         row.currency         ?? 'BRL',
+    includes:         row.includes         ?? [],
+    excludes:         row.excludes         ?? [],
+    whatToBring:      row.what_to_bring    ?? [],
+    cancellationPolicy: row.cancellation_policy ?? null,
+    isFeatured:       row.featured         ?? false,
+    isNew:            row.is_new           ?? false,
+    departures:       row.departures       ?? [],
     createdAt:        row.created_at,
     updatedAt:        row.updated_at,
   };
@@ -67,7 +105,6 @@ export async function listExperiences() {
     .from('experiences')
     .select('*')
     .eq('is_active', true)
-    .order('featured', { ascending: false })
     .order('created_at', { ascending: false });
 
   if (error) {

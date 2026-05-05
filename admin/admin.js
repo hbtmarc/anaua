@@ -516,13 +516,23 @@ function openNovaExperienciaModal() {
       <div class="adm-field"><label>Slug *</label><input id="exp-slug" class="adm-input" required placeholder="trilha-do-pico" /></div>
       <div class="adm-grid-2">
         <div class="adm-field"><label>Local</label><input id="exp-location" class="adm-input" placeholder="Ex: Serra da Canastra" /></div>
-        <div class="adm-field"><label>Categoria</label><input id="exp-category" class="adm-input" placeholder="Ex: Trilha" /></div>
+        <div class="adm-field"><label>Categoria</label>
+          <select id="exp-category" class="adm-input">
+            <option value="">— selecione —</option>
+            <option value="day-experience">Experiência de 1 dia</option>
+            <option value="expedition">Expedição</option>
+            <option value="event">Evento</option>
+            <option value="kids">Kids</option>
+          </select>
+        </div>
       </div>
       <div class="adm-grid-2">
         <div class="adm-field"><label>Dificuldade</label>
           <select id="exp-difficulty" class="adm-input">
             <option value="">— selecione —</option>
-            <option>Fácil</option><option>Moderada</option><option>Difícil</option><option>Muito difícil</option>
+            <option value="iniciante">Iniciante (Fácil)</option>
+            <option value="moderado">Moderado</option>
+            <option value="aventura">Aventura (Difícil)</option>
           </select>
         </div>
         <div class="adm-field"><label>Preço base (R$)</label><input id="exp-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" /></div>
