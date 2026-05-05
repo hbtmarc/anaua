@@ -5,17 +5,12 @@
  *
  * Architecture:
  *  - Hash router: location.hash = '#module' or '#module/id'
- *  - All data sourced from:
- *    - EXPERIENCES + exits from data.js (experiences catalog)
- *    - Bookings from ReservationStore (localStorage)
- *    - Seeded mock bookings injected on first load if empty
+ *  - All data sourced from Supabase (window.anauaDb) — DB-first, no localStorage mocks
  */
 
-import { EXPERIENCES, formatBRL, formatDate } from '../assets/js/data.js';
+import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
-import {
-  listBookings, saveBooking, getBooking, transitionStatus, recordPayment,
-} from '../assets/js/services/ReservationStore.js';
+// ReservationStore removido — dados vêm do Supabase
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
 // Oculta o body imediatamente para evitar flash de conteúdo antes da validação
@@ -32,108 +27,7 @@ function adminLogout() {
 
 
 
-// seedMockBookings removida — dashboard usa Supabase
-function seedMockBookings() {
-  const existing = listBookings();
-  if (existing.length >= 3) return;
-
-  const now = Date.now();
-  const mock = [
-    {
-      id: 'BK-001', experienceId: 'trekking-vale-sombra', exitId: 'exit-vs-01',
-      meetingPointId: 'mp-vs-01-a',
-      status: 'confirmed',
-      payer: { fullName: 'Maria Clara Torres', cpf: '529.982.247-25', email: 'maria@email.com', phone: '(21) 99001-1234', birthdate: '1991-04-10', isAlsoParticipant: true },
-      participants: [{ id: 'p1', fullName: 'Maria Clara Torres', profile: 'adult', docNumber: '529.982.247-25', birthdate: '1991-04-10' }],
-      emergencyContact: { fullName: 'Pedro Torres', phone: '(21) 99002-5678', relationship: 'Marido' },
-      termsAcceptance: { terms: true, cancellation: true, riskAwareness: true, imageConsent: true, version: '2026-01', acceptedAt: new Date().toISOString() },
-      profileQtys: [{ profile: 'adult', qty: 2, unitPrice: 390 }],
-      totalAmount: 780, paidAmount: 780, pendingAmount: 0,
-      paymentMethod: 'pix',
-      paymentHistory: [{ transactionId: 'TX001', method: 'pix', amountPaid: 780, paidAt: new Date(now - 86400000 * 5).toISOString(), success: true }],
-      voucherCode: 'ANA-2026-001',
-      notes: '',
-      createdAt: new Date(now - 86400000 * 10).toISOString(),
-      updatedAt: new Date(now - 86400000 * 5).toISOString(),
-    },
-    {
-      id: 'BK-002', experienceId: 'kids-trilha-bicho', exitId: 'exit-kb-01',
-      meetingPointId: 'mp-kb-01-a',
-      status: 'reserved',
-      payer: { fullName: 'Roberto Alvim', cpf: '111.222.333-44', email: 'roberto@email.com', phone: '(31) 98877-6655', birthdate: '1984-09-22', isAlsoParticipant: false },
-      participants: [
-        { id: 'p2', fullName: 'Roberto Alvim', profile: 'adult', docNumber: '111.222.333-44', birthdate: '1984-09-22' },
-        { id: 'p3', fullName: 'Sofia Alvim', profile: 'child', docNumber: '', birthdate: '2018-03-15' },
-      ],
-      emergencyContact: { fullName: 'Ana Alvim', phone: '(31) 97766-4433', relationship: 'Esposa' },
-      termsAcceptance: { terms: true, cancellation: true, riskAwareness: true, imageConsent: false, version: '2026-01', acceptedAt: new Date().toISOString() },
-      profileQtys: [{ profile: 'adult', qty: 1, unitPrice: 220 }, { profile: 'child', qty: 1, unitPrice: 120 }],
-      totalAmount: 340, paidAmount: 102, pendingAmount: 238,
-      paymentMethod: 'signal_balance',
-      paymentHistory: [{ transactionId: 'TX002', method: 'pix', amountPaid: 102, paidAt: new Date(now - 86400000 * 3).toISOString(), success: true }],
-      voucherCode: 'ANA-2026-002',
-      notes: 'Sofia é alérgica a amendoim.',
-      createdAt: new Date(now - 86400000 * 7).toISOString(),
-      updatedAt: new Date(now - 86400000 * 3).toISOString(),
-    },
-    {
-      id: 'BK-003', experienceId: 'expedicao-pantanal', exitId: 'exit-pt-01',
-      meetingPointId: 'mp-pt-01-a',
-      status: 'pending_payment',
-      payer: { fullName: 'Juliana Bispo', cpf: '555.666.777-88', email: 'juliana@email.com', phone: '(11) 91234-5678', birthdate: '1995-07-30', isAlsoParticipant: true },
-      participants: [{ id: 'p4', fullName: 'Juliana Bispo', profile: 'adult', docNumber: '555.666.777-88', birthdate: '1995-07-30' }],
-      emergencyContact: { fullName: 'Carla Bispo', phone: '(11) 99999-0000', relationship: 'Mãe' },
-      termsAcceptance: { terms: true, cancellation: true, riskAwareness: true, imageConsent: true, version: '2026-01', acceptedAt: new Date().toISOString() },
-      profileQtys: [{ profile: 'adult', qty: 1, unitPrice: 1890 }],
-      totalAmount: 1890, paidAmount: 0, pendingAmount: 1890,
-      paymentMethod: 'credit_card',
-      paymentHistory: [],
-      voucherCode: 'ANA-2026-003',
-      notes: '',
-      createdAt: new Date(now - 86400000 * 2).toISOString(),
-      updatedAt: new Date(now - 86400000 * 2).toISOString(),
-    },
-    {
-      id: 'BK-004', experienceId: 'trekking-vale-sombra', exitId: 'exit-vs-02',
-      meetingPointId: 'mp-vs-01-b',
-      status: 'cancelled',
-      payer: { fullName: 'Carlos Menezes', cpf: '123.456.789-00', email: 'carlos@email.com', phone: '(51) 99222-3344', birthdate: '1988-12-01', isAlsoParticipant: true },
-      participants: [{ id: 'p5', fullName: 'Carlos Menezes', profile: 'adult', docNumber: '123.456.789-00', birthdate: '1988-12-01' }],
-      emergencyContact: { fullName: 'Lucia Menezes', phone: '(51) 99111-2233', relationship: 'Mãe' },
-      termsAcceptance: { terms: true, cancellation: true, riskAwareness: true, imageConsent: true, version: '2026-01', acceptedAt: new Date().toISOString() },
-      profileQtys: [{ profile: 'adult', qty: 1, unitPrice: 390 }],
-      totalAmount: 390, paidAmount: 390, pendingAmount: 0,
-      paymentMethod: 'credit_card',
-      paymentHistory: [{ transactionId: 'TX004', method: 'credit_card', amountPaid: 390, paidAt: new Date(now - 86400000 * 14).toISOString(), success: true }],
-      voucherCode: 'ANA-2026-004',
-      notes: 'Solicitou cancelamento por motivos particulares.',
-      createdAt: new Date(now - 86400000 * 20).toISOString(),
-      updatedAt: new Date(now - 86400000 * 12).toISOString(),
-    },
-    {
-      id: 'BK-005', experienceId: 'retiro-yoga-selva', exitId: 'exit-ry-01',
-      meetingPointId: 'mp-ry-01-a',
-      status: 'confirmed',
-      payer: { fullName: 'Ana Paula Freitas', cpf: '321.654.987-11', email: 'anapaula@email.com', phone: '(19) 98765-4321', birthdate: '1992-02-14', isAlsoParticipant: true },
-      participants: [
-        { id: 'p6', fullName: 'Ana Paula Freitas', profile: 'adult', docNumber: '321.654.987-11', birthdate: '1992-02-14' },
-        { id: 'p7', fullName: 'Renata Souza', profile: 'adult', docNumber: '444.555.666-77', birthdate: '1990-11-20' },
-      ],
-      emergencyContact: { fullName: 'Rogério Freitas', phone: '(19) 97654-3210', relationship: 'Pai' },
-      termsAcceptance: { terms: true, cancellation: true, riskAwareness: true, imageConsent: true, version: '2026-01', acceptedAt: new Date().toISOString() },
-      profileQtys: [{ profile: 'adult', qty: 2, unitPrice: 1200 }],
-      totalAmount: 2400, paidAmount: 2400, pendingAmount: 0,
-      paymentMethod: 'pix',
-      paymentHistory: [{ transactionId: 'TX005', method: 'pix', amountPaid: 2400, paidAt: new Date(now - 86400000 * 1).toISOString(), success: true }],
-      voucherCode: 'ANA-2026-005',
-      notes: '',
-      createdAt: new Date(now - 86400000 * 4).toISOString(),
-      updatedAt: new Date(now - 86400000 * 1).toISOString(),
-    },
-  ];
-
-  mock.forEach(b => saveBooking(b));
-}
+// seedMockBookings removida — mock data removido completamente
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -179,13 +73,8 @@ function occFill(pct) {
   </div>`;
 }
 
-function findExit(exitId) {
-  for (const exp of EXPERIENCES) {
-    const exit = exp.nextExits?.find(e => e.id === exitId);
-    if (exit) return { exp, exit };
-  }
-  return null;
-}
+// findExit — retorna null (EXPERIENCES local removido; dados vêm do Supabase)
+function findExit(_exitId) { return null; }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -292,26 +181,110 @@ $('sidebar-toggle').addEventListener('click', () => {
 //  MODULE: DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderDashboard(root) {
-  const all = []; // DB-first: dados reais virão do Supabase via loadSupabaseCounters()
+async function renderDashboard(root) {
+  const db = window.anauaDb;
 
-  const total     = all.reduce((s, b) => s + (b.totalAmount ?? 0), 0);
-  const paid      = all.reduce((s, b) => s + (b.paidAmount  ?? 0), 0);
-  const pending   = all.reduce((s, b) => s + (b.pendingAmount ?? 0), 0);
-  const confirmed = all.filter(b => b.status === 'confirmed' || b.status === 'reserved').length;
-  const cancelled = all.filter(b => b.status === 'cancelled').length;
-  const overdue   = all.filter(b => b.status === 'reserved' && (b.pendingAmount ?? 0) > 0).length;
+  // Shell imediato com KPI placeholders e tabelas vazias
+  root.innerHTML = `
+    <div class="adm-kpi-row" id="dash-kpi-row">
+      ${kpi('A Receber', '…', 'carregando…', 'green', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>')}
+      ${kpi('Reservas ativas', '…', 'confirmadas + reservadas', 'blue', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>')}
+      ${kpi('Inadimplentes', '…', 'pendente de pagamento', 'red', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>')}
+      ${kpi('Cancelamentos', '…', 'total geral', 'gray', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>')}
+      ${kpi('Total Bruto', '…', 'volume de vendas', 'gold', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>')}
+      ${kpi('Total Recebido', '…', 'pagamentos confirmados', 'purple', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>')}
+    </div>
+    <div class="adm-grid-2">
+      <div class="adm-card" id="dash-reservas-card">
+        <div class="adm-card__header">Reservas recentes <div class="adm-card__actions"><a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a></div></div>
+        <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
+      </div>
+      <div class="adm-card" id="dash-saidas-card">
+        <div class="adm-card__header">Próximas saídas <div class="adm-card__actions"><a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a></div></div>
+        <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
+      </div>
+    </div>`;
 
-  // Next exits
-  const now = new Date().toISOString().split('T')[0];
-  const nextExits = EXPERIENCES.flatMap(exp =>
-    (exp.nextExits ?? [])
-      .filter(e => e.date >= now && e.status !== 'cancelled')
-      .map(e => ({ exp, exit: e }))
-  ).sort((a, b) => a.exit.date.localeCompare(b.exit.date)).slice(0, 5);
+  if (!db) {
+    document.getElementById('dash-kpi-row').innerHTML = `<p style="color:var(--adm-danger)">Supabase não disponível.</p>`;
+    return;
+  }
 
-  // Recent bookings — será populado quando CRUD de reservas for implementado
-  const recent = [];
+  const safeCount = async (tbl, filter) => {
+    try {
+      let q = db.from(tbl).select('*', { count: 'exact', head: true });
+      if (filter) q = filter(q);
+      const { count, error } = await q;
+      if (error) { console.warn('[admin-db] Count bloqueado por RLS:', tbl, error.message); return 0; }
+      return count ?? 0;
+    } catch { return 0; }
+  };
+
+  const [totalRes, activeRes, pendingRes, cancelledRes, recentRows, upcomingRows, paidSum] = await Promise.all([
+    safeCount('reservations'),
+    safeCount('reservations', q => q.in('reservation_status', ['confirmed', 'reserved'])),
+    safeCount('reservations', q => q.eq('reservation_status', 'pending_payment')),
+    safeCount('reservations', q => q.eq('reservation_status', 'cancelled')),
+    db.from('reservations').select('id, reservation_code, payer_name, reservation_status, total_amount, created_at').order('created_at', { ascending: false }).limit(6),
+    db.from('departures').select('id, date, status, spots_total, spots_available, experience_id, experiences(title)').gte('date', new Date().toISOString().split('T')[0]).eq('status', 'scheduled').order('date').limit(5),
+    db.from('payments').select('amount').eq('status', 'paid'),
+  ]);
+
+  const paidTotal = (paidSum.data ?? []).reduce((s, p) => s + Number(p.amount ?? 0), 0);
+  const recent    = recentRows.data  ?? [];
+  const upcoming  = upcomingRows.data ?? [];
+
+  // KPIs
+  document.getElementById('dash-kpi-row').innerHTML =
+    kpi('Reservas ativas',  activeRes,        'confirmadas + reservadas',   'blue',   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>') +
+    kpi('Aguardando pag.',  pendingRes,       'pending_payment',            'gold',   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>') +
+    kpi('Cancelamentos',   cancelledRes,     'total geral',                 'gray',   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>') +
+    kpi('Total reservas',  totalRes,         'tabela reservations',         'purple', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>') +
+    kpi('Total Recebido',  fmt(paidTotal),   'pagamentos confirmados',      'green',  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>');
+
+  // Reservas recentes
+  document.getElementById('dash-reservas-card').innerHTML = `
+    <div class="adm-card__header">Reservas recentes <div class="adm-card__actions"><a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a></div></div>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead><tr><th>Código</th><th>Responsável</th><th>Status</th><th>Total</th></tr></thead>
+        <tbody>${recent.length
+          ? recent.map(r => `<tr>
+              <td class="no-wrap text-small text-muted">${escHtml(r.reservation_code ?? r.id)}</td>
+              <td class="text-bold">${escHtml(r.payer_name ?? '—')}</td>
+              <td>${badge(r.reservation_status ?? 'pending_payment')}</td>
+              <td class="no-wrap text-bold">${fmt(r.total_amount ?? 0)}</td>
+            </tr>`).join('')
+          : '<tr><td colspan="4" class="adm-table__empty text-muted">Nenhuma reserva ainda.</td></tr>'
+        }</tbody>
+      </table>
+    </div>`;
+
+  // Próximas saídas
+  document.getElementById('dash-saidas-card').innerHTML = `
+    <div class="adm-card__header">Próximas saídas <div class="adm-card__actions"><a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a></div></div>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead><tr><th>Data</th><th>Experiência</th><th>Ocupação</th><th>Vagas</th></tr></thead>
+        <tbody>${upcoming.length
+          ? upcoming.map(d => {
+              const booked = (d.spots_total ?? 0) - (d.spots_available ?? 0);
+              const pct    = d.spots_total ? (booked / d.spots_total) * 100 : 0;
+              const title  = d.experiences?.title ?? d.experience_id ?? '—';
+              return `<tr>
+                <td class="no-wrap">${fmtDateShort(d.date)}</td>
+                <td>${escHtml(title)}</td>
+                <td style="min-width:120px">${occFill(pct)}</td>
+                <td class="text-bold">${d.spots_available ?? 0}/${d.spots_total ?? 0}</td>
+              </tr>`;
+            }).join('')
+          : '<tr><td colspan="4" class="adm-table__empty text-muted">Sem saídas futuras agendadas.</td></tr>'
+        }</tbody>
+      </table>
+    </div>`;
+
+  console.log('[admin-db] Dashboard carregado do Supabase');
+}
 
   root.innerHTML = `
     <div class="adm-kpi-row">
@@ -411,40 +384,56 @@ function kpi(label, value, sub, color, iconSvg) {
 //  MODULE: AGENDA
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderAgenda(root) {
+async function renderAgenda(root) {
+  const db = window.anauaDb;
   const today = new Date();
-  let viewYear = today.getFullYear();
-  let viewMonth = today.getMonth(); // 0-indexed
-  let listView = false;
+  let viewYear  = today.getFullYear();
+  let viewMonth = today.getMonth();
+  let listView  = false;
+  let allExits  = [];
 
-  function render() {
-    const allExits = EXPERIENCES.flatMap(exp =>
-      (exp.nextExits ?? []).map(e => ({ exp, exit: e }))
-    );
+  root.innerHTML = '<div class="adm-empty" style="padding:32px;text-align:center"><p class="text-muted">Carregando agenda…</p></div>';
 
-    if (listView) {
-      renderList();
+  if (db) {
+    const { data, error } = await db
+      .from('departures')
+      .select('id, date, status, spots_total, spots_available, experience_id, experiences(title)')
+      .order('date');
+    if (!error) {
+      allExits = (data ?? []).map(d => ({
+        exp:  { title: d.experiences?.title ?? d.experience_id ?? '—', id: d.experience_id },
+        exit: { id: d.id, date: d.date, status: d.status, spotsTotal: d.spots_total ?? 0, spotsAvailable: d.spots_available ?? 0 },
+      }));
+      console.log('[admin-db] Saídas carregadas (agenda):', allExits.length);
     } else {
-      renderCal();
+      console.warn('[admin-db] Erro ao carregar saídas:', error.message);
     }
   }
 
-  function renderCal() {
-    const allExits = EXPERIENCES.flatMap(exp =>
-      (exp.nextExits ?? []).map(e => ({ exp, exit: e }))
-    );
+  function render() { listView ? renderList() : renderCal(); }
 
+  function renderCal() {
     const firstDay = new Date(viewYear, viewMonth, 1);
     const lastDay  = new Date(viewYear, viewMonth + 1, 0);
-    const startWeekday = firstDay.getDay(); // 0=Sun
+    const startWeekday = firstDay.getDay();
     const monthName = firstDay.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-
-    // Build cells
     const cells = [];
     for (let i = 0; i < startWeekday; i++) cells.push(null);
     for (let d = 1; d <= lastDay.getDate(); d++) cells.push(d);
+    const todayStr = today.toISOString().split('T')[0];
 
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const dayEventsHtml = cells.map(d => {
+      if (d === null) return '<div class="adm-cal__day is-empty"></div>';
+      const ds = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const dayEx = allExits.filter(x => x.exit.date === ds);
+      const isToday = ds === todayStr;
+      const evts = dayEx.map(({ exp, exit }) => {
+        const pct = exit.spotsTotal ? ((exit.spotsTotal - exit.spotsAvailable) / exit.spotsTotal) * 100 : 0;
+        const cls = exit.spotsAvailable === 0 ? 'is-sold' : pct >= 70 ? 'is-hot' : '';
+        return `<span class="adm-cal__evt ${cls}" data-exit="${exit.id}" title="${escHtml(exp.title)}">${escHtml(exp.title.slice(0,18))}</span>`;
+      }).join('');
+      return `<div class="adm-cal__day ${isToday ? 'is-today' : ''}" data-date="${ds}"><div class="adm-cal__daynum">${d}</div>${evts}</div>`;
+    }).join('');
 
     root.innerHTML = `
       <div class="adm-card">
@@ -465,39 +454,21 @@ function renderAgenda(root) {
         <div style="padding:16px">
           <div class="adm-cal__grid">
             ${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d => `<div class="adm-cal__weekday">${d}</div>`).join('')}
-            ${cells.map(d => {
-              if (d === null) return `<div class="adm-cal__day is-empty"></div>`;
-              const ds = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-              const dayExits = allExits.filter(x => x.exit.date === ds);
-              const isToday = ds === todayStr;
-              return `<div class="adm-cal__day ${isToday ? 'is-today' : ''}" data-date="${ds}">
-                <div class="adm-cal__daynum">${d}</div>
-                ${dayExits.map(({ exp, exit }) => {
-                  const pct = ((exit.spotsTotal - exit.spotsAvailable) / exit.spotsTotal) * 100;
-                  const cls = exit.spotsAvailable === 0 ? 'is-sold' : pct >= 70 ? 'is-hot' : '';
-                  return `<span class="adm-cal__evt ${cls}" data-exit="${exit.id}" title="${exp.title}">${exp.title.slice(0, 18)}</span>`;
-                }).join('')}
-              </div>`;
-            }).join('')}
+            ${dayEventsHtml}
           </div>
         </div>
       </div>`;
 
-    root.querySelectorAll('.adm-cal__evt').forEach(el => {
-      el.addEventListener('click', e => { e.stopPropagation(); openExitDrawer(el.dataset.exit); });
-    });
-    $('cal-prev').addEventListener('click', () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } render(); });
-    $('cal-next').addEventListener('click', () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } render(); });
+    root.querySelectorAll('.adm-cal__evt').forEach(el => el.addEventListener('click', e => { e.stopPropagation(); openExitDrawer(el.dataset.exit); }));
+    $('cal-prev').addEventListener('click',  () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } render(); });
+    $('cal-next').addEventListener('click',  () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } render(); });
     $('cal-today').addEventListener('click', () => { viewYear = today.getFullYear(); viewMonth = today.getMonth(); render(); });
-    $('tog-list').addEventListener('click', () => { listView = true; render(); });
-    $('tog-cal').addEventListener('click', () => { listView = false; render(); });
+    $('tog-list').addEventListener('click',  () => { listView = true;  render(); });
+    $('tog-cal').addEventListener('click',   () => { listView = false; render(); });
   }
 
   function renderList() {
-    const allExits = EXPERIENCES.flatMap(exp =>
-      (exp.nextExits ?? []).map(e => ({ exp, exit: e }))
-    ).sort((a, b) => a.exit.date.localeCompare(b.exit.date));
-
+    const sorted = [...allExits].sort((a, b) => a.exit.date.localeCompare(b.exit.date));
     root.innerHTML = `
       <div class="adm-card">
         <div class="adm-card__header">
@@ -510,28 +481,23 @@ function renderAgenda(root) {
         <div class="adm-table-wrap">
           <table class="adm-table">
             <thead><tr><th>Data</th><th>Experiência</th><th>Vagas</th><th>Ocupação</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-              ${allExits.map(({ exp, exit }) => {
-                const booked = exit.spotsTotal - exit.spotsAvailable;
-                const pct = (booked / exit.spotsTotal) * 100;
-                const st = exit.spotsAvailable === 0 ? 'soldout' : 'active';
-                return `<tr>
-                  <td class="no-wrap">${fmtDate(exit.date)}</td>
-                  <td>${exp.title}</td>
-                  <td>${exit.spotsAvailable}/${exit.spotsTotal}</td>
-                  <td style="min-width:120px">${occFill(pct)}</td>
-                  <td><span class="badge badge--${st}">${st === 'soldout' ? 'Esgotada' : 'Aberta'}</span></td>
-                  <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
+            <tbody>${sorted.length ? sorted.map(({ exp, exit }) => {
+              const booked = exit.spotsTotal - exit.spotsAvailable;
+              const pct = exit.spotsTotal ? (booked / exit.spotsTotal) * 100 : 0;
+              const st = exit.spotsAvailable === 0 ? 'soldout' : exit.status === 'cancelled' ? 'cancelled' : 'active';
+              return `<tr>
+                <td class="no-wrap">${fmtDate(exit.date)}</td>
+                <td>${escHtml(exp.title)}</td>
+                <td>${exit.spotsAvailable}/${exit.spotsTotal}</td>
+                <td style="min-width:120px">${occFill(pct)}</td>
+                <td><span class="badge badge--${st}">${st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
+                <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída cadastrada.</td></tr>'}</tbody>
           </table>
         </div>
       </div>`;
-
-    root.querySelectorAll('[data-exit]').forEach(btn => {
-      btn.addEventListener('click', () => openExitDrawer(btn.dataset.exit));
-    });
+    root.querySelectorAll('[data-exit]').forEach(btn => btn.addEventListener('click', () => openExitDrawer(btn.dataset.exit)));
     $('tog-cal').addEventListener('click',  () => { listView = false; render(); });
     $('tog-list').addEventListener('click', () => { listView = true;  render(); });
   }
@@ -543,7 +509,38 @@ function renderAgenda(root) {
 //  MODULE: EXPERIÊNCIAS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderExperiencias(root) {
+async function renderExperiencias(root) {
+  root.innerHTML = `
+    <div class="adm-card">
+      <div class="adm-card__header">
+        Experiências cadastradas
+        <div class="adm-card__actions">
+          <button class="adm-btn adm-btn--primary adm-btn--sm">+ Nova experiência</button>
+        </div>
+      </div>
+      <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
+    </div>`;
+
+  const db = window.anauaDb;
+  if (!db) {
+    root.querySelector('[style]').textContent = 'Supabase não disponível.';
+    return;
+  }
+
+  const { data, error } = await db
+    .from('experiences')
+    .select('id, title, location, category, difficulty, price_per_person, is_active, status')
+    .order('title');
+
+  if (error) {
+    console.warn('[admin-db] Erro ao carregar experiências:', error.message);
+    root.querySelector('[style]').innerHTML = `<p style="color:var(--adm-danger)">Não foi possível carregar as experiências.<br><small>${escHtml(error.message)}</small></p>`;
+    return;
+  }
+
+  console.log('[admin-db] Experiências carregadas:', data?.length ?? 0);
+  const exps = data ?? [];
+
   root.innerHTML = `
     <div class="adm-card">
       <div class="adm-card__header">
@@ -554,29 +551,26 @@ function renderExperiencias(root) {
       </div>
       <div class="adm-table-wrap">
         <table class="adm-table">
-          <thead><tr><th>Título</th><th>Categoria</th><th>Dificuldade</th><th>Preço</th><th>Próxima saída</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            ${EXPERIENCES.map(exp => {
-              const next = exp.nextExits?.find(e => e.status === 'active');
-              return `<tr>
-                <td>
-                  <div class="text-bold">${exp.title}</div>
-                  <div class="text-small text-muted">${exp.location}</div>
-                </td>
-                <td class="text-small">${exp.category}</td>
-                <td><span class="adm-tag">${exp.difficulty ?? '—'}</span></td>
-                <td class="no-wrap">${fmt(exp.pricePerPerson)}</td>
-                <td class="no-wrap text-small">${next ? fmtDate(next.date) : '—'}</td>
-                <td><span class="badge badge--${exp.status === 'active' ? 'active' : 'cancelled'}">${exp.status === 'active' ? 'Ativa' : exp.status}</span></td>
-                <td>
-                  <div style="display:flex;gap:6px">
-                    <a href="../experiencia.html?id=${exp.id}" target="_blank" class="adm-btn adm-btn--ghost adm-btn--sm">Ver</a>
-                    <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="alert('Edição em breve')">Editar</button>
-                  </div>
-                </td>
-              </tr>`;
-            }).join('')}
-          </tbody>
+          <thead><tr><th>Título</th><th>Categoria</th><th>Dificuldade</th><th>Preço</th><th>Status</th><th></th></tr></thead>
+          <tbody>${exps.length ? exps.map(exp => {
+            const active = exp.is_active !== false && exp.status !== 'inactive';
+            return `<tr>
+              <td>
+                <div class="text-bold">${escHtml(exp.title ?? '—')}</div>
+                <div class="text-small text-muted">${escHtml(exp.location ?? '—')}</div>
+              </td>
+              <td class="text-small">${escHtml(exp.category ?? '—')}</td>
+              <td><span class="adm-tag">${escHtml(exp.difficulty ?? '—')}</span></td>
+              <td class="no-wrap">${fmt(exp.price_per_person ?? 0)}</td>
+              <td><span class="badge badge--${active ? 'active' : 'cancelled'}">${active ? 'Ativa' : 'Inativa'}</span></td>
+              <td>
+                <div style="display:flex;gap:6px">
+                  <a href="../experiencia.html?id=${exp.id}" target="_blank" class="adm-btn adm-btn--ghost adm-btn--sm">Ver</a>
+                  <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="toast('Edição em breve','info')">Editar</button>
+                </div>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma experiência cadastrada.</td></tr>'}</tbody>
         </table>
       </div>
     </div>`;
@@ -586,18 +580,14 @@ function renderExperiencias(root) {
 //  MODULE: SAÍDAS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderSaidas(root) {
-  const allExits = EXPERIENCES.flatMap(exp =>
-    (exp.nextExits ?? []).map(e => ({ exp, exit: e }))
-  ).sort((a, b) => b.exit.date.localeCompare(a.exit.date));
-
+async function renderSaidas(root) {
   root.innerHTML = `
     <div class="adm-card">
       <div class="adm-filter-bar">
         <input type="search" class="adm-input" id="saidas-filter" placeholder="Filtrar por experiência ou data…" />
         <select id="saidas-status">
           <option value="">Todos os status</option>
-          <option value="active">Aberta</option>
+          <option value="scheduled">Aberta</option>
           <option value="sold_out">Esgotada</option>
           <option value="cancelled">Cancelada</option>
         </select>
@@ -605,33 +595,51 @@ function renderSaidas(root) {
       </div>
       <div class="adm-table-wrap">
         <table class="adm-table">
-          <thead><tr><th>Data</th><th>Experiência</th><th>Pontos de encontro</th><th>Vagas</th><th>Ocupação</th><th>Status</th><th></th></tr></thead>
-          <tbody id="saidas-tbody"></tbody>
+          <thead><tr><th>Data</th><th>Experiência</th><th>Vagas</th><th>Ocupação</th><th>Status</th><th></th></tr></thead>
+          <tbody id="saidas-tbody"><tr><td colspan="6" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
         </table>
       </div>
     </div>`;
+
+  const db = window.anauaDb;
+  let allExits = [];
+
+  if (db) {
+    const { data, error } = await db
+      .from('departures')
+      .select('id, date, status, spots_total, spots_available, experience_id, experiences(title)')
+      .order('date', { ascending: false });
+    if (!error) {
+      allExits = (data ?? []).map(d => ({
+        exp:  { title: d.experiences?.title ?? d.experience_id ?? '—' },
+        exit: { id: d.id, date: d.date, status: d.status ?? 'scheduled', spotsTotal: d.spots_total ?? 0, spotsAvailable: d.spots_available ?? 0 },
+      }));
+      console.log('[admin-db] Saídas carregadas:', allExits.length);
+    } else {
+      console.warn('[admin-db] Erro ao carregar saídas:', error.message);
+      $('saidas-tbody').innerHTML = `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Não foi possível carregar as saídas.</td></tr>`;
+      return;
+    }
+  }
 
   function renderRows(data) {
     const tbody = $('saidas-tbody');
     $('saidas-count').textContent = `${data.length} saída(s)`;
     tbody.innerHTML = data.map(({ exp, exit }) => {
       const booked = exit.spotsTotal - exit.spotsAvailable;
-      const pct = (booked / exit.spotsTotal) * 100;
-      const st = exit.spotsAvailable === 0 ? 'soldout' : exit.status === 'cancelled' ? 'cancelled' : 'active';
+      const pct = exit.spotsTotal ? (booked / exit.spotsTotal) * 100 : 0;
+      const isSoldOut = exit.spotsAvailable === 0;
+      const st = isSoldOut ? 'soldout' : exit.status === 'cancelled' ? 'cancelled' : 'active';
       return `<tr>
         <td class="no-wrap">${fmtDate(exit.date)}</td>
-        <td class="text-bold">${exp.title}</td>
-        <td class="text-small text-muted">${(exit.meetingPoints ?? []).map(mp => mp.name).join(' · ')}</td>
+        <td class="text-bold">${escHtml(exp.title)}</td>
         <td>${booked}/${exit.spotsTotal}</td>
         <td style="min-width:130px">${occFill(pct)}</td>
         <td><span class="badge badge--${st}">${st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta'}</span></td>
         <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
       </tr>`;
-    }).join('') || `<tr><td colspan="7" class="adm-table__empty text-muted">Nenhuma saída encontrada.</td></tr>`;
-
-    tbody.querySelectorAll('[data-exit]').forEach(btn => {
-      btn.addEventListener('click', () => openExitDrawer(btn.dataset.exit));
-    });
+    }).join('') || `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída encontrada.</td></tr>`;
+    tbody.querySelectorAll('[data-exit]').forEach(btn => btn.addEventListener('click', () => openExitDrawer(btn.dataset.exit)));
   }
 
   function filtered() {
@@ -644,7 +652,7 @@ function renderSaidas(root) {
     });
   }
 
-  $('saidas-filter').addEventListener('input', () => renderRows(filtered()));
+  $('saidas-filter').addEventListener('input',  () => renderRows(filtered()));
   $('saidas-status').addEventListener('change', () => renderRows(filtered()));
   renderRows(allExits);
 }
@@ -653,173 +661,111 @@ function renderSaidas(root) {
 //  MODULE: RESERVAS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderReservas(root, openId) {
-  let allBookings = listBookings();
-
+async function renderReservas(root, openId) {
   const STATUS_TABS = [
-    { key: 'all',             label: 'Todas'           },
-    { key: 'pending_payment', label: 'Aguardando'      },
-    { key: 'reserved',        label: 'Reservado'       },
-    { key: 'confirmed',       label: 'Confirmado'      },
-    { key: 'cancelled',       label: 'Cancelado'       },
-    { key: 'completed',       label: 'Concluído'       },
+    { key: 'all',             label: 'Todas'       },
+    { key: 'pending_payment', label: 'Aguardando'  },
+    { key: 'reserved',        label: 'Reservado'   },
+    { key: 'confirmed',       label: 'Confirmado'  },
+    { key: 'cancelled',       label: 'Cancelado'   },
+    { key: 'completed',       label: 'Concluído'   },
   ];
 
-  let activeTab = 'all';
-  let search = '';
+  let allBookings = [];
+  let activeTab   = 'all';
+  let search      = '';
+
+  root.innerHTML = `
+    <div class="adm-card">
+      <div class="adm-tabs" id="reservas-tabs"></div>
+      <div class="adm-filter-bar">
+        <input type="search" class="adm-input" id="reservas-search" placeholder="Buscar por nome, e-mail, código…" />
+        <span class="adm-filter-count" id="reservas-count"></span>
+      </div>
+      <div class="adm-table-wrap">
+        <table class="adm-table">
+          <thead><tr><th>Código</th><th>Responsável</th><th>Experiência</th><th>Status</th><th>Total</th><th>Pago</th><th>Criado em</th></tr></thead>
+          <tbody id="reservas-tbody"><tr><td colspan="7" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>`;
+
+  const db = window.anauaDb;
+  if (db) {
+    const { data, error } = await db
+      .from('reservations')
+      .select('id, reservation_code, payer_name, payer_email, experience_id, reservation_status, total_amount, amount_paid, created_at')
+      .order('created_at', { ascending: false });
+    if (!error) {
+      allBookings = data ?? [];
+      console.log('[admin-db] Reservas carregadas:', allBookings.length);
+    } else {
+      console.warn('[admin-db] Erro ao carregar reservas:', error.message);
+      $('reservas-tbody').innerHTML = `<tr><td colspan="7" class="adm-table__empty" style="color:var(--adm-danger)">Não foi possível carregar as reservas.</td></tr>`;
+      return;
+    }
+  }
 
   function countTab(key) {
-    return key === 'all' ? allBookings.length : allBookings.filter(b => b.status === key).length;
+    return key === 'all' ? allBookings.length : allBookings.filter(b => b.reservation_status === key).length;
   }
 
   function renderTabs() {
-    return STATUS_TABS.map(t => `
+    $('reservas-tabs').innerHTML = STATUS_TABS.map(t => `
       <button class="adm-tab ${activeTab === t.key ? 'is-active' : ''}" data-tab="${t.key}">
         ${t.label} <span class="adm-count">${countTab(t.key)}</span>
       </button>`).join('');
+    $('reservas-tabs').querySelectorAll('[data-tab]').forEach(btn => {
+      btn.addEventListener('click', () => { activeTab = btn.dataset.tab; renderTabs(); renderTable(filtered()); });
+    });
   }
 
   function filtered() {
     return allBookings.filter(b => {
-      const matchTab = activeTab === 'all' || b.status === activeTab;
+      const matchTab = activeTab === 'all' || b.reservation_status === activeTab;
       const q = search.toLowerCase();
       const matchSearch = !q ||
-        b.payer?.fullName.toLowerCase().includes(q) ||
-        (b.voucherCode ?? '').toLowerCase().includes(q) ||
-        b.payer?.email.toLowerCase().includes(q) ||
-        b.id.toLowerCase().includes(q);
+        (b.payer_name ?? '').toLowerCase().includes(q) ||
+        (b.reservation_code ?? '').toLowerCase().includes(q) ||
+        (b.payer_email ?? '').toLowerCase().includes(q);
       return matchTab && matchSearch;
     });
   }
 
   function renderTable(data) {
-    const tbody = $('reservas-tbody');
     $('reservas-count').textContent = `${data.length} reserva(s)`;
-    tbody.innerHTML = data.map(b => {
-      const ref = findExit(b.exitId);
-      return `<tr class="is-clickable" data-booking="${b.id}">
-        <td class="no-wrap text-small text-muted">${b.voucherCode ?? b.id}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:7px">
-            <div class="adm-avatar">${initials(b.payer?.fullName)}</div>
-            <div>
-              <div class="text-bold">${b.payer?.fullName ?? '—'}</div>
-              <div class="text-small text-muted">${b.payer?.email ?? ''}</div>
-            </div>
+    $('reservas-tbody').innerHTML = data.length ? data.map(b => `<tr>
+      <td class="no-wrap text-small text-muted">${escHtml(b.reservation_code ?? b.id)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:7px">
+          <div class="adm-avatar">${initials(b.payer_name)}</div>
+          <div>
+            <div class="text-bold">${escHtml(b.payer_name ?? '—')}</div>
+            <div class="text-small text-muted">${escHtml(b.payer_email ?? '')}</div>
           </div>
-        </td>
-        <td class="text-small">${ref ? ref.exp.title : b.experienceId}</td>
-        <td class="text-small no-wrap">${ref ? fmtDate(ref.exit.date) : '—'}</td>
-        <td>${badge(b.status)}</td>
-        <td class="text-bold no-wrap">${fmt(b.totalAmount ?? 0)}</td>
-        <td class="no-wrap">
-          ${(b.pendingAmount ?? 0) > 0
-            ? `<span class="text-red text-bold">${fmt(b.pendingAmount)}</span>`
-            : `<span class="text-green">Quitado</span>`}
-        </td>
-        <td class="text-small text-muted no-wrap">${fmtDate(b.createdAt)}</td>
-      </tr>`;
-    }).join('') || `<tr><td colspan="8" class="adm-table__empty text-muted">Nenhuma reserva.</td></tr>`;
-
-    tbody.querySelectorAll('[data-booking]').forEach(tr => {
-      tr.addEventListener('click', () => {
-        allBookings = listBookings();
-        openBookingDrawer(tr.dataset.booking);
-      });
-    });
+        </div>
+      </td>
+      <td class="text-small">${escHtml(b.experience_id ?? '—')}</td>
+      <td>${badge(b.reservation_status ?? 'pending_payment')}</td>
+      <td class="text-bold no-wrap">${fmt(b.total_amount ?? 0)}</td>
+      <td class="no-wrap">${b.amount_paid > 0 ? '<span class="text-green">' + fmt(b.amount_paid) + '</span>' : '<span class="text-muted">—</span>'}</td>
+      <td class="text-small text-muted no-wrap">${fmtDateShort(b.created_at)}</td>
+    </tr>`).join('') : `<tr><td colspan="7" class="adm-table__empty text-muted">Nenhuma reserva.</td></tr>`;
   }
 
-  root.innerHTML = `
-    <div class="adm-card">
-      <div class="adm-tabs" id="reservas-tabs">${renderTabs()}</div>
-      <div class="adm-filter-bar">
-        <input type="search" class="adm-input" id="reservas-search" placeholder="Buscar por nome, e-mail, voucher…" />
-        <span class="adm-filter-count" id="reservas-count"></span>
-      </div>
-      <div class="adm-table-wrap">
-        <table class="adm-table">
-          <thead><tr><th>Voucher</th><th>Responsável</th><th>Experiência</th><th>Data</th><th>Status</th><th>Total</th><th>Saldo</th><th>Criado em</th></tr></thead>
-          <tbody id="reservas-tbody"></tbody>
-        </table>
-      </div>
-    </div>`;
-
-  $('reservas-tabs').addEventListener('click', e => {
-    const btn = e.target.closest('[data-tab]');
-    if (!btn) return;
-    activeTab = btn.dataset.tab;
-    $('reservas-tabs').innerHTML = renderTabs();
-    // re-bind after innerHTML
-    $('reservas-tabs').addEventListener('click', arguments.callee);
-    renderTable(filtered());
-  });
-
-  $('reservas-search').addEventListener('input', e => {
-    search = e.target.value;
-    renderTable(filtered());
-  });
-
+  renderTabs();
   renderTable(filtered());
-  if (openId) openBookingDrawer(openId);
+
+  $('reservas-search').addEventListener('input', e => { search = e.target.value; renderTable(filtered()); });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: PARTICIPANTES
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderParticipantes(root) {
-  const all = listBookings();
-  const participants = [];
-
-  all.forEach(b => {
-    (b.participants ?? []).forEach(p => {
-      participants.push({
-        ...p,
-        bookingId: b.id,
-        voucherCode: b.voucherCode,
-        bookingStatus: b.status,
-        experienceId: b.experienceId,
-        exitId: b.exitId,
-      });
-    });
-  });
-
+async function renderParticipantes(root) {
+  let participants = [];
   let search = '';
-
-  function filtered() {
-    const q = search.toLowerCase();
-    return !q ? participants : participants.filter(p =>
-      p.fullName?.toLowerCase().includes(q) ||
-      p.docNumber?.toLowerCase().includes(q)
-    );
-  }
-
-  function renderTable(data) {
-    const tbody = $('part-tbody');
-    $('part-count').textContent = `${data.length} participante(s)`;
-    tbody.innerHTML = data.map(p => {
-      const ref = findExit(p.exitId);
-      return `<tr>
-        <td>
-          <div style="display:flex;align-items:center;gap:7px">
-            <div class="adm-avatar">${initials(p.fullName)}</div>
-            <div class="text-bold">${p.fullName}</div>
-          </div>
-        </td>
-        <td class="text-small text-muted">${p.docNumber || '—'}</td>
-        <td class="text-small">${p.profile ?? '—'}</td>
-        <td class="text-small text-muted">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
-        <td class="text-small">${ref ? ref.exp.title : p.experienceId}</td>
-        <td class="text-small no-wrap">${ref ? fmtDate(ref.exit.date) : '—'}</td>
-        <td>${badge(p.bookingStatus)}</td>
-        <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-booking="${p.bookingId}">Reserva</button></td>
-      </tr>`;
-    }).join('') || `<tr><td colspan="8" class="adm-table__empty text-muted">Nenhum participante.</td></tr>`;
-
-    tbody.querySelectorAll('[data-booking]').forEach(btn => {
-      btn.addEventListener('click', () => openBookingDrawer(btn.dataset.booking));
-    });
-  }
 
   root.innerHTML = `
     <div class="adm-card">
@@ -829,145 +775,173 @@ function renderParticipantes(root) {
       </div>
       <div class="adm-table-wrap">
         <table class="adm-table">
-          <thead><tr><th>Nome</th><th>Documento</th><th>Perfil</th><th>Nascimento</th><th>Experiência</th><th>Data saída</th><th>Reserva</th><th></th></tr></thead>
-          <tbody id="part-tbody"></tbody>
+          <thead><tr><th>Nome</th><th>Documento</th><th>Perfil</th><th>Nascimento</th><th>Reserva</th><th>Status</th></tr></thead>
+          <tbody id="part-tbody"><tr><td colspan="6" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
         </table>
       </div>
     </div>`;
 
-  $('part-search').addEventListener('input', e => { search = e.target.value; renderTable(filtered()); });
+  const db = window.anauaDb;
+  if (db) {
+    const { data, error } = await db
+      .from('participants')
+      .select('id, full_name, document_number, profile_type, birthdate, reservation_id, reservations(reservation_code, reservation_status)')
+      .order('full_name');
+    if (!error) {
+      participants = data ?? [];
+      console.log('[admin-db] Participantes carregados:', participants.length);
+    } else {
+      console.warn('[admin-db] Erro ao carregar participantes:', error.message);
+      $('part-tbody').innerHTML = `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Não foi possível carregar os participantes.</td></tr>`;
+      return;
+    }
+  }
+
+  function filtered() {
+    const q = search.toLowerCase();
+    return !q ? participants : participants.filter(p =>
+      (p.full_name ?? '').toLowerCase().includes(q) ||
+      (p.document_number ?? '').toLowerCase().includes(q)
+    );
+  }
+
+  function renderTable(data) {
+    $('part-count').textContent = `${data.length} participante(s)`;
+    $('part-tbody').innerHTML = data.length ? data.map(p => `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:7px">
+          <div class="adm-avatar">${initials(p.full_name)}</div>
+          <div class="text-bold">${escHtml(p.full_name ?? '—')}</div>
+        </div>
+      </td>
+      <td class="text-small text-muted">${escHtml(p.document_number ?? '—')}</td>
+      <td class="text-small">${escHtml(p.profile_type ?? '—')}</td>
+      <td class="text-small text-muted">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
+      <td class="text-small text-muted">${escHtml(p.reservations?.reservation_code ?? p.reservation_id ?? '—')}</td>
+      <td>${badge(p.reservations?.reservation_status ?? 'pending_payment')}</td>
+    </tr>`).join('') : `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhum participante.</td></tr>`;
+  }
+
   renderTable(filtered());
+  $('part-search').addEventListener('input', e => { search = e.target.value; renderTable(filtered()); });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: FINANCEIRO
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderFinanceiro(root) {
-  const all = listBookings();
-
-  const totalBruto  = all.reduce((s, b) => s + (b.totalAmount ?? 0), 0);
-  const totalPago   = all.reduce((s, b) => s + (b.paidAmount  ?? 0), 0);
-  const totalPend   = all.reduce((s, b) => s + (b.pendingAmount ?? 0), 0);
-  const totalCancelled = all.filter(b => b.status === 'cancelled').reduce((s, b) => s + (b.paidAmount ?? 0), 0);
-
-  let activeTab = 'all';
+async function renderFinanceiro(root) {
+  let allPayments   = [];
+  let allReservations = [];
+  let activeTab     = 'all';
 
   const TABS = [
-    { key: 'all',       label: 'Todos' },
-    { key: 'paid',      label: 'Pagos' },
-    { key: 'pending',   label: 'Pendentes' },
-    { key: 'overdue',   label: 'Atrasados' },
-    { key: 'cancelled', label: 'Cancelados/Créditos' },
+    { key: 'all',       label: 'Todos'                },
+    { key: 'paid',      label: 'Pagos'                },
+    { key: 'pending',   label: 'Pendentes'            },
+    { key: 'cancelled', label: 'Cancelados/Créditos'  },
   ];
 
-  function tabBookings(key) {
-    if (key === 'paid')      return all.filter(b => (b.pendingAmount ?? 0) === 0 && b.status !== 'cancelled' && b.status !== 'draft');
-    if (key === 'pending')   return all.filter(b => (b.pendingAmount ?? 0) > 0 && b.status !== 'cancelled');
-    if (key === 'overdue')   return all.filter(b => (b.pendingAmount ?? 0) > 0 && b.status === 'reserved');
-    if (key === 'cancelled') return all.filter(b => b.status === 'cancelled');
-    return all;
-  }
-
-  function renderTabs() {
-    return TABS.map(t => `
-      <button class="adm-tab ${activeTab === t.key ? 'is-active' : ''}" data-ftab="${t.key}">
-        ${t.label} <span class="adm-count">${tabBookings(t.key).length}</span>
-      </button>`).join('');
-  }
-
-  function renderFTable(data) {
-    const tbody = $('fin-tbody');
-    tbody.innerHTML = data.length ? data.map(b => {
-      const ref = findExit(b.exitId);
-      const pending = b.pendingAmount ?? 0;
-      return `<tr class="is-clickable" data-booking="${b.id}">
-        <td class="text-small text-muted no-wrap">${b.voucherCode ?? b.id}</td>
-        <td>
-          <div class="text-bold">${b.payer?.fullName ?? '—'}</div>
-          <div class="text-small text-muted">${b.payer?.email ?? ''}</div>
-        </td>
-        <td class="text-small">${ref ? ref.exp.title : b.experienceId}</td>
-        <td class="text-small no-wrap">${ref ? fmtDate(ref.exit.date) : '—'}</td>
-        <td class="text-small">${payMethodLabel(b.paymentMethod)}</td>
-        <td class="text-bold no-wrap">${fmt(b.totalAmount ?? 0)}</td>
-        <td class="no-wrap text-green text-bold">${fmt(b.paidAmount ?? 0)}</td>
-        <td class="no-wrap ${pending > 0 ? 'text-red' : 'text-muted'} text-bold">${pending > 0 ? fmt(pending) : '—'}</td>
-        <td>${badge(b.status)}</td>
-        <td>
-          ${pending > 0 ? `<button class="adm-btn adm-btn--gold adm-btn--sm" data-pay="${b.id}">+ Pagamento</button>` : ''}
-        </td>
-      </tr>`;
-    }).join('') : `<tr><td colspan="10" class="adm-table__empty text-muted">Nenhuma transação.</td></tr>`;
-
-    tbody.querySelectorAll('[data-booking]').forEach(tr => {
-      tr.addEventListener('click', e => { if (e.target.closest('[data-pay]')) return; openBookingDrawer(tr.dataset.booking); });
-    });
-    tbody.querySelectorAll('[data-pay]').forEach(btn => {
-      btn.addEventListener('click', e => { e.stopPropagation(); openRegisterPaymentModal(btn.dataset.pay); });
-    });
-  }
-
   root.innerHTML = `
-    <div class="adm-kpi-row">
-      ${kpi('Faturamento bruto', fmt(totalBruto), 'Total de vendas', 'green', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>')}
-      ${kpi('Total recebido', fmt(totalPago), 'Pagamentos confirmados', 'blue', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>')}
-      ${kpi('A receber', fmt(totalPend), 'Saldo pendente', 'gold', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>')}
-      ${kpi('Cancelados/Créditos', fmt(totalCancelled), 'Valor pago em canceladas', 'red', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>')}
+    <div class="adm-kpi-row" id="fin-kpi-row">
+      ${kpi('Carregando…','…','pagamentos','green','<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>')}
     </div>
-
     <div class="adm-card">
-      <div class="adm-tabs" id="fin-tabs">${renderTabs()}</div>
+      <div class="adm-tabs" id="fin-tabs"></div>
       <div style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px">
         <button class="adm-btn adm-btn--secondary adm-btn--sm" id="fin-export">⬇ Exportar CSV</button>
       </div>
       <div class="adm-table-wrap">
         <table class="adm-table">
-          <thead><tr><th>Voucher</th><th>Responsável</th><th>Experiência</th><th>Data</th><th>Método</th><th>Total</th><th>Pago</th><th>Pendente</th><th>Status</th><th></th></tr></thead>
-          <tbody id="fin-tbody"></tbody>
+          <thead><tr><th>Código</th><th>Responsável</th><th>Experiência</th><th>Método</th><th>Valor</th><th>Status pag.</th><th>Data pag.</th><th>Status reserva</th></tr></thead>
+          <tbody id="fin-tbody"><tr><td colspan="8" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
         </table>
       </div>
     </div>`;
 
-  document.getElementById('fin-tabs').addEventListener('click', e => {
-    const btn = e.target.closest('[data-ftab]');
-    if (!btn) return;
-    activeTab = btn.dataset.ftab;
-    document.getElementById('fin-tabs').innerHTML = renderTabs();
-    document.getElementById('fin-tabs').dispatchEvent; // rebind
-    document.getElementById('fin-tabs').addEventListener('click', arguments.callee);
-    renderFTable(tabBookings(activeTab));
-  });
+  const db = window.anauaDb;
+  if (db) {
+    const [paymentsRes, reservationsRes] = await Promise.all([
+      db.from('payments').select('id, reservation_id, amount, payment_method, status, paid_at, reservations(reservation_code, payer_name, payer_email, experience_id, reservation_status)').order('paid_at', { ascending: false }),
+      db.from('reservations').select('id, reservation_code, payer_name, total_amount, amount_paid, reservation_status').order('created_at', { ascending: false }),
+    ]);
+    if (!paymentsRes.error) {
+      allPayments = paymentsRes.data ?? [];
+      console.log('[admin-db] Pagamentos carregados:', allPayments.length);
+    } else {
+      console.warn('[admin-db] Erro ao carregar pagamentos:', paymentsRes.error.message);
+    }
+    if (!reservationsRes.error) {
+      allReservations = reservationsRes.data ?? [];
+    }
+  }
 
-  $('fin-export').addEventListener('click', () => exportCSV(tabBookings(activeTab)));
-  renderFTable(tabBookings(activeTab));
+  const totalPaid      = allPayments.filter(p => p.status === 'paid').reduce((s, p) => s + Number(p.amount ?? 0), 0);
+  const totalPending   = allReservations.reduce((s, r) => s + Math.max(0, Number(r.total_amount ?? 0) - Number(r.amount_paid ?? 0)), 0);
+  const totalCancelled = allReservations.filter(r => r.reservation_status === 'cancelled').reduce((s, r) => s + Number(r.amount_paid ?? 0), 0);
+
+  document.getElementById('fin-kpi-row').innerHTML =
+    kpi('Total recebido',      fmt(totalPaid),      'pagamentos confirmados',     'green',  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>') +
+    kpi('A receber',           fmt(totalPending),   'saldo pendente',             'gold',   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>') +
+    kpi('Cancelados/Créditos', fmt(totalCancelled), 'valor pago em canceladas',   'red',    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>') +
+    kpi('Total de pagamentos', allPayments.length,  'registros na tabela',        'purple', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>');
+
+  function tabPayments(key) {
+    if (key === 'paid')      return allPayments.filter(p => p.status === 'paid');
+    if (key === 'pending')   return allPayments.filter(p => p.status !== 'paid' && p.status !== 'cancelled');
+    if (key === 'cancelled') return allPayments.filter(p => p.reservations?.reservation_status === 'cancelled');
+    return allPayments;
+  }
+
+  function renderTabs() {
+    document.getElementById('fin-tabs').innerHTML = TABS.map(t => `
+      <button class="adm-tab ${activeTab === t.key ? 'is-active' : ''}" data-ftab="${t.key}">
+        ${t.label} <span class="adm-count">${tabPayments(t.key).length}</span>
+      </button>`).join('');
+    document.getElementById('fin-tabs').querySelectorAll('[data-ftab]').forEach(btn => {
+      btn.addEventListener('click', () => { activeTab = btn.dataset.ftab; renderTabs(); renderFTable(tabPayments(activeTab)); });
+    });
+  }
+
+  function renderFTable(data) {
+    $('fin-tbody').innerHTML = data.length ? data.map(p => {
+      const r = p.reservations ?? {};
+      return `<tr>
+        <td class="text-small text-muted no-wrap">${escHtml(r.reservation_code ?? p.reservation_id ?? '—')}</td>
+        <td>
+          <div class="text-bold">${escHtml(r.payer_name ?? '—')}</div>
+          <div class="text-small text-muted">${escHtml(r.payer_email ?? '')}</div>
+        </td>
+        <td class="text-small">${escHtml(r.experience_id ?? '—')}</td>
+        <td class="text-small">${payMethodLabel(p.payment_method ?? p.method)}</td>
+        <td class="text-bold no-wrap">${fmt(p.amount ?? 0)}</td>
+        <td>${badge(p.status ?? 'pending_payment')}</td>
+        <td class="text-small text-muted no-wrap">${p.paid_at ? fmtDateShort(p.paid_at) : '—'}</td>
+        <td>${badge(r.reservation_status ?? 'pending_payment')}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="8" class="adm-table__empty text-muted">Nenhuma transação.</td></tr>`;
+  }
+
+  renderTabs();
+  renderFTable(tabPayments(activeTab));
+
+  $('fin-export').addEventListener('click', () => {
+    const cols = ['Código','Responsável','E-mail','Método','Valor','Status pag.','Data pag.','Status reserva'];
+    const rows = tabPayments(activeTab).map(p => {
+      const r = p.reservations ?? {};
+      return [r.reservation_code ?? p.reservation_id, r.payer_name ?? '', r.payer_email ?? '', p.payment_method ?? '', p.amount ?? 0, p.status ?? '', p.paid_at ?? '', r.reservation_status ?? '']
+        .map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+    const csv = [cols.join(','), ...rows].join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `anaua-financeiro-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast('CSV exportado com sucesso!', 'success');
+  });
 }
 
-function exportCSV(data) {
-  const cols = ['Voucher','Responsável','E-mail','Experiência','Método','Total','Pago','Pendente','Status'];
-  const rows = data.map(b => {
-    const ref = findExit(b.exitId);
-    return [
-      b.voucherCode ?? b.id,
-      b.payer?.fullName ?? '',
-      b.payer?.email ?? '',
-      ref ? ref.exp.title : b.experienceId,
-      payMethodLabel(b.paymentMethod),
-      b.totalAmount ?? 0,
-      b.paidAmount  ?? 0,
-      b.pendingAmount ?? 0,
-      STATUS_LABEL[b.status] ?? b.status,
-    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
-  });
-
-  const csv = [cols.join(','), ...rows].join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `anaua-financeiro-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click(); URL.revokeObjectURL(url);
-  toast('CSV exportado com sucesso!', 'success');
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: CONFIGURAÇÕES
@@ -1346,7 +1320,7 @@ function openExitDrawer(exitId) {
   if (!ref) { toast('Saída não encontrada', 'error'); return; }
   const { exp, exit } = ref;
 
-  const bookings = listBookings().filter(b => b.exitId === exitId);
+  const bookings = []; // DB-first: detalhes de reservas por saída serão implementados no próximo sprint
   const booked = exit.spotsTotal - exit.spotsAvailable;
   const pct = (booked / exit.spotsTotal) * 100;
 
@@ -1472,16 +1446,20 @@ function openRegisterPaymentModal(bookingId) {
 
 // ─── Global search ────────────────────────────────────────────────────────────
 
-$('adm-global-search').addEventListener('keydown', e => {
+$('adm-global-search').addEventListener('keydown', async e => {
   if (e.key !== 'Enter') return;
   const q = e.target.value.trim();
   if (!q) return;
-  const found = listBookings().find(b =>
-    b.voucherCode?.toLowerCase().includes(q.toLowerCase()) ||
-    b.payer?.fullName.toLowerCase().includes(q.toLowerCase())
-  );
-  if (found) {
-    openBookingDrawer(found.id);
+  const db = window.anauaDb;
+  if (!db) { toast('Supabase não disponível.', 'error'); return; }
+  const { data } = await db
+    .from('reservations')
+    .select('id, reservation_code, payer_name, payer_email')
+    .or(`reservation_code.ilike.%${q}%,payer_name.ilike.%${q}%`)
+    .limit(1)
+    .single();
+  if (data) {
+    navigate('#reservas');
     e.target.value = '';
   } else {
     toast('Nenhuma reserva encontrada', 'error');
@@ -1703,48 +1681,7 @@ async function renderUsuarios(root) {
   }
 })();
 
-/**
- * Carrega contadores reais do Supabase e adiciona uma linha de KPIs
- * abaixo dos KPIs locais no dashboard.
- * Se a RLS bloquear alguma query, exibe '—' sem quebrar.
- */
-async function loadSupabaseCounters() {
-  const db = window.anauaDb;
-  if (!db) return;
-
-  const safeCount = async (query) => {
-    try {
-      const { count, error } = await query;
-      if (error) { console.warn('[admin] Contagem bloqueada por RLS ou erro:', error.message); return '—'; }
-      return count ?? '—';
-    } catch (_) { return '—'; }
-  };
-
-  const [expCount, depCount, resCount, pendCount] = await Promise.all([
-    safeCount(db.from('experiences').select('*', { count: 'exact', head: true }).eq('is_active', true)),
-    safeCount(db.from('departures').select('*', { count: 'exact', head: true }).eq('status', 'scheduled')),
-    safeCount(db.from('reservations').select('*', { count: 'exact', head: true })),
-    safeCount(db.from('reservations').select('*', { count: 'exact', head: true }).eq('status', 'pending_payment')),
-  ]);
-
-  const kpiRow = document.querySelector('.adm-kpi-row');
-  if (!kpiRow) return;
-
-  const row = document.createElement('div');
-  row.className = 'adm-kpi-row';
-  row.setAttribute('aria-label', 'Contadores do Supabase');
-  row.innerHTML = [
-    kpi('Experiências ativas', expCount,  'catálogo Supabase',           'green',  `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/></svg>`),
-    kpi('Saídas agendadas',    depCount,  'tabela departures',           'blue',   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`),
-    kpi('Total de reservas',   resCount,  'tabela reservations',         'purple', `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`),
-    kpi('Pagamentos pendentes', pendCount, 'aguardando no Supabase',     'red',    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`),
-  ].join('');
-  kpiRow.parentElement?.insertBefore(row, kpiRow.nextSibling);
-
-  if ([expCount, depCount, resCount, pendCount].some(v => v === '—')) {
-    toast('Alguns contadores bloqueados por RLS — configure permissões no Supabase.', 'warn');
-  }
-}
+// loadSupabaseCounters removida — integrada ao renderDashboard
 
 // Logout
 $('admin-logout-btn')?.addEventListener('click', () => {
