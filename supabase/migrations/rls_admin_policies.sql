@@ -191,3 +191,17 @@ CREATE POLICY "Staff atualiza perfis"
   ON public.profiles
   FOR UPDATE
   USING (public.is_staff());
+
+-- Staff pode inserir perfis (convite manual)
+DROP POLICY IF EXISTS "Staff pode inserir perfis" ON public.profiles;
+CREATE POLICY "Staff pode inserir perfis"
+  ON public.profiles
+  FOR INSERT
+  WITH CHECK (public.is_staff());
+
+-- Staff pode excluir perfis
+DROP POLICY IF EXISTS "Staff pode excluir perfis" ON public.profiles;
+CREATE POLICY "Staff pode excluir perfis"
+  ON public.profiles
+  FOR DELETE
+  USING (public.is_staff());

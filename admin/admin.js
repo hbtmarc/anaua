@@ -107,13 +107,35 @@ function openDrawer(title, bodyHtml) {
   $('adm-drawer').classList.add('is-open');
   $('adm-drawer').setAttribute('aria-hidden', 'false');
   $('adm-drawer-overlay').classList.add('is-open');
+  // Move focus into the drawer so keyboard navigation works correctly
+  requestAnimationFrame(() => {
+    const first = $('adm-drawer')?.querySelector(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    (first ?? $('adm-drawer-close'))?.focus();
+  });
 }
 
 function closeDrawer() {
-  $('adm-drawer').classList.remove('is-open');
-  $('adm-drawer').setAttribute('aria-hidden', 'true');
+  // Move focus OUT before aria-hidden=true to avoid the aria-hidden-on-ancestor warning
+  const active = document.activeElement;
+  const drawer = $('adm-drawer');
+  if (drawer?.contains(active)) {
+    // Return focus to the element that triggered the drawer, or fall back to body
+    (_lastDrawerTrigger ?? document.body)?.focus();
+  }
+  drawer?.classList.remove('is-open');
+  drawer?.setAttribute('aria-hidden', 'true');
   $('adm-drawer-overlay').classList.remove('is-open');
+  _lastDrawerTrigger = null;
 }
+
+// Track which element triggered the drawer so we can restore focus on close
+let _lastDrawerTrigger = null;
+document.addEventListener('click', e => {
+  const btn = e.target.closest('button, a[href]');
+  if (btn && !$('adm-drawer')?.contains(btn)) _lastDrawerTrigger = btn;
+}, true);
 
 $('adm-drawer-close').addEventListener('click', closeDrawer);
 $('adm-drawer-overlay').addEventListener('click', closeDrawer);
@@ -3568,104 +3590,330 @@ $('adm-global-search').addEventListener('keydown', async e => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function renderUsuarios(root) {
-  root.innerHTML = `
-    <div class="adm-card" style="max-width:900px">
-      <div class="adm-card__header">
-        Usuários
-        <span class="text-small text-muted" style="margin-left:8px" id="adm-user-count"></span>
-      </div>
-      <div id="adm-users-body" style="padding:var(--adm-sp-4)">
-        <p class="text-muted">Carregando usuários…</p>
-      </div>
-    </div>`;
+  const ROLES      = ['customer', 'operator', 'admin'];
+  const ROLE_LABEL = { customer: 'Cliente', operator: 'Operador', admin: 'Administrador' };
+  const ROLE_BADGE = { customer: 'badge--reserved', operator: 'badge--confirmed', admin: 'badge--paid' };
+  const fmtDt = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
 
   const db = window.anauaDb;
-  if (!db) {
-    $('adm-users-body').innerHTML = `<p style="color:var(--adm-danger)">Supabase não disponível.</p>`;
-    return;
-  }
 
-  const { data: profiles, error } = await db
-    .from('profiles')
-    .select('id, email, display_name, role, created_at')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.warn('[admin-users] Erro ao carregar usuários:', error.message);
-    $('adm-users-body').innerHTML = `
-      <p style="color:var(--adm-danger)">Não foi possível carregar os usuários.</p>
-      <p class="text-muted text-small">${error.message}</p>`;
-    return;
-  }
-
-  console.log('[admin-users] Usuários carregados:', profiles?.length ?? 0);
-  const countEl = document.getElementById('adm-user-count');
-  if (countEl) countEl.textContent = `(${profiles?.length ?? 0})`;
-
-  const ROLES = ['customer', 'operator', 'admin'];
-  const ROLE_LABEL = { customer: 'Cliente', operator: 'Operador', admin: 'Administrador' };
-  const fmtDt = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
-
-  $('adm-users-body').innerHTML = `
-    <div class="adm-table-wrap">
-      <table class="adm-table">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>E-mail</th>
-            <th>Perfil</th>
-            <th>Criado em</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(profiles ?? []).map(p => `
+  // ── Shell ──────────────────────────────────────────────────────────────────
+  root.innerHTML = `
+    <div class="adm-card">
+      <div class="adm-card__header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          Usuários
+          <span class="text-small text-muted" id="adm-user-count"></span>
+        </div>
+        <button class="adm-btn adm-btn--primary adm-btn--sm" id="adm-user-invite-btn">+ Convidar usuário</button>
+      </div>
+      <div class="adm-filter-bar" style="padding:var(--adm-sp-3) var(--adm-sp-4)">
+        <input type="search" class="adm-input" id="adm-user-search" placeholder="Buscar por nome ou e-mail…" style="flex:1;min-width:180px" />
+        <select class="adm-input" id="adm-user-role-filter" style="width:auto">
+          <option value="">Todos os perfis</option>
+          ${ROLES.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join('')}
+          <option value="__suspended">Suspensos</option>
+        </select>
+      </div>
+      <div class="adm-table-wrap">
+        <table class="adm-table">
+          <thead>
             <tr>
-              <td>
-                <div style="display:flex;align-items:center;gap:8px">
-                  <div class="adm-avatar">${(p.display_name ?? p.email ?? '?')[0].toUpperCase()}</div>
-                  <span>${p.display_name ?? '—'}</span>
-                </div>
-              </td>
-              <td class="text-small text-muted">${p.email ?? '—'}</td>
-              <td>
-                <select
-                  style="padding:4px 8px;border:1px solid var(--adm-border);border-radius:6px;background:var(--adm-surface);color:var(--adm-text);font-size:var(--adm-text-sm,0.8rem);cursor:pointer"
-                  data-user-id="${p.id}"
-                  aria-label="Perfil de ${p.display_name ?? p.email}"
-                >
-                  ${ROLES.map(r => `<option value="${r}"${r === p.role ? ' selected' : ''}>${ROLE_LABEL[r] ?? r}</option>`).join('')}
-                </select>
-              </td>
-              <td class="text-small text-muted no-wrap">${fmtDt(p.created_at)}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
+              <th>Usuário</th>
+              <th>E-mail</th>
+              <th>Perfil</th>
+              <th>Status</th>
+              <th>Criado em</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adm-users-tbody">
+            <tr><td colspan="6" class="adm-table__empty text-muted">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>`;
 
-  // Role change handler
-  $('adm-users-body').querySelectorAll('select[data-user-id]').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      const userId  = sel.dataset.userId;
-      const newRole = sel.value;
-      sel.disabled  = true;
+  if (!db) {
+    $('adm-users-tbody').innerHTML = `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Supabase não disponível.</td></tr>`;
+    return;
+  }
 
-      const { error: updErr } = await db
-        .from('profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
+  // ── Load data ──────────────────────────────────────────────────────────────
+  let allProfiles = [];
 
-      sel.disabled = false;
+  async function loadProfiles() {
+    const { data, error } = await db
+      .from('profiles')
+      .select('id, email, display_name, role, phone, notes, is_suspended, created_at')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.warn('[admin-users]', error.message);
+      $('adm-users-tbody').innerHTML =
+        `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Erro ao carregar usuários: ${escHtml(error.message)}</td></tr>`;
+      return;
+    }
+    allProfiles = data ?? [];
+    const count = document.getElementById('adm-user-count');
+    if (count) count.textContent = `(${allProfiles.length})`;
+    renderRows(filtered());
+  }
 
-      if (updErr) {
-        console.warn('[admin-users] Erro ao atualizar perfil:', updErr.message);
-        toast('Erro ao atualizar perfil do usuário.', 'error');
+  // ── Filter ─────────────────────────────────────────────────────────────────
+  function filtered() {
+    const q  = $('adm-user-search').value.toLowerCase().trim();
+    const rf = $('adm-user-role-filter').value;
+    return allProfiles.filter(p => {
+      const matchQ = !q
+        || (p.display_name ?? '').toLowerCase().includes(q)
+        || (p.email ?? '').toLowerCase().includes(q);
+      const matchR = !rf
+        || (rf === '__suspended' ? p.is_suspended : p.role === rf);
+      return matchQ && matchR;
+    });
+  }
+
+  // ── Render rows ────────────────────────────────────────────────────────────
+  function renderRows(list) {
+    const tbody = $('adm-users-tbody');
+    if (!tbody) return;
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhum usuário encontrado.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = list.map(p => {
+      const initials = ((p.display_name ?? p.email ?? '?')[0] ?? '?').toUpperCase();
+      const suspended = p.is_suspended;
+      return `<tr style="${suspended ? 'opacity:.6' : ''}">
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="adm-avatar">${escHtml(initials)}</div>
+            <div>
+              <div style="font-weight:600;font-size:13px">${escHtml(p.display_name ?? '—')}</div>
+              ${p.phone ? `<div class="text-small text-muted">${escHtml(p.phone)}</div>` : ''}
+            </div>
+          </div>
+        </td>
+        <td class="text-small text-muted">${escHtml(p.email ?? '—')}</td>
+        <td><span class="badge ${ROLE_BADGE[p.role] ?? 'badge--draft'}">${ROLE_LABEL[p.role] ?? escHtml(p.role ?? '—')}</span></td>
+        <td>${suspended
+          ? '<span class="badge badge--cancelled">Suspenso</span>'
+          : '<span class="badge badge--active">Ativo</span>'
+        }</td>
+        <td class="text-small text-muted no-wrap">${fmtDt(p.created_at)}</td>
+        <td style="white-space:nowrap">
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" data-user-edit="${p.id}">Editar</button>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" data-user-reset="${escHtml(p.email ?? '')}">Redefinir senha</button>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" data-user-suspend="${p.id}" data-suspended="${suspended}"
+            style="color:var(--adm-${suspended ? 'success' : 'warning'})"
+          >${suspended ? 'Reativar' : 'Suspender'}</button>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" data-user-delete="${p.id}" data-user-name="${escHtml(p.display_name ?? p.email ?? p.id)}"
+            style="color:var(--adm-danger)">Excluir</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // ── Row action listeners ─────────────────────────────────────────────────
+    tbody.querySelectorAll('[data-user-edit]').forEach(btn =>
+      btn.addEventListener('click', () => openUserDrawer(btn.dataset.userEdit)));
+
+    tbody.querySelectorAll('[data-user-reset]').forEach(btn =>
+      btn.addEventListener('click', () => sendPasswordReset(btn.dataset.userReset)));
+
+    tbody.querySelectorAll('[data-user-suspend]').forEach(btn =>
+      btn.addEventListener('click', () => toggleSuspend(
+        btn.dataset.userSuspend,
+        btn.dataset.suspended === 'true',
+      )));
+
+    tbody.querySelectorAll('[data-user-delete]').forEach(btn =>
+      btn.addEventListener('click', () => confirmDeleteUser(
+        btn.dataset.userDelete,
+        btn.dataset.userName,
+      )));
+  }
+
+  $('adm-user-search').addEventListener('input',       () => renderRows(filtered()));
+  $('adm-user-role-filter').addEventListener('change', () => renderRows(filtered()));
+
+  // ── Send password reset ────────────────────────────────────────────────────
+  async function sendPasswordReset(email) {
+    if (!email) return;
+    const { error } = await db.auth.resetPasswordForEmail(email, {
+      redirectTo: `${location.origin}/admin/login.html`,
+    });
+    if (error) { toast('Erro ao enviar e-mail: ' + error.message, 'error'); return; }
+    toast(`E-mail de redefinição enviado para ${email}.`, 'success');
+  }
+
+  // ── Suspend / reactivate ───────────────────────────────────────────────────
+  async function toggleSuspend(userId, currentlySuspended) {
+    const { error } = await db
+      .from('profiles')
+      .update({ is_suspended: !currentlySuspended })
+      .eq('id', userId);
+    if (error) { toast('Erro: ' + error.message, 'error'); return; }
+    toast(currentlySuspended ? 'Usuário reativado.' : 'Usuário suspenso.', 'success');
+    await loadProfiles();
+  }
+
+  // ── Delete user (profile only) ─────────────────────────────────────────────
+  async function confirmDeleteUser(userId, name) {
+    openDrawer('Excluir usuário', `
+      <div style="padding:var(--adm-sp-4)">
+        <p style="margin-bottom:var(--adm-sp-4)">
+          Tem certeza que deseja excluir o usuário <strong>${escHtml(name)}</strong>?<br>
+          <span class="text-small text-muted">Apenas o perfil será removido. A conta de autenticação permanece no Supabase Auth.</span>
+        </p>
+        <div style="display:flex;gap:8px">
+          <button id="adm-del-confirm" class="adm-btn adm-btn--danger">Confirmar exclusão</button>
+          <button onclick="closeDrawer()" class="adm-btn adm-btn--ghost">Cancelar</button>
+        </div>
+      </div>`);
+    document.getElementById('adm-del-confirm')?.addEventListener('click', async () => {
+      const { error } = await db.from('profiles').delete().eq('id', userId);
+      if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
+      toast('Usuário excluído.', 'success');
+      closeDrawer();
+      await loadProfiles();
+    });
+  }
+
+  // ── Edit user drawer ───────────────────────────────────────────────────────
+  async function openUserDrawer(userId) {
+    const profile = allProfiles.find(p => p.id === userId);
+    if (!profile) return;
+
+    openDrawer(`Editar usuário — ${escHtml(profile.display_name ?? profile.email ?? '')}`, `
+      <form id="adm-user-form" style="display:flex;flex-direction:column;gap:var(--adm-sp-4);padding:var(--adm-sp-4)">
+        <div class="adm-form-group">
+          <label class="adm-label">Nome de exibição</label>
+          <input class="adm-input" id="adm-u-name" type="text" value="${escHtml(profile.display_name ?? '')}" placeholder="Nome completo" />
+        </div>
+        <div class="adm-form-group">
+          <label class="adm-label">E-mail <span class="text-muted text-small">(somente leitura)</span></label>
+          <input class="adm-input" type="email" value="${escHtml(profile.email ?? '')}" disabled style="opacity:.6;cursor:not-allowed" />
+        </div>
+        <div class="adm-form-group">
+          <label class="adm-label">Telefone</label>
+          <input class="adm-input" id="adm-u-phone" type="tel" value="${escHtml(profile.phone ?? '')}" placeholder="+55 (00) 00000-0000" />
+        </div>
+        <div class="adm-form-group">
+          <label class="adm-label">Perfil / Nível de acesso</label>
+          <select class="adm-input" id="adm-u-role">
+            ${ROLES.map(r => `<option value="${r}"${r === profile.role ? ' selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="adm-form-group">
+          <label class="adm-label">Notas internas</label>
+          <textarea class="adm-input" id="adm-u-notes" rows="3" placeholder="Observações visíveis apenas pelo staff">${escHtml(profile.notes ?? '')}</textarea>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="submit" class="adm-btn adm-btn--primary" id="adm-u-save">Salvar alterações</button>
+          <button type="button" onclick="closeDrawer()" class="adm-btn adm-btn--ghost">Cancelar</button>
+        </div>
+      </form>`);
+
+    document.getElementById('adm-user-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const saveBtn = document.getElementById('adm-u-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
+
+      const payload = {
+        display_name: document.getElementById('adm-u-name').value.trim() || null,
+        role:         document.getElementById('adm-u-role').value,
+        phone:        document.getElementById('adm-u-phone').value.trim() || null,
+        notes:        document.getElementById('adm-u-notes').value.trim() || null,
+      };
+      const { error } = await db.from('profiles').update(payload).eq('id', userId);
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
+      if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return; }
+      toast('Perfil atualizado.', 'success');
+      closeDrawer();
+      await loadProfiles();
+    });
+  }
+
+  // ── Invite user drawer ─────────────────────────────────────────────────────
+  function openInviteDrawer() {
+    openDrawer('Convidar usuário', `
+      <form id="adm-invite-form" style="display:flex;flex-direction:column;gap:var(--adm-sp-4);padding:var(--adm-sp-4)">
+        <p class="text-small text-muted" style="margin:0">
+          Uma conta será criada com senha temporária. O usuário receberá um e-mail de confirmação.
+        </p>
+        <div class="adm-form-group">
+          <label class="adm-label">E-mail <span style="color:var(--adm-danger)">*</span></label>
+          <input class="adm-input" id="adm-inv-email" type="email" required placeholder="usuario@email.com" />
+        </div>
+        <div class="adm-form-group">
+          <label class="adm-label">Nome de exibição</label>
+          <input class="adm-input" id="adm-inv-name" type="text" placeholder="Nome completo (opcional)" />
+        </div>
+        <div class="adm-form-group">
+          <label class="adm-label">Perfil</label>
+          <select class="adm-input" id="adm-inv-role">
+            ${ROLES.map(r => `<option value="${r}"${r === 'customer' ? ' selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}
+          </select>
+        </div>
+        <div id="adm-inv-err" style="display:none;color:var(--adm-danger);font-size:13px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="submit" class="adm-btn adm-btn--primary" id="adm-inv-save">Criar & enviar convite</button>
+          <button type="button" onclick="closeDrawer()" class="adm-btn adm-btn--ghost">Cancelar</button>
+        </div>
+      </form>`);
+
+    document.getElementById('adm-invite-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const saveBtn = document.getElementById('adm-inv-save');
+      const errEl   = document.getElementById('adm-inv-err');
+      const email   = document.getElementById('adm-inv-email').value.trim();
+      const name    = document.getElementById('adm-inv-name').value.trim() || null;
+      const role    = document.getElementById('adm-inv-role').value;
+
+      if (!email) return;
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Criando…'; }
+      errEl.style.display = 'none';
+
+      // Create auth user with random temp password (user must reset via email)
+      const tempPwd = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2).toUpperCase() + '!7';
+      const { data: signUpData, error: signUpErr } = await db.auth.signUp({
+        email,
+        password: tempPwd,
+        options: { data: { display_name: name } },
+      });
+
+      if (signUpErr) {
+        errEl.textContent = signUpErr.message;
+        errEl.style.display = 'block';
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Criar & enviar convite'; }
         return;
       }
 
-      console.log('[admin-users] Perfil atualizado — userId:', userId, '| role:', newRole);
-      toast('Perfil atualizado com sucesso.', 'success');
+      const newUserId = signUpData?.user?.id;
+      if (newUserId) {
+        // Upsert profile with chosen role
+        await db.from('profiles').upsert({
+          id:           newUserId,
+          email,
+          display_name: name,
+          role,
+        }, { onConflict: 'id' });
+        // Send password reset so user can set their own password
+        await db.auth.resetPasswordForEmail(email, {
+          redirectTo: `${location.origin}/admin/login.html`,
+        });
+      }
+
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Criar & enviar convite'; }
+      toast(`Convite enviado para ${email}. O usuário deve confirmar o e-mail.`, 'success');
+      closeDrawer();
+      await loadProfiles();
     });
-  });
+  }
+
+  $('adm-user-invite-btn')?.addEventListener('click', openInviteDrawer);
+
+  await loadProfiles();
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
