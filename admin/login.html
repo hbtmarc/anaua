@@ -94,17 +94,6 @@
     .btn:hover  { background: var(--forest-2); }
     .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     .btn:disabled { opacity: .6; cursor: not-allowed; }
-    .demo-hint {
-      margin-top: 20px;
-      padding: 12px;
-      background: #f0f7f0;
-      border-radius: 7px;
-      border: 1px solid #c8e0ca;
-      font-size: 12px;
-      color: var(--forest);
-      line-height: 1.6;
-    }
-    .demo-hint strong { display: block; margin-bottom: 4px; }
     @media (max-width: 400px) {
       .login-card { padding: 28px 20px; }
     }
@@ -158,24 +147,22 @@
         <button type="submit" class="btn" id="login-btn">Entrar no backoffice</button>
       </form>
 
-      <div class="demo-hint" aria-label="Credenciais de demonstração">
-        <strong>Demo</strong>
-        E-mail: <code>admin@anaua.com.br</code><br>
-        Senha: <code>admin2026</code>
-      </div>
+      <!-- caixa de demo removida -->
     </div>
   </main>
 
+  <!-- Supabase JS v2 via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script type="module">
-    // ─── Admin credentials (demo — replace with server-side auth in production)
-    const ADMIN_EMAIL    = 'admin@anaua.com.br';
-    const ADMIN_PASSWORD = 'admin2026';
-    const SESSION_KEY    = 'anaua_admin_session';
+    import { supabase } from '../assets/js/supabaseClient.js';
 
-    // If already logged in, go straight to dashboard
-    if (sessionStorage.getItem(SESSION_KEY)) {
-      location.replace('index.html');
-    }
+    // Se já existe sessão Supabase válida, vai direto ao dashboard
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        location.replace('index.html');
+      }
+    })();
 
     const form    = document.getElementById('login-form');
     const emailEl = document.getElementById('admin-email');
@@ -188,10 +175,9 @@
       el.classList.toggle('is-visible', Boolean(msg));
     }
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
-      // Reset
       setErr(document.getElementById('email-err'), '');
       setErr(document.getElementById('pwd-err'), '');
       setErr(formErr, '');
@@ -217,22 +203,57 @@
       btn.disabled = true;
       btn.textContent = 'Verificando…';
 
-      // Simulate async check
-      setTimeout(() => {
-        if (email === ADMIN_EMAIL && pwd === ADMIN_PASSWORD) {
-          sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-            email,
-            loginAt: new Date().toISOString(),
-          }));
-          location.replace('index.html');
-        } else {
+      try {
+        // 1. Autenticar com Supabase
+        const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password: pwd });
+
+        if (authError || !data.user) {
           setErr(formErr, 'Credenciais inválidas. Verifique e-mail e senha.');
           btn.disabled = false;
           btn.textContent = 'Entrar no backoffice';
           pwdEl.value = '';
           pwdEl.focus();
+          return;
         }
-      }, 400);
+
+        console.log('[admin-auth] Usuário autenticado encontrado:', data.user.email);
+
+        // 2. Verificar role em public.profiles
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError || !profile) {
+          console.warn('[admin-auth] Acesso negado — perfil não encontrado');
+          await supabase.auth.signOut();
+          setErr(formErr, 'Seu usuário não tem permissão para acessar o backoffice.');
+          btn.disabled = false;
+          btn.textContent = 'Entrar no backoffice';
+          return;
+        }
+
+        console.log('[admin-auth] Perfil carregado — role:', profile.role);
+
+        if (!['admin', 'operator'].includes(profile.role)) {
+          console.warn('[admin-auth] Acesso negado — role insuficiente:', profile.role);
+          await supabase.auth.signOut();
+          setErr(formErr, 'Seu usuário não tem permissão para acessar o backoffice.');
+          btn.disabled = false;
+          btn.textContent = 'Entrar no backoffice';
+          return;
+        }
+
+        console.log('[admin-auth] Acesso autorizado — redirecionando para o dashboard');
+        location.replace('index.html');
+
+      } catch (err) {
+        console.error('[admin-auth] Erro inesperado no login:', err);
+        setErr(formErr, 'Erro inesperado. Tente novamente.');
+        btn.disabled = false;
+        btn.textContent = 'Entrar no backoffice';
+      }
     });
   </script>
 </body>

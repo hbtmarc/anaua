@@ -21,11 +21,8 @@ import {
 // Oculta o body imediatamente para evitar flash de conteúdo antes da validação
 document.body.style.visibility = 'hidden';
 
-const ADMIN_SESSION_KEY = 'anaua_admin_session'; // mantido para compatibilidade
-
 // ─── Logout helper ────────────────────────────────────────────────────────────
 function adminLogout() {
-  sessionStorage.removeItem(ADMIN_SESSION_KEY);
   if (window.anauaDb) window.anauaDb.auth.signOut();
   location.replace('login.html');
 }
@@ -1385,15 +1382,10 @@ seedMockBookings();
   const db = window.anauaDb;
 
   if (!db) {
-    // CDN não carregou — fallback para sessionStorage legado
-    if (!sessionStorage.getItem(ADMIN_SESSION_KEY)) {
-      location.replace('login.html');
-      return;
-    }
-    document.body.style.visibility = '';
-    const legacySession = JSON.parse(sessionStorage.getItem(ADMIN_SESSION_KEY) || '{}');
-    const el = $('adm-user-name'); if (el) el.textContent = legacySession.email?.split('@')[0] ?? 'Admin';
-    const av = $('adm-user-avatar'); if (av) av.textContent = (legacySession.email?.[0] ?? 'A').toUpperCase();
+    // CDN não carregou — sem fallback, bloqueia acesso
+    console.warn('[admin-auth] Supabase CDN não carregado. Redirecionando para login.');
+    console.log('[admin-auth] Redirecionando para login');
+    location.replace('login.html');
     return;
   }
 
@@ -1401,18 +1393,31 @@ seedMockBookings();
     const { data: { user }, error } = await db.auth.getUser();
 
     if (!user || error) {
-      console.warn('[admin] Sessão Supabase não encontrada. Redirecionando...');
+      console.log('[admin-auth] Redirecionando para login');
       location.replace('login.html');
       return;
     }
 
-    const { data: profile } = await db
+    console.log('[admin-auth] Usuário autenticado encontrado:', user.email);
+
+    const { data: profile, error: profileError } = await db
       .from('profiles')
       .select('role, full_name')
       .eq('id', user.id)
       .single();
 
-    if (!profile || !['admin', 'operator'].includes(profile.role)) {
+    if (profileError || !profile) {
+      console.warn('[admin-auth] Acesso negado — perfil não encontrado no Supabase');
+      await db.auth.signOut();
+      location.replace('login.html');
+      return;
+    }
+
+    console.log('[admin-auth] Perfil carregado — role:', profile.role);
+
+    if (!['admin', 'operator'].includes(profile.role)) {
+      console.warn('[admin-auth] Acesso negado — role:', profile.role);
+      await db.auth.signOut();
       document.body.style.visibility = '';
       $('adm-main').innerHTML = `
         <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
@@ -1423,6 +1428,8 @@ seedMockBookings();
       return;
     }
 
+    console.log('[admin-auth] Acesso autorizado —', user.email);
+
     // Popula informações do usuário
     const displayName = profile.full_name ?? user.email.split('@')[0];
     const userNameEl  = $('adm-user-name');
@@ -1430,14 +1437,14 @@ seedMockBookings();
     if (userNameEl) userNameEl.textContent = displayName;
     if (avatarEl)   avatarEl.textContent   = displayName[0].toUpperCase();
 
-    console.log('[admin] Sessão validada ✓ —', user.email, '| role:', profile.role);
-    document.body.style.visibility = '';
+    document.body.style.visibility = 'visible';
 
     // Carrega contadores reais do Supabase no dashboard
     loadSupabaseCounters();
 
   } catch (err) {
-    console.error('[admin] Erro ao validar sessão:', err);
+    console.error('[admin-auth] Erro ao validar sessão:', err);
+    console.log('[admin-auth] Redirecionando para login');
     location.replace('login.html');
   }
 })();
