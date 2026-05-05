@@ -761,6 +761,11 @@ async function openEditExperienciaModal(id) {
         <button type="submit" id="exp-save-btn" class="adm-btn adm-btn--primary" style="flex:1">Salvar alterações</button>
         <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
       </div>
+      ${row.is_active === false ? `
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--adm-border)">
+        <button type="button" id="exp-delete-btn" class="adm-btn adm-btn--danger" style="width:100%">🗑️ Excluir experiência permanentemente</button>
+        <p style="font-size:11px;color:var(--adm-text-muted);margin-top:6px;text-align:center">Remove a experiência e todas as saídas e entradas de lista de espera vinculadas.</p>
+      </div>` : ''}
     </form>`;
 
   // Upload de imagem no modo edição
@@ -776,6 +781,44 @@ async function openEditExperienciaModal(id) {
     const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
     if (statusEl) statusEl.value = pub.publicUrl;
     toast('Imagem enviada!', 'success');
+  });
+
+  // Delete button — only rendered when experience is inactive
+  document.getElementById('exp-delete-btn')?.addEventListener('click', () => {
+    openModal(
+      'Excluir experiência',
+      `<p style="font-size:var(--text-sm);color:var(--adm-text-muted);line-height:1.6">
+         Você está prestes a <strong>excluir permanentemente</strong> a experiência:<br><br>
+         <strong style="color:var(--adm-text)">${escHtml(row.title ?? '')}</strong><br><br>
+         Esta ação também removerá:<br>
+         &bull; Todas as <strong>saídas (departures)</strong> vinculadas<br>
+         &bull; Todas as <strong>entradas da lista de espera</strong> vinculadas<br><br>
+         <span style="color:var(--adm-danger);font-weight:600">Esta ação é irreversível.</span>
+       </p>`,
+      `<button class="adm-btn adm-btn--secondary" onclick="closeModal()">Cancelar</button>
+       <button class="adm-btn adm-btn--danger" id="confirm-delete-exp-btn">Sim, excluir tudo</button>`
+    );
+
+    document.getElementById('confirm-delete-exp-btn')?.addEventListener('click', async () => {
+      closeModal();
+      const db = window.anauaDb;
+      if (!db) { toast('Supabase não disponível.', 'error'); return; }
+
+      // 1. Remove departures
+      const { error: depErr } = await db.from('departures').delete().eq('experience_id', id);
+      if (depErr) { toast('Erro ao excluir saídas: ' + depErr.message, 'error'); return; }
+
+      // 2. Remove waitlist entries (table may not exist — ignore errors)
+      await db.from('waitlist_entries').delete().eq('experience_id', id);
+
+      // 3. Remove experience
+      const { error: expErr } = await db.from('experiences').delete().eq('id', id);
+      if (expErr) { toast('Erro ao excluir experiência: ' + expErr.message, 'error'); return; }
+
+      toast('Experiência e dados vinculados excluídos com sucesso.', 'success');
+      closeDrawer();
+      navigate('#experiencias');
+    });
   });
 
   document.getElementById('exp-form').addEventListener('submit', async e => {
@@ -1712,7 +1755,9 @@ function openExitDrawer(exitId) {
       <div class="adm-dl">
         <dt>Experiência</dt><dd class="text-bold">${escHtml(exp.title)}</dd>
         ${exit.title ? `<dt>Título</dt><dd>${escHtml(exit.title)}</dd>` : ''}
-        <dt>Data/Hora</dt><dd>${fmtDate(exit.start_at)}</dd>
+        <dt>Data/Hora início</dt><dd>${fmtDate(exit.start_at)}</dd>
+        ${exit.end_at ? `<dt>Data/Hora fim</dt><dd>${fmtDate(exit.end_at)}</dd>` : ''}
+        ${exit.meeting_point ? `<dt>Ponto de encontro</dt><dd>${escHtml(exit.meeting_point)}</dd>` : ''}
         <dt>Capacidade</dt><dd>${exit.capacity} vagas</dd>
         ${exit.price != null ? `<dt>Preço</dt><dd>${fmt(exit.price)}</dd>` : ''}
         <dt>Status</dt><dd><span class="badge badge--${st}">${stLabel}</span></dd>
@@ -1817,6 +1862,16 @@ function openExitFormModal(exit, expObj, experiences, onSave) {
       <input class="adm-input" type="datetime-local" id="ef-start" value="${startAtValue}" />
     </div>
     <div class="adm-field">
+      <label>Data/hora de término</label>
+      <input class="adm-input" type="datetime-local" id="ef-end" value="${exit?.end_at ? new Date(exit.end_at).toISOString().slice(0,16) : ''}" />
+    </div>
+    <div class="adm-field">
+      <label>Ponto de encontro</label>
+      <input class="adm-input" type="text" id="ef-meeting"
+        value="${escHtml(exit?.meeting_point ?? '')}"
+        placeholder="Ex: Estacionamento do Parque Municipal" />
+    </div>
+    <div class="adm-field">
       <label>Capacidade (vagas) *</label>
       <input class="adm-input" type="number" id="ef-capacity"
         value="${exit?.capacity ?? ''}" min="1" placeholder="10" />
@@ -1840,13 +1895,15 @@ function openExitFormModal(exit, expObj, experiences, onSave) {
   $('ef-cancel')?.addEventListener('click', closeModal);
 
   $('ef-save')?.addEventListener('click', async () => {
-    const expId    = $('ef-exp')?.value;
-    const depTitle = $('ef-title')?.value.trim() || null;
-    const startAt  = $('ef-start')?.value;
-    const capacity = parseInt($('ef-capacity')?.value, 10);
-    const price    = parseFloat($('ef-price')?.value) || null;
-    const status   = $('ef-status')?.value ?? 'scheduled';
-    const errEl    = $('ef-error');
+    const expId      = $('ef-exp')?.value;
+    const depTitle   = $('ef-title')?.value.trim() || null;
+    const startAt    = $('ef-start')?.value;
+    const endAt      = $('ef-end')?.value || null;
+    const meetPoint  = $('ef-meeting')?.value.trim() || null;
+    const capacity   = parseInt($('ef-capacity')?.value, 10);
+    const price      = parseFloat($('ef-price')?.value) || null;
+    const status     = $('ef-status')?.value ?? 'scheduled';
+    const errEl      = $('ef-error');
 
     if (!expId)          { errEl.textContent = 'Selecione uma experiência.';         errEl.style.display = 'block'; return; }
     if (!startAt)        { errEl.textContent = 'Informe a data e hora.';             errEl.style.display = 'block'; return; }
@@ -1860,6 +1917,8 @@ function openExitFormModal(exit, expObj, experiences, onSave) {
       experience_id: expId,
       title:         depTitle,
       start_at:      new Date(startAt).toISOString(),
+      end_at:        endAt ? new Date(endAt).toISOString() : null,
+      meeting_point: meetPoint,
       capacity,
       price,
       status: isEdit ? status : 'scheduled',

@@ -2,7 +2,7 @@
  * @fileoverview Experience detail page — Anauá Ecoturismo
  * Carrega experiência do Supabase pelo slug da URL (?id=<slug>).
  */
-import { CATEGORIES, getNextActiveExit, formatBRL, formatDate } from './data.js';
+import { CATEGORIES, formatBRL, formatDate } from './data.js';
 import {
   initPage, renderBreadcrumb, renderExperienceCard, renderSkeletonCards,
   Icon, showToast, openModal, observeAnimations,
@@ -169,7 +169,7 @@ function renderContent(exp) {
   if (!el) return;
 
   const catLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category ?? '';
-  const nextExit = getNextActiveExit(exp);
+  const hasFutureDep = (exp.departures ?? []).some(d => d.status === 'scheduled');
   const diffLabel = { iniciante: 'Iniciante', moderado: 'Moderado', aventura: 'Aventura' }[exp.difficulty] ?? exp.difficulty ?? '';
 
   el.innerHTML = `
@@ -179,7 +179,7 @@ function renderContent(exp) {
         ${diffLabel ? `<span class="badge badge--level-${exp.difficulty}">${diffLabel}</span>` : ''}
         ${catLabel  ? `<span class="badge" style="background:var(--color-offwhite);color:var(--color-muted);border:1px solid var(--color-stone)">${catLabel}</span>` : ''}
         ${exp.isNew ? '<span class="badge badge--new">Novo</span>' : ''}
-        ${!nextExit ? '<span class="badge badge--sold-out">Esgotado</span>' : ''}
+        ${!hasFutureDep && exp.departures.length > 0 ? '<span class="badge badge--sold-out">Esgotado</span>' : ''}
       </div>
       <h1 class="detail-header__title">${exp.title}</h1>
       <p class="detail-header__subtitle">${exp.subtitle}</p>
@@ -265,7 +265,7 @@ function renderContent(exp) {
     <!-- Cancellation -->
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">Política de cancelamento</h2>
-      <div class="cancellation-box">${exp.cancellationPolicy}</div>
+      <div class="cancellation-box">${exp.cancellationPolicy ?? 'Consulte nossa equipe para informações sobre cancelamento e reembolso.'}</div>
     </div>
   `;
 
@@ -352,23 +352,31 @@ function openGalleryModal(images, startIndex, alt) {
 /* ── Exit item ───────────────────────────────────────────── */
 function renderExitItem(dep) {
   const isSoldOut = dep.status !== 'scheduled';
-  const dateLabel = dep.start_at ? dep.start_at.split('T')[0] : '—';
+  const dateLabel = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
+  const timeLabel = dep.start_at ? dep.start_at.split('T')[1]?.slice(0, 5) : null;
+  const titleLabel = dep.title ? `<p class="exit-item__title">${dep.title}</p>` : '';
+  const meetLabel  = dep.meeting_point ? `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>` : '';
+  const priceLabel = dep.price ? `<p class="exit-item__price">${formatBRL(dep.price)}/pessoa</p>` : '';
 
   return `
     <div
       class="exit-item ${isSoldOut ? 'exit-item--sold-out' : ''}"
       data-exit-id="${dep.id}"
+      data-price="${dep.price ?? ''}"
       role="radio"
       aria-checked="false"
       tabindex="${isSoldOut ? -1 : 0}"
     >
-      <div>
-        <p class="exit-item__date">${Icon.calendar} ${dateLabel}</p>
+      <div class="exit-item__info">
+        ${titleLabel}
+        <p class="exit-item__date">${Icon.calendar} ${dateLabel}${timeLabel ? ' às ' + timeLabel : ''}</p>
+        ${meetLabel}
+        ${priceLabel}
       </div>
       <div>
         ${isSoldOut
           ? '<span class="badge badge--sold-out">Esgotado</span>'
-          : `<span class="exit-item__spots">${dep.capacity ?? '?'} vaga${dep.capacity !== 1 ? 's' : ''} disponível${dep.capacity !== 1 ? 'is' : ''}</span>`
+          : `<span class="exit-item__spots">${dep.capacity ?? '?'} vaga${dep.capacity !== 1 ? 's' : ''}</span>`
         }
       </div>
     </div>
@@ -446,7 +454,7 @@ function renderBookingBox(exp) {
       <div class="booking-box__row">
         <label class="booking-box__label" for="exit-select">Saída</label>
         <select id="exit-select" class="booking-box__select" aria-label="Selecionar data da saída">
-          ${activeDeps.map(d => { const label = d.start_at ? d.start_at.split('T')[0] : '—'; return `<option value="${d.id}">${label} — ${d.capacity ?? '?'} vaga${d.capacity !== 1 ? 's' : ''}</option>`; }).join('')}
+          ${activeDeps.map(d => { const label = d.start_at ? formatDate(d.start_at.split('T')[0]) : '—'; const time = d.start_at ? d.start_at.split('T')[1]?.slice(0,5) : null; const priceStr = d.price ? ` · ${formatBRL(d.price)}` : ''; return `<option value="${d.id}">${label}${time ? ' ' + time : ''} — ${d.capacity ?? '?'} vaga${d.capacity !== 1 ? 's' : ''}${priceStr}</option>`; }).join('')}
         </select>
       </div>
 
@@ -461,7 +469,7 @@ function renderBookingBox(exp) {
 
       <div class="booking-box__total">
         <span>Total estimado</span>
-        <span class="booking-box__total-value" id="booking-total">${formatBRL(exp.pricePerPerson)}</span>
+        <span class="booking-box__total-value" id="booking-total">${formatBRL((activeDeps[0]?.price ?? exp.pricePerPerson))}</span>
       </div>
 
       <button class="btn btn--primary btn--full btn--lg" id="reserve-btn">
@@ -489,7 +497,10 @@ function renderBookingBox(exp) {
   function updateTotal() {
     if (!paxSelect || !totalEl) return;
     const pax = Number((paxSelect instanceof HTMLSelectElement ? paxSelect.value : '1'));
-    totalEl.textContent = formatBRL(exp.pricePerPerson * pax);
+    const depId = exitSelect instanceof HTMLSelectElement ? exitSelect.value : null;
+    const selectedDep = depId ? activeDeps.find(d => d.id === depId) : null;
+    const unitPrice = selectedDep?.price ?? exp.pricePerPerson;
+    totalEl.textContent = formatBRL(unitPrice * pax);
   }
 
   paxSelect?.addEventListener('change', updateTotal);
@@ -501,17 +512,23 @@ function renderBookingBox(exp) {
     const pax    = paxSelect.value;
     const dep    = (exp.departures ?? []).find(d => d.id === exitId);
     if (!dep) return;
-    const depLabel = dep.start_at ? dep.start_at.split('T')[0] : '—';
+    const depDate  = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
+    const depTime  = dep.start_at ? dep.start_at.split('T')[1]?.slice(0,5) : null;
+    const depLabel = depTime ? `${depDate} às ${depTime}` : depDate;
+    const depTitle = dep.title ? ` · ${dep.title}` : '';
+    const unitPrice = dep.price ?? exp.pricePerPerson;
+    const meet = dep.meeting_point ? `<p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.map} Encontro: ${dep.meeting_point}</p>` : '';
 
     const { close } = openModal({
       title: 'Confirmar reserva',
       body: `
         <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">Você está pré-reservando:</p>
         <div style="background:var(--color-offwhite);border-radius:var(--radius-lg);padding:var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-3)">
-          <p><strong>${exp.title}</strong></p>
+          <p><strong>${exp.title}</strong>${depTitle}</p>
           <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.calendar} Saída: ${depLabel}</p>
+          ${meet}
           <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.users} ${pax} participante${Number(pax) !== 1 ? 's' : ''}</p>
-          <p style="font-size:var(--text-sm);font-weight:600;color:var(--color-deep)">Total: ${formatBRL(exp.pricePerPerson * Number(pax))}</p>
+          <p style="font-size:var(--text-sm);font-weight:600;color:var(--color-deep)">Total: ${formatBRL(unitPrice * Number(pax))}</p>
         </div>
         <p style="font-size:var(--text-xs);color:var(--color-muted);margin-top:var(--sp-4);line-height:var(--leading-loose)">
           Ao continuar, você concorda com os
@@ -528,7 +545,7 @@ function renderBookingBox(exp) {
     document.getElementById('modal-cancel-btn')?.addEventListener('click', close);
     document.getElementById('modal-confirm-btn')?.addEventListener('click', () => {
       close();
-      location.href = `reserva.html?id=${exp.slug ?? exp.id}`;
+      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${exitId}`;
     });
   });
 

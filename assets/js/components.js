@@ -3,7 +3,7 @@
  * Utilities, header, footer, toast, modal and card rendering.
  */
 
-import { EXPERIENCES, CATEGORIES, TESTIMONIALS, STATS, getNextActiveExit, formatBRL, formatDate } from './data.js';
+import { EXPERIENCES, CATEGORIES, TESTIMONIALS, STATS, formatBRL, formatDate } from './data.js';
 
 /* ── SVG ICONS ───────────────────────────────────────────── */
 export const Icon = {
@@ -291,7 +291,7 @@ export function renderExperienceCard(exp) {
         </div>
       </div>
       <a
-        href="${isSoldOut ? `reserva.html?id=${expLink}` : hasVacancy ? `reserva.html?id=${expLink}` : `experiencia.html?id=${expLink}`}"
+        href="${isSoldOut ? `experiencia.html?id=${expLink}` : hasVacancy ? `reserva.html?id=${expLink}&dep=${dep.id}` : `experiencia.html?id=${expLink}`}"
         class="card__cta"
         aria-label="${isSoldOut ? 'Entrar na lista de espera para' : hasVacancy ? 'Reservar vaga em' : 'Ver detalhes de'} ${exp.title}"
       >

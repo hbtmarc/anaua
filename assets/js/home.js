@@ -1,7 +1,7 @@
 /**
  * @fileoverview Home page — Anauá Ecoturismo
  */
-import { EXPERIENCES, TESTIMONIALS, STATS, CATEGORIES, getNextActiveExit, formatBRL } from './data.js';
+import { EXPERIENCES, TESTIMONIALS, STATS, CATEGORIES, formatBRL } from './data.js';
 import { initPage, renderExperienceCard, renderSkeletonCards, renderTestimonialCard, observeAnimations } from './components.js';
 import { listExperiences, listDeparturesByExperience } from './repositories/experienceRepo.js';
 

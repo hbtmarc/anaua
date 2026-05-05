@@ -1063,6 +1063,15 @@ function renderVoucher(booking, paymentResult, split) {
   if (draft.experienceId !== exp.id) draft = createDraft(exp.id);
   selectedPaymentMethod = draft.paymentMethod ?? null;
 
+  // Pre-seleciona saída passada via URL (?dep=<uuid>)
+  const depParam = params.get('dep');
+  if (depParam && (exp.departures ?? []).some(d => d.id === depParam)) {
+    draft.exitId = depParam;
+    console.log('[reserva] Saída pré-selecionada via URL ✓', depParam);
+  } else if (!draft.exitId && exp.departures.length > 0) {
+    draft.exitId = exp.departures[0].id;
+  }
+
   renderStep1();
   goTo(1);
 })();

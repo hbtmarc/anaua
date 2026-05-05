@@ -317,7 +317,7 @@ export async function listDeparturesByExperience(experienceId) {
 
   const { data, error } = await supabase
     .from('departures')
-    .select('id, experience_id, title, start_at, capacity, price, status, created_at, updated_at')
+    .select('id, experience_id, title, start_at, end_at, meeting_point, capacity, price, status, created_at, updated_at')
     .eq('experience_id', experienceId)
     .eq('status', 'scheduled')
     .gte('start_at', now)
@@ -338,7 +338,7 @@ export async function listDeparturesByExperience(experienceId) {
 export async function listAllDepartures() {
   const { data, error } = await supabase
     .from('departures')
-    .select('id, experience_id, title, start_at, capacity, price, status, created_at, updated_at, experiences(title)')
+    .select('id, experience_id, title, start_at, end_at, meeting_point, capacity, price, status, created_at, updated_at, experiences(title)')
     .order('start_at', { ascending: false });
 
   if (error) {
@@ -357,7 +357,7 @@ export async function createDeparture(payload) {
   const { data, error } = await supabase
     .from('departures')
     .insert(payload)
-    .select('id, experience_id, title, start_at, capacity, price, status')
+    .select('id, experience_id, title, start_at, end_at, meeting_point, capacity, price, status')
     .single();
 
   if (error) {
@@ -378,7 +378,7 @@ export async function updateDeparture(id, payload) {
     .from('departures')
     .update(payload)
     .eq('id', id)
-    .select('id, experience_id, title, start_at, capacity, price, status')
+    .select('id, experience_id, title, start_at, end_at, meeting_point, capacity, price, status')
     .single();
 
   if (error) {
