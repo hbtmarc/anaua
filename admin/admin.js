@@ -2011,7 +2011,8 @@ async function renderUsuarios(root) {
 
     document.body.style.visibility = 'visible';
 
-    // renderDashboard carrega os dados do Supabase ao navegar para #dashboard
+    // Navega apenas após auth confirmada — evita race condition com RLS
+    navigate(location.hash || '#dashboard');
 
   } catch (err) {
     console.error('[admin-auth] Erro ao validar sessão:', err);
@@ -2027,4 +2028,3 @@ $('admin-logout-btn')?.addEventListener('click', () => {
 });
 
 $('adm-notif-dot').classList.add('is-visible');
-navigate(location.hash || '#dashboard');
