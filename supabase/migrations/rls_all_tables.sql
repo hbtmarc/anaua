@@ -61,7 +61,7 @@ DROP POLICY IF EXISTS "owner_read_reservations"  ON public.reservations;
 CREATE POLICY "staff_read_reservations"
   ON public.reservations FOR SELECT TO authenticated
   USING (public.is_staff());
-
+ 
 CREATE POLICY "staff_write_reservations"
   ON public.reservations FOR ALL TO authenticated
   USING (public.is_staff())
