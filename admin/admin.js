@@ -519,6 +519,7 @@ async function renderExperiencias(root) {
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 <a href="../experiencia.html?id=${escHtml(exp.slug ?? exp.id)}" target="_blank" class="adm-btn adm-btn--ghost adm-btn--sm">Ver</a>
                 <button class="adm-btn adm-btn--secondary adm-btn--sm" onclick="openEditExperienciaModal('${exp.id}')">Editar</button>
+                <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="duplicateExperience('${exp.id}')">Duplicar</button>
                 <button class="adm-btn adm-btn--danger adm-btn--sm" onclick="deactivateExp('${exp.id}','${escHtml(exp.title ?? '')}')">${exp.is_active !== false ? 'Desativar' : 'Reativar'}</button>
               </div>
             </td>
@@ -2055,6 +2056,69 @@ async function setWlStatus(id, status) {
 //  MODULE: PONTOS DE EMBARQUE (catálogo reutilizável)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  DUPLICATION HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+window.duplicateExperience = async function duplicateExperience(id) {
+  const db = window.anauaDb;
+  const { data: src, error: fetchErr } = await db.from('experiences').select('*').eq('id', id).single();
+  if (fetchErr || !src) { toast('Experiência não encontrada.', 'error'); return; }
+  const { id: _id, created_at, updated_at, ...fields } = src;
+  const copy = {
+    ...fields,
+    title:     'Cópia de ' + src.title,
+    slug:      src.slug + '-copia-' + Date.now(),
+    is_active: false,
+  };
+  const { error } = await db.from('experiences').insert(copy);
+  if (error) { toast('Erro ao duplicar experiência: ' + error.message, 'error'); return; }
+  toast('Experiência duplicada como rascunho. Edite antes de ativar.', 'success');
+  navigate('#experiencias');
+};
+
+window.duplicateBoardingPoint = async function duplicateBoardingPoint(id) {
+  const db = window.anauaDb;
+  const { data: src, error: fetchErr } = await db.from('boarding_points').select('*').eq('id', id).single();
+  if (fetchErr || !src) { toast('Ponto de embarque não encontrado.', 'error'); return; }
+  const { id: _id, created_at, updated_at, ...fields } = src;
+  const { error } = await db.from('boarding_points').insert({ ...fields, name: 'Cópia de ' + src.name, is_active: false });
+  if (error) { toast('Erro ao duplicar ponto: ' + error.message, 'error'); return; }
+  toast('Ponto de embarque duplicado como inativo.', 'success');
+  navigate('#embarque');
+};
+
+window.duplicateDeparture = async function duplicateDeparture(exitId) {
+  const db = window.anauaDb;
+  const { data: src, error: fetchErr } = await db.from('departures').select('*').eq('id', exitId).single();
+  if (fetchErr || !src) { toast('Saída não encontrada.', 'error'); return; }
+  const { id: _id, created_at, updated_at, ...fields } = src;
+  const newTitle = fields.title ? 'Cópia de ' + fields.title : null;
+  const { data: newDep, error: depErr } = await db
+    .from('departures')
+    .insert({ ...fields, title: newTitle, status: 'scheduled' })
+    .select('id')
+    .single();
+  if (depErr || !newDep?.id) { toast('Erro ao duplicar saída: ' + (depErr?.message ?? 'sem resposta'), 'error'); return; }
+  // Clone boarding points
+  const { data: bps } = await listAllBoardingPointsByDeparture(exitId);
+  if (bps?.length) {
+    const selections = bps.map((bp, i) => ({
+      boardingPointId: bp.boardingPointId ?? null,
+      customLabel:     bp.customLabel ?? null,
+      customAddress:   bp.customAddress ?? null,
+      pickupAt:        bp.pickupAt ?? null,
+      notes:           bp.notes ?? null,
+      isActive:        bp.isActive ?? true,
+      sortOrder:       i,
+    }));
+    const { error: bpErr } = await saveDepartureBoardingPoints(newDep.id, selections);
+    if (bpErr) toast('Saída duplicada, mas pontos de embarque falharam: ' + bpErr.message, 'warning');
+  }
+  toast('Saída duplicada com sucesso! Edite a data e os detalhes da nova.', 'success');
+  navigate('#saidas');
+};
+
 async function renderBoardingPoints(root) {
   root.innerHTML = '<div style="padding:24px;color:var(--adm-text-muted)">Carregando…</div>';
   const { data: bps, error } = await listAllBoardingPoints();
@@ -2106,6 +2170,7 @@ async function renderBoardingPoints(root) {
         </button>
         <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="tryDeleteBp('${bp.id}','${escHtml(bp.name)}')"
           style="color:var(--adm-danger)">Excluir</button>
+        <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="duplicateBoardingPoint('${bp.id}')">Duplicar</button>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -2291,7 +2356,10 @@ async function renderSaidas(root) {
         <td>${exit.capacity} vagas</td>
         <td class="no-wrap">${exit.price != null ? fmt(exit.price) : '<span class="text-muted">—</span>'}</td>
         <td><span class="badge badge--${st}">${stLabel}</span></td>
-        <td><button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button></td>
+        <td style="white-space:nowrap">
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="duplicateDeparture('${exit.id}')">Duplicar</button>
+        </td>
       </tr>`;
     }).join('') || `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída encontrada.</td></tr>`;
     tbody.querySelectorAll('[data-exit]').forEach(btn => btn.addEventListener('click', () => openExitDrawer(btn.dataset.exit)));
