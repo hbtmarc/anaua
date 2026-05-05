@@ -528,6 +528,241 @@ async function renderExperiencias(root) {
     </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  ANAUÁ DTP — Custom Date/Time Picker
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build HTML for a DTP trigger (hidden input + styled button).
+ * The hidden input retains the original fieldId so all existing .value reads work unchanged.
+ */
+function dtpFieldHtml(fieldId, currentValue = '', placeholder = 'Selecionar data e hora') {
+  const display = currentValue ? formatDateTimeBR(currentValue) : '';
+  const hasVal  = !!display;
+  const inner   = hasVal ? display : `<span class="adm-dtp-ph">${placeholder}</span>`;
+  return `<div class="adm-dtp-wrap">
+    <input type="hidden" id="${fieldId}" value="${currentValue}" />
+    <button type="button" class="adm-dtp-btn${hasVal ? ' is-set' : ''}" onclick="openDTP(this,'${fieldId}')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;opacity:.55">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      <span id="${fieldId}-dtp-label" style="flex:1;text-align:left">${inner}</span>
+      <span class="adm-dtp-btn__clear" style="display:${hasVal ? '' : 'none'}"
+        onclick="event.stopPropagation();dtpClearField('${fieldId}')">×</span>
+    </button>
+  </div>`;
+}
+
+/** Programmatically update a DTP field value + display label (no change event). */
+function dtpSetValue(fieldId, isoVal) {
+  const hidden = document.getElementById(fieldId);
+  const label  = document.getElementById(fieldId + '-dtp-label');
+  const btn    = label?.closest('.adm-dtp-btn');
+  const clr    = btn?.querySelector('.adm-dtp-btn__clear');
+  if (hidden) hidden.value = isoVal ?? '';
+  if (label) {
+    label.innerHTML = isoVal
+      ? formatDateTimeBR(isoVal)
+      : `<span class="adm-dtp-ph">Selecionar data e hora</span>`;
+  }
+  if (clr) clr.style.display = isoVal ? '' : 'none';
+  if (btn) btn.classList.toggle('is-set', !!isoVal);
+}
+
+/** Format "YYYY-MM-DDTHH:MM…" → "DD/MM/AAAA, HH:MM" */
+function formatDateTimeBR(v) {
+  if (!v) return '';
+  const m = String(v).match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}, ${m[4]}:${m[5]}` : v;
+}
+
+/** Auto-calculate end datetime from start + duration in a DTP field pair. */
+function dtpAutoCalcEnd(startId, endId, durId) {
+  const sv = document.getElementById(startId)?.value;
+  if (!sv) return;
+  const dur = parseFloat(document.getElementById(durId)?.value) || 8;
+  const ms  = new Date(sv).getTime();
+  if (isNaN(ms)) return;
+  const iso = new Date(ms + dur * 3_600_000).toISOString().slice(0, 16);
+  dtpSetValue(endId, iso);
+  // Mark end field as auto-set (not manually overridden)
+  const endEl = document.getElementById(endId);
+  if (endEl) delete endEl.dataset.dtpManual;
+}
+
+/** Clear a DTP field (also resets manual-override flag). */
+window.dtpClearField = function(fieldId) {
+  dtpSetValue(fieldId, null);
+  const el = document.getElementById(fieldId);
+  if (el) delete el.dataset.dtpManual;
+  el?.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+// ─── Picker core ─────────────────────────────────────────────────────────────
+
+function _ensureDTPOverlay() {
+  if (document.getElementById('adm-dtp-overlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'adm-dtp-overlay';
+  ov.innerHTML = '<div class="adm-dtp" id="adm-dtp-panel"></div>';
+  ov.addEventListener('mousedown', e => { if (e.target === ov) closeDTP(); });
+  document.body.appendChild(ov);
+}
+
+let _dtp = null;
+
+/**
+ * Open the picker.
+ * @param {Element} _el   - clicked trigger element (unused, matches onclick signature)
+ * @param {string} fieldId
+ * @param {object} [opts] - { minDate:'YYYY-MM-DD', onSelect, prefillDate:'YYYY-MM-DD' }
+ */
+function openDTP(_el, fieldId, opts = {}) {
+  _ensureDTPOverlay();
+  const cur = document.getElementById(fieldId)?.value || '';
+  const m   = cur.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  _dtp = {
+    fieldId,
+    onSelect:     opts.onSelect ?? null,
+    minDate:      opts.minDate  ?? null,
+    year:         m ? +m[1] : new Date().getFullYear(),
+    month:        m ? +m[2] - 1 : new Date().getMonth(),
+    selectedDate: m ? `${m[1]}-${m[2]}-${m[3]}` : (opts.prefillDate ?? null),
+    selectedTime: m ? `${m[4]}:${m[5]}` : null,
+  };
+  if (!m && opts.prefillDate) {
+    const [py, pm] = opts.prefillDate.split('-');
+    _dtp.year = +py; _dtp.month = +pm - 1;
+  }
+  _renderDTP();
+  document.getElementById('adm-dtp-overlay').classList.add('is-open');
+}
+window.openDTP = openDTP;
+
+function closeDTP() {
+  document.getElementById('adm-dtp-overlay')?.classList.remove('is-open');
+  _dtp = null;
+}
+window.closeDTP = closeDTP;
+
+function _pad(n) { return String(n).padStart(2, '0'); }
+function _fmtDs(y, m, d) { return `${y}-${_pad(m + 1)}-${_pad(d)}`; }
+
+function _renderDTP() {
+  const panel = document.getElementById('adm-dtp-panel');
+  if (!panel || !_dtp) return;
+  const { year, month, selectedDate, selectedTime, minDate } = _dtp;
+  const today = new Date();
+  const todStr  = _fmtDs(today.getFullYear(), today.getMonth(), today.getDate());
+  const MONTHS  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const WDAYS   = ['D','S','T','Q','Q','S','S'];
+
+  // Calendar cells
+  const fw  = new Date(year, month, 1).getDay();
+  const dim = new Date(year, month + 1, 0).getDate();
+  const dip = new Date(year, month, 0).getDate();
+  let days  = '';
+  for (let i = fw - 1; i >= 0; i--)
+    days += `<button type="button" class="adm-dtp__day other-month" disabled>${dip - i}</button>`;
+  for (let d = 1; d <= dim; d++) {
+    const ds  = _fmtDs(year, month, d);
+    const dis = minDate && ds < minDate;
+    let   cls = 'adm-dtp__day';
+    if (ds === todStr)      cls += ' today';
+    if (ds === selectedDate) cls += ' selected';
+    days += `<button type="button" class="${cls}"${dis?' disabled':''} onclick="_dtpPickDate('${ds}')">${d}</button>`;
+  }
+  const pad = Math.ceil((fw + dim) / 7) * 7 - fw - dim;
+  for (let r = 1; r <= pad; r++)
+    days += `<button type="button" class="adm-dtp__day other-month" disabled>${r}</button>`;
+
+  // Time grid (15-min steps)
+  let times = '';
+  for (let h = 0; h < 24; h++) for (let mx = 0; mx < 60; mx += 15) {
+    const ts  = `${_pad(h)}:${_pad(mx)}`;
+    const sel = ts === selectedTime;
+    times += `<button type="button" class="adm-dtp__time-btn${sel?' selected':''}" onclick="_dtpPickTime('${ts}')">${ts}</button>`;
+  }
+
+  // Quick shortcuts
+  const tom = new Date(today); tom.setDate(today.getDate() + 1);
+  const sat = new Date(today); sat.setDate(today.getDate() + ((6 - today.getDay() + 7) % 7 || 7));
+  const fds = d => _fmtDs(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const selDisp = selectedDate && selectedTime
+    ? formatDateTimeBR(`${selectedDate}T${selectedTime}`)
+    : (selectedDate ? selectedDate.split('-').reverse().join('/') : '—');
+
+  panel.innerHTML = `
+    <div class="adm-dtp__head">
+      <div>
+        <div class="adm-dtp__head-title">Selecionar data e hora</div>
+        <div class="adm-dtp__head-selected">${selDisp}</div>
+      </div>
+    </div>
+    <div class="adm-dtp__body">
+      <div class="adm-dtp__shortcuts">
+        <button type="button" class="adm-dtp__sc-btn" onclick="_dtpPickDate('${todStr}')">Hoje</button>
+        <button type="button" class="adm-dtp__sc-btn" onclick="_dtpPickDate('${fds(tom)}')">Amanhã</button>
+        <button type="button" class="adm-dtp__sc-btn" onclick="_dtpPickDate('${fds(sat)}')">Próx. sábado</button>
+        <button type="button" class="adm-dtp__sc-btn" onclick="dtpClearField(_dtp?.fieldId);closeDTP()">Limpar</button>
+      </div>
+      <div class="adm-dtp__nav">
+        <button type="button" onclick="_dtpNavMonth(-1)">‹</button>
+        <span class="adm-dtp__nav-label">${MONTHS[month]} ${year}</span>
+        <button type="button" onclick="_dtpNavMonth(1)">›</button>
+      </div>
+      <div class="adm-dtp__cal">
+        <div class="adm-dtp__cal-head">${WDAYS.map(w=>`<span>${w}</span>`).join('')}</div>
+        <div class="adm-dtp__cal-grid">${days}</div>
+      </div>
+      <div class="adm-dtp__time-section">
+        <div class="adm-dtp__time-label">Horário</div>
+        <div class="adm-dtp__time-grid">${times}</div>
+        <div class="adm-dtp__time-manual">
+          <label style="font-size:12px;white-space:nowrap;color:var(--adm-muted)">Digitar:</label>
+          <input type="time" class="adm-input adm-input--sm" id="adm-dtp-manual"
+            value="${selectedTime||''}" oninput="_dtpPickTime(this.value)" style="width:88px" />
+        </div>
+      </div>
+    </div>
+    <div class="adm-dtp__footer">
+      <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDTP()">Cancelar</button>
+      <button type="button" class="adm-btn adm-btn--primary"   onclick="_dtpApply()">Aplicar</button>
+    </div>`;
+
+  requestAnimationFrame(() => {
+    panel.querySelector('.adm-dtp__time-btn.selected')?.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+window._dtpPickDate  = function(ds) { if (_dtp) { _dtp.selectedDate = ds; _dtp.year = +ds.slice(0,4); _dtp.month = +ds.slice(5,7)-1; _renderDTP(); } };
+window._dtpPickTime  = function(ts) { if (_dtp) { _dtp.selectedTime = ts; _renderDTP(); } };
+window._dtpNavMonth  = function(dir) {
+  if (!_dtp) return;
+  _dtp.month += dir;
+  if (_dtp.month < 0)  { _dtp.month = 11; _dtp.year--; }
+  if (_dtp.month > 11) { _dtp.month =  0; _dtp.year++; }
+  _renderDTP();
+};
+window._dtpApply = function() {
+  if (!_dtp) return;
+  if (!_dtp.selectedDate) { toast('Selecione uma data.', 'error'); return; }
+  if (!_dtp.selectedTime) { toast('Selecione um horário.', 'error'); return; }
+  const iso = `${_dtp.selectedDate}T${_dtp.selectedTime}`;
+  const fid = _dtp.fieldId;
+  const cb  = _dtp.onSelect;
+  dtpSetValue(fid, iso);
+  // Mark as manually set (not auto-filled)
+  const el = document.getElementById(fid);
+  if (el) el.dataset.dtpManual = '1';
+  closeDTP();
+  // Notify change listeners
+  el?.dispatchEvent(new Event('change', { bubbles: true }));
+  cb?.(iso);
+};
+
 function openNovaExperienciaModal() {
   openDrawer('Nova experiência', `
     <form id="nova-exp-form" autocomplete="off">
@@ -624,10 +859,10 @@ function openNovaExperienciaModal() {
       <div id="ne-dep-section" style="display:none;display:flex;flex-direction:column;gap:12px">
         <div class="adm-grid-2">
           <div class="adm-field"><label>Data/hora de início *</label>
-            <input id="ne-dep-start" class="adm-input" type="datetime-local" />
+            ${dtpFieldHtml('ne-dep-start')}
           </div>
           <div class="adm-field"><label>Data/hora de término</label>
-            <input id="ne-dep-end" class="adm-input" type="datetime-local" />
+            ${dtpFieldHtml('ne-dep-end')}
           </div>
         </div>
         <div class="adm-grid-2">
@@ -765,7 +1000,7 @@ function openNovaExperienciaModal() {
           <input id="ne-custom-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque</label>
-          <input id="ne-custom-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
+          ${dtpFieldHtml('ne-custom-bp-pickup-' + i, '', 'Horário de embarque')}
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Endereço</label>
           <input id="ne-custom-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
@@ -805,7 +1040,7 @@ function openNovaExperienciaModal() {
               </label>
               <div id="ne-bpcat-${bp.id}-details" style="display:none;padding-left:22px;flex-wrap:wrap;gap:8px">
                 <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Horário de embarque</label>
-                  <input id="ne-bpcat-${bp.id}-pickup" class="adm-input adm-input--sm" type="datetime-local" />
+                  ${dtpFieldHtml('ne-bpcat-' + bp.id + '-pickup', '', 'Horário de embarque')}
                 </div>
                 <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Obs. nesta saída</label>
                   <input id="ne-bpcat-${bp.id}-notes" class="adm-input adm-input--sm" placeholder="Opcional" />
@@ -816,12 +1051,42 @@ function openNovaExperienciaModal() {
             document.getElementById(`ne-bpcat-${bp.id}`)?.addEventListener('change', ev => {
               const det = document.getElementById(`ne-bpcat-${bp.id}-details`);
               if (det) det.style.display = ev.target.checked ? 'flex' : 'none';
+              if (ev.target.checked) {
+                const sv  = document.getElementById('ne-dep-start')?.value;
+                const pid = 'ne-bpcat-' + bp.id + '-pickup';
+                if (sv && !document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+              }
             });
           });
         }
         listEl.dataset.loaded = '1';
       }
     }
+  });
+
+  // ── Smart end_at + BP prefill for ne ──────────────────────────────────────
+  let _neEndOverride = false;
+  document.getElementById('ne-dep-start')?.addEventListener('change', () => {
+    _neEndOverride = false; // start changed → allow recalc
+    dtpAutoCalcEnd('ne-dep-start', 'ne-dep-end', 'ne-duration');
+    const sv = document.getElementById('ne-dep-start')?.value;
+    if (!sv) return;
+    // Pre-fill checked catalog BPs
+    document.querySelectorAll('#ne-dep-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
+      const pid = 'ne-bpcat-' + cb.dataset.bpId + '-pickup';
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+    });
+    // Pre-fill custom BPs
+    document.querySelectorAll('[id^="ne-dep-custom-bp-"]').forEach(r => {
+      const pid = 'ne-custom-bp-pickup-' + r.id.replace('ne-dep-custom-bp-', '');
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+    });
+  });
+  document.getElementById('ne-dep-end')?.addEventListener('change', () => {
+    if (document.getElementById('ne-dep-end')?.dataset.dtpManual === '1') _neEndOverride = true;
+  });
+  document.getElementById('ne-duration')?.addEventListener('change', () => {
+    if (!_neEndOverride) dtpAutoCalcEnd('ne-dep-start', 'ne-dep-end', 'ne-duration');
   });
 
   // ── Section C toggle ───────────────────────────────────────────────────────
@@ -1210,10 +1475,10 @@ async function openEditExperienciaModal(id) {
       <div id="ee-dep-section" style="display:none;flex-direction:column;gap:12px">
         <div class="adm-grid-2">
           <div class="adm-field"><label>Data/hora de início *</label>
-            <input id="ee-dep-start" class="adm-input" type="datetime-local" />
+            ${dtpFieldHtml('ee-dep-start')}
           </div>
           <div class="adm-field"><label>Data/hora de término</label>
-            <input id="ee-dep-end" class="adm-input" type="datetime-local" />
+            ${dtpFieldHtml('ee-dep-end')}
           </div>
         </div>
         <div class="adm-grid-2">
@@ -1362,7 +1627,7 @@ async function openEditExperienciaModal(id) {
           <input id="ee-custom-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque</label>
-          <input id="ee-custom-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
+          ${dtpFieldHtml('ee-custom-bp-pickup-' + i, '', 'Horário de embarque')}
         </div>
         <div class="adm-field" style="margin:0"><label style="font-size:11px">Endereço</label>
           <input id="ee-custom-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
@@ -1402,7 +1667,7 @@ async function openEditExperienciaModal(id) {
               </label>
               <div id="ee-bpcat-${bp.id}-details" style="display:none;padding-left:22px;flex-wrap:wrap;gap:8px">
                 <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Horário de embarque</label>
-                  <input id="ee-bpcat-${bp.id}-pickup" class="adm-input adm-input--sm" type="datetime-local" />
+                  ${dtpFieldHtml('ee-bpcat-' + bp.id + '-pickup', '', 'Horário de embarque')}
                 </div>
                 <div class="adm-field" style="margin:0;flex:1;min-width:160px"><label style="font-size:11px">Obs. nesta saída</label>
                   <input id="ee-bpcat-${bp.id}-notes" class="adm-input adm-input--sm" placeholder="Opcional" />
@@ -1413,12 +1678,40 @@ async function openEditExperienciaModal(id) {
             document.getElementById(`ee-bpcat-${bp.id}`)?.addEventListener('change', ev => {
               const det = document.getElementById(`ee-bpcat-${bp.id}-details`);
               if (det) det.style.display = ev.target.checked ? 'flex' : 'none';
+              if (ev.target.checked) {
+                const sv  = document.getElementById('ee-dep-start')?.value;
+                const pid = 'ee-bpcat-' + bp.id + '-pickup';
+                if (sv && !document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+              }
             });
           });
         }
         listEl.dataset.loaded = '1';
       }
     }
+  });
+
+  // ── Smart end_at + BP prefill for ee ──────────────────────────────────────
+  let _eeEndOverride = false;
+  document.getElementById('ee-dep-start')?.addEventListener('change', () => {
+    _eeEndOverride = false;
+    dtpAutoCalcEnd('ee-dep-start', 'ee-dep-end', 'ee-duration');
+    const sv = document.getElementById('ee-dep-start')?.value;
+    if (!sv) return;
+    document.querySelectorAll('#ee-dep-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
+      const pid = 'ee-bpcat-' + cb.dataset.bpId + '-pickup';
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+    });
+    document.querySelectorAll('[id^="ee-dep-custom-bp-"]').forEach(r => {
+      const pid = 'ee-custom-bp-pickup-' + r.id.replace('ee-dep-custom-bp-', '');
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+    });
+  });
+  document.getElementById('ee-dep-end')?.addEventListener('change', () => {
+    if (document.getElementById('ee-dep-end')?.dataset.dtpManual === '1') _eeEndOverride = true;
+  });
+  document.getElementById('ee-duration')?.addEventListener('change', () => {
+    if (!_eeEndOverride) dtpAutoCalcEnd('ee-dep-start', 'ee-dep-end', 'ee-duration');
   });
 
   // ── Section C toggle ──────────────────────────────────────────────────────
@@ -2828,11 +3121,11 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
       <div class="adm-grid-2">
         <div class="adm-field">
           <label>Data e hora de início *</label>
-          <input class="adm-input" type="datetime-local" id="ef-start" value="${startVal}" />
+          ${dtpFieldHtml('ef-start', startVal)}
         </div>
         <div class="adm-field">
           <label>Data/hora de término</label>
-          <input class="adm-input" type="datetime-local" id="ef-end" value="${endVal}" />
+          ${dtpFieldHtml('ef-end', endVal)}
         </div>
       </div>
       <div class="adm-grid-2">
@@ -2908,8 +3201,7 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
           <div class="adm-grid-2" style="gap:8px">
             <div class="adm-field" style="margin:0">
               <label style="font-size:11px">Horário de embarque *</label>
-              <input id="ef-bpcat-pickup-${bp.id}" class="adm-input adm-input--sm"
-                type="datetime-local" value="${pickupVal}" />
+              ${dtpFieldHtml('ef-bpcat-pickup-' + bp.id, pickupVal, 'Horário de embarque')}
             </div>
             <div class="adm-field" style="margin:0">
               <label style="font-size:11px">Obs. para esta saída</label>
@@ -2922,6 +3214,11 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
       item.querySelector(`#ef-bpcat-${bp.id}`)?.addEventListener('change', ev => {
         const det = document.getElementById(`ef-bpcat-detail-${bp.id}`);
         if (det) det.style.display = ev.target.checked ? 'block' : 'none';
+        if (ev.target.checked) {
+          const sv  = document.getElementById('ef-start')?.value;
+          const pid = 'ef-bpcat-pickup-' + bp.id;
+          if (sv && !document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+        }
       });
     });
   }
@@ -2949,8 +3246,7 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
         </div>
         <div class="adm-field" style="margin:0">
           <label style="font-size:11px">Horário *</label>
-          <input id="ef-cust-pickup-${i}" class="adm-input adm-input--sm"
-            type="datetime-local" value="${pickupVal}" />
+          ${dtpFieldHtml('ef-cust-pickup-' + i, pickupVal, 'Horário de embarque')}
         </div>
         <div class="adm-field" style="margin:0">
           <label style="font-size:11px">Endereço / referência</label>
@@ -2983,11 +3279,14 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     if (capEl   && !capEl.value)   capEl.value   = fullExp.max_participants ?? '';
     if (priceEl && !priceEl.value) priceEl.value = fullExp.base_price ?? '';
     // Auto-set end_at from start_at + duration_hours if both available
-    if (fullExp.duration_hours && startEl?.value && endEl && !endEl.value) {
-      const startMs = new Date(startEl.value).getTime();
-      if (!isNaN(startMs)) {
-        const endMs = startMs + fullExp.duration_hours * 3600_000;
-        endEl.value = new Date(endMs).toISOString().slice(0, 16);
+    if (fullExp.duration_hours && startEl?.value && endEl) {
+      const endManual = endEl.dataset.dtpManual === '1';
+      if (!endManual || !endEl.value) {
+        const startMs = new Date(startEl.value).getTime();
+        if (!isNaN(startMs)) {
+          const endMs = startMs + fullExp.duration_hours * 3600_000;
+          dtpSetValue(endEl.id, new Date(endMs).toISOString().slice(0, 16));
+        }
       }
     }
   }
@@ -2998,8 +3297,22 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
 
   // ── end_at auto-calc when start changes ─────────────────────────────────
   document.getElementById('ef-start')?.addEventListener('change', async () => {
+    // Reset end override so auto-calc can run
+    const endEl = document.getElementById('ef-end');
+    if (endEl) delete endEl.dataset.dtpManual;
     const expId = document.getElementById('ef-exp')?.value;
     if (expId) autofillFromExp(expId);
+    // Pre-fill unchecked → checked BPs and custom rows with same departure datetime
+    const sv = document.getElementById('ef-start')?.value;
+    if (!sv) return;
+    document.querySelectorAll('#ef-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
+      const pid = 'ef-bpcat-pickup-' + cb.dataset.bpid;
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+    });
+    document.querySelectorAll('[id^="ef-custom-bp-"]').forEach(r => {
+      const pid = 'ef-cust-pickup-' + r.id.replace('ef-custom-bp-', '');
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+    });
   });
 
   // ── Form submit ──────────────────────────────────────────────────────────

@@ -941,3 +941,119 @@ body.sidebar-collapsed .adm-shell     { margin-left: 0; }
   border:1px solid var(--adm-border);
   flex-shrink:0;
 }
+
+/* ─── Custom Date/Time Picker (Anauá DTP) ──────────────────────────────── */
+.adm-dtp-wrap { position: relative; }
+.adm-dtp-btn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 7px 10px;
+  border: 1px solid var(--adm-border); border-radius: var(--adm-radius-sm);
+  background: var(--adm-surface); font-size: 13px; color: var(--adm-text);
+  text-align: left; cursor: pointer; transition: border-color .15s;
+  min-height: 36px;
+}
+.adm-dtp-btn:hover, .adm-dtp-btn:focus { border-color: var(--adm-forest-3); outline: none; }
+.adm-dtp-ph { color: var(--adm-muted); }
+.adm-dtp-btn__clear {
+  margin-left: auto; background: none; border: none; padding: 0 2px;
+  font-size: 17px; line-height: 1; cursor: pointer; color: var(--adm-muted);
+}
+.adm-dtp-btn__clear:hover { color: var(--adm-danger, #dc2626); }
+
+/* overlay */
+#adm-dtp-overlay {
+  position: fixed; inset: 0; z-index: 9900;
+  background: rgba(0,0,0,.40); display: none;
+  align-items: center; justify-content: center;
+}
+#adm-dtp-overlay.is-open { display: flex; }
+
+/* picker card */
+.adm-dtp {
+  background: var(--adm-surface); border-radius: var(--adm-radius-lg);
+  box-shadow: 0 10px 40px rgba(0,0,0,.22); width: 348px; max-width: 96vw;
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: dtpIn .18s ease;
+}
+@keyframes dtpIn { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* header */
+.adm-dtp__head {
+  background: var(--adm-forest); color: #fff;
+  padding: 14px 16px 11px; display: flex; align-items: flex-start; justify-content: space-between;
+}
+.adm-dtp__head-title { font-size: 13px; font-weight: 700; opacity: .85; }
+.adm-dtp__head-selected { font-size: 16px; font-weight: 600; margin-top: 2px; }
+
+/* body */
+.adm-dtp__body { padding: 12px 14px 4px; overflow-y: auto; }
+
+/* shortcuts */
+.adm-dtp__shortcuts { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.adm-dtp__sc-btn {
+  padding: 3px 9px; font-size: 11px; border-radius: 20px;
+  border: 1px solid var(--adm-border); background: var(--adm-bg);
+  cursor: pointer; color: var(--adm-text-2);
+}
+.adm-dtp__sc-btn:hover { border-color: var(--adm-forest-3); color: var(--adm-forest); }
+
+/* month nav */
+.adm-dtp__nav {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.adm-dtp__nav button {
+  background: none; border: 1px solid var(--adm-border); color: var(--adm-text);
+  cursor: pointer; padding: 2px 9px; border-radius: var(--adm-radius-sm);
+  font-size: 15px; font-weight: 700; line-height: 1.4;
+}
+.adm-dtp__nav button:hover { background: var(--adm-bg); }
+.adm-dtp__nav-label { font-size: 13px; font-weight: 600; }
+
+/* calendar */
+.adm-dtp__cal-head, .adm-dtp__cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+}
+.adm-dtp__cal-head { margin-bottom: 2px; }
+.adm-dtp__cal-head span {
+  text-align: center; font-size: 10px; font-weight: 700;
+  color: var(--adm-muted); padding: 2px 0;
+}
+.adm-dtp__cal-grid { gap: 1px; margin-bottom: 4px; }
+.adm-dtp__day {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; border-radius: 50%; cursor: pointer; border: none;
+  background: none; color: var(--adm-text); padding: 0;
+}
+.adm-dtp__day:hover:not(:disabled):not(.selected) { background: var(--adm-gold-lt); }
+.adm-dtp__day.today { font-weight: 800; color: var(--adm-forest); }
+.adm-dtp__day.selected { background: var(--adm-forest); color: #fff; }
+.adm-dtp__day:disabled, .adm-dtp__day.other-month { color: #d1d5db; cursor: default; pointer-events: none; }
+
+/* time */
+.adm-dtp__time-section {
+  margin-top: 8px; border-top: 1px solid var(--adm-border); padding-top: 10px;
+}
+.adm-dtp__time-label { font-size: 11px; font-weight: 700; color: var(--adm-muted); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
+.adm-dtp__time-grid {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  max-height: 96px; overflow-y: auto; padding-bottom: 2px;
+}
+.adm-dtp__time-btn {
+  padding: 3px 7px; font-size: 11px; border-radius: 4px;
+  border: 1px solid var(--adm-border); background: var(--adm-bg); cursor: pointer;
+  white-space: nowrap;
+}
+.adm-dtp__time-btn:hover { border-color: var(--adm-forest-3); }
+.adm-dtp__time-btn.selected { background: var(--adm-forest); color: #fff; border-color: var(--adm-forest); }
+.adm-dtp__time-manual {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding-top: 6px;
+  border-top: 1px dashed var(--adm-border);
+}
+
+/* footer */
+.adm-dtp__footer {
+  display: flex; gap: 8px; padding: 10px 14px 14px;
+  border-top: 1px solid var(--adm-border); flex-shrink: 0;
+}
+.adm-dtp__footer button { flex: 1; }
