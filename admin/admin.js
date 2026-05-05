@@ -1402,11 +1402,23 @@ seedMockBookings();
 
     const { data: profile, error: profileError } = await db
       .from('profiles')
-      .select('role, full_name')
+      .select('id, email, display_name, role')
       .eq('id', user.id)
       .single();
 
-    if (profileError || !profile) {
+    if (profileError) {
+      console.error('[admin-auth] Erro ao carregar perfil:', profileError.message, '| code:', profileError.code);
+      document.body.style.visibility = 'visible';
+      $('adm-main').innerHTML = `
+        <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
+          <p style="color:var(--adm-danger);font-size:1.1rem;font-weight:600">Não foi possível validar seu perfil administrativo.</p>
+          <p style="color:var(--adm-text-muted);margin-top:8px">Verifique o console para detalhes ou tente novamente.</p>
+          <a href="login.html" class="adm-btn adm-btn--primary" style="margin-top:20px;display:inline-flex">Voltar ao login</a>
+        </div>`;
+      return;
+    }
+
+    if (!profile) {
       console.warn('[admin-auth] Acesso negado — perfil não encontrado no Supabase');
       await db.auth.signOut();
       location.replace('login.html');
@@ -1414,11 +1426,11 @@ seedMockBookings();
     }
 
     console.log('[admin-auth] Perfil carregado — role:', profile.role);
+    console.log('[admin-auth] Role detectada:', profile.role);
 
     if (!['admin', 'operator'].includes(profile.role)) {
       console.warn('[admin-auth] Acesso negado — role:', profile.role);
-      await db.auth.signOut();
-      document.body.style.visibility = '';
+      document.body.style.visibility = 'visible';
       $('adm-main').innerHTML = `
         <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
           <p style="color:var(--adm-danger);font-size:1.1rem;font-weight:600">Acesso não autorizado.</p>
@@ -1431,7 +1443,7 @@ seedMockBookings();
     console.log('[admin-auth] Acesso autorizado —', user.email);
 
     // Popula informações do usuário
-    const displayName = profile.full_name ?? user.email.split('@')[0];
+    const displayName = profile.display_name ?? user.email.split('@')[0];
     const userNameEl  = $('adm-user-name');
     const avatarEl    = $('adm-user-avatar');
     if (userNameEl) userNameEl.textContent = displayName;
