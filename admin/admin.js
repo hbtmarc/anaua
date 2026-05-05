@@ -286,91 +286,6 @@ async function renderDashboard(root) {
   console.log('[admin-db] Dashboard carregado do Supabase');
 }
 
-  root.innerHTML = `
-    <div class="adm-kpi-row">
-      ${kpi('A Receber', fmt(pending), 'Total saldo pendente', 'green',
-        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`)}
-      ${kpi('Confirmadas', confirmed, 'Reservas ativas', 'blue',
-        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>`)}
-      ${kpi('Inadimplentes', overdue, 'Saldo vencido', 'red',
-        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`)}
-      ${kpi('Cancelamentos', cancelled, 'Total geral', 'gray',
-        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`)}
-      ${kpi('Total Bruto', fmt(total), 'Volume de vendas', 'gold',
-        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`)}
-      ${kpi('Total Recebido', fmt(paid), 'Pago + confirmado', 'purple',
-        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`)}
-    </div>
-
-    <div class="adm-grid-2">
-      <div class="adm-card">
-        <div class="adm-card__header">
-          Reservas recentes
-          <div class="adm-card__actions">
-            <a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a>
-          </div>
-        </div>
-        <div class="adm-table-wrap">
-          <table class="adm-table">
-            <thead><tr><th>Voucher</th><th>Responsável</th><th>Status</th><th>Valor</th></tr></thead>
-            <tbody>
-              ${recent.map(b => `
-                <tr class="is-clickable" data-booking="${b.id}">
-                  <td class="no-wrap text-small text-muted">${b.voucherCode ?? b.id}</td>
-                  <td>
-                    <div style="display:flex;align-items:center;gap:7px">
-                      <div class="adm-avatar">${initials(b.payer?.fullName)}</div>
-                      <div>
-                        <div class="text-bold">${b.payer?.fullName ?? '—'}</div>
-                        <div class="text-small text-muted">${fmtDateShort(b.createdAt)}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>${badge(b.status)}</td>
-                  <td class="no-wrap text-bold">${fmt(b.totalAmount ?? 0)}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="adm-card">
-        <div class="adm-card__header">
-          Próximas saídas
-          <div class="adm-card__actions">
-            <a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a>
-          </div>
-        </div>
-        <div class="adm-table-wrap">
-          <table class="adm-table">
-            <thead><tr><th>Data</th><th>Experiência</th><th>Ocupação</th><th>Vagas</th></tr></thead>
-            <tbody>
-              ${nextExits.length ? nextExits.map(({ exp, exit }) => {
-                const booked = exit.spotsTotal - exit.spotsAvailable;
-                const pct = (booked / exit.spotsTotal) * 100;
-                return `<tr class="is-clickable" data-exit="${exit.id}">
-                  <td class="no-wrap">${fmtDateShort(exit.date)}</td>
-                  <td>${exp.title}</td>
-                  <td style="min-width:120px">${occFill(pct)}</td>
-                  <td class="text-bold">${exit.spotsAvailable}/${exit.spotsTotal}</td>
-                </tr>`;
-              }).join('') : `<tr><td colspan="4" class="adm-table__empty text-muted">Sem saídas futuras cadastradas.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Row click → booking drawer or exit drawer
-  root.querySelectorAll('[data-booking]').forEach(tr => {
-    tr.addEventListener('click', () => openBookingDrawer(tr.dataset.booking));
-  });
-  root.querySelectorAll('[data-exit]').forEach(tr => {
-    tr.addEventListener('click', () => openExitDrawer(tr.dataset.exit));
-  });
-}
-
 function kpi(label, value, sub, color, iconSvg) {
   return `<div class="adm-kpi">
     <div class="adm-kpi__icon adm-kpi__icon--${color}" style="float:right;margin:-4px -2px 0 0">${iconSvg}</div>
@@ -1670,9 +1585,7 @@ async function renderUsuarios(root) {
 
     document.body.style.visibility = 'visible';
 
-    // Contadores reais do Supabase carregados após navigate() inicial
-    loadSupabaseCounters();
-    console.log('[admin-db] Dashboard carregado do Supabase');
+    // renderDashboard carrega os dados do Supabase ao navegar para #dashboard
 
   } catch (err) {
     console.error('[admin-auth] Erro ao validar sessão:', err);
@@ -1680,8 +1593,6 @@ async function renderUsuarios(root) {
     location.replace('login.html');
   }
 })();
-
-// loadSupabaseCounters removida — integrada ao renderDashboard
 
 // Logout
 $('admin-logout-btn')?.addEventListener('click', () => {
