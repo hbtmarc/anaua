@@ -37,24 +37,29 @@ import { supabase } from '../supabaseClient.js';
  */
 export async function insertReservation({
   userId, experienceId, exitId,
+  boardingPointId,
   payer, totalAmount, amountPaid, reservationStatus,
   paymentMethod, notes,
 }) {
+  const row = {
+    user_id:            userId ?? null,
+    experience_id:      experienceId,
+    departure_id:       exitId ?? null,      // exitId = departure UUID
+    customer_name:      payer?.fullName ?? null,
+    customer_email:     payer?.email ?? null,
+    customer_phone:     payer?.phone ?? null,
+    total_amount:       totalAmount,
+    amount_paid:        amountPaid ?? 0,
+    reservation_status: reservationStatus ?? 'reserved',
+    payment_method:     paymentMethod ?? null,
+    notes:              notes ?? null,
+  };
+  // Only include boarding_point_id if provided (column may not exist yet)
+  if (boardingPointId) row.boarding_point_id = boardingPointId;
+
   const { data, error } = await supabase
     .from('reservations')
-    .insert({
-      user_id:            userId ?? null,
-      experience_id:      experienceId,
-      departure_id:       exitId ?? null,      // exitId = departure UUID
-      customer_name:      payer?.fullName ?? null,
-      customer_email:     payer?.email ?? null,
-      customer_phone:     payer?.phone ?? null,
-      total_amount:       totalAmount,
-      amount_paid:        amountPaid ?? 0,
-      reservation_status: reservationStatus ?? 'reserved',
-      payment_method:     paymentMethod ?? null,
-      notes:              notes ?? null,
-    })
+    .insert(row)
     .select('id')
     .single();
 

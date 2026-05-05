@@ -19,6 +19,7 @@ import {
 } from './services/UserService.js';
 import { formatBRL, formatDate } from './data.js';
 import { getExperienceBySlug, listDeparturesByExperience } from './repositories/experienceRepo.js';
+import { listBoardingPointsByDeparture } from './repositories/boardingPointRepo.js';
 import {
   PROFILES, PAYMENT_LABEL, TERMS_VERSION,
   STATUS_LABEL, STATUS_CLASS,
@@ -213,20 +214,79 @@ function renderStep1() {
   });
 }
 
-$('next-1').addEventListener('click', () => {
+$('next-1').addEventListener('click', async () => {
   if (!draft.exitId) { showError('Selecione uma saída.'); return; }
-  draft.meetingPointId = null; // nenhum ponto de encontro no DB ainda
-  goTo(3); // pula etapa 2 (pontos de encontro) — não há dados no DB
-  renderStep3();
+  // Try to load boarding points for the selected departure
+  const { data: boardingPoints } = await listBoardingPointsByDeparture(draft.exitId);
+  draft._boardingPoints = boardingPoints ?? [];
+  draft.boardingPointId = null;
+  if (draft._boardingPoints.length > 0) {
+    goTo(2);
+    renderStep2();
+  } else {
+    goTo(3);
+    renderStep3();
+  }
 });
 
 // ─── STEP 2: Meeting points ───────────────────────────────────────────────────
 
 function renderStep2() {
-  // Etapa 2 (pontos de encontro) não possui dados no DB — etapa pulada via next-1.
+  const points = draft._boardingPoints ?? [];
+  const panel = $('panel-2');
+  if (!panel) return;
+
+  const cardsHtml = points.map(bp => {
+    const timeStr = bp.pickupAt
+      ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : '--:--';
+    const sel = draft.boardingPointId === bp.id;
+    return `
+      <div class="exit-card boarding-point-card ${sel ? 'is-selected' : ''}"
+           data-bp="${bp.id}" role="button" tabindex="0"
+           aria-pressed="${sel}" style="cursor:pointer">
+        <div class="exit-card__info">
+          <p class="exit-card__title">${bp.label}</p>
+          <p class="exit-card__meta">⏰ Embarque: ${timeStr}</p>
+          ${bp.address ? `<p class="exit-card__meta" style="font-size:12px;color:var(--color-muted)">${bp.address}</p>` : ''}
+          ${bp.notes   ? `<p class="exit-card__meta" style="font-size:11px;color:var(--color-muted);font-style:italic">${bp.notes}</p>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Inject into panel-2 content area (after heading)
+  const contentArea = panel.querySelector('[data-step-content]') ?? panel;
+  // Replace or append the cards block
+  let cardsWrap = panel.querySelector('#bp-cards-wrap');
+  if (!cardsWrap) {
+    cardsWrap = document.createElement('div');
+    cardsWrap.id = 'bp-cards-wrap';
+    cardsWrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-top:16px';
+    // Insert before the nav buttons (last child)
+    const navEl = panel.querySelector('.wiz-nav');
+    if (navEl) panel.insertBefore(cardsWrap, navEl);
+    else contentArea.appendChild(cardsWrap);
+  }
+  cardsWrap.innerHTML = cardsHtml;
+
+  cardsWrap.addEventListener('click', (e) => {
+    const card = e.target.closest('.boarding-point-card');
+    if (!card) return;
+    cardsWrap.querySelectorAll('.boarding-point-card').forEach(c => {
+      c.classList.remove('is-selected');
+      c.setAttribute('aria-pressed', 'false');
+    });
+    card.classList.add('is-selected');
+    card.setAttribute('aria-pressed', 'true');
+    draft.boardingPointId = card.dataset.bp;
+    clearError();
+  });
 }
 
 $('next-2').addEventListener('click', () => {
+  const hasBps = (draft._boardingPoints ?? []).length > 0;
+  if (hasBps && !draft.boardingPointId) { showError('Selecione um ponto de embarque.'); return; }
+  clearError();
   goTo(3);
   renderStep3();
 });
@@ -334,7 +394,13 @@ $('next-3').addEventListener('click', () => {
   goTo(4);
 });
 
-$('back-3').addEventListener('click', () => goTo(1)); // pula passo-2 ao voltar
+$('back-3').addEventListener('click', () => {
+  if ((draft._boardingPoints ?? []).length > 0) {
+    goTo(2);
+  } else {
+    goTo(1);
+  }
+});
 
 // ─── STEP 4: Payer ────────────────────────────────────────────────────────────
 
@@ -845,6 +911,7 @@ $('next-8').addEventListener('click', async () => {
         userId:            user?.id ?? null,
         experienceId:      draft.experienceId,
         exitId:            draft.exitId ?? null,
+        boardingPointId:   draft.boardingPointId ?? null,
         payer:             booking.payer,
         totalAmount:       booking.totalAmount,
         amountPaid:        booking.paidAmount ?? 0,
@@ -947,8 +1014,15 @@ function renderVoucher(booking, paymentResult, split) {
             <dd>${depDate ? formatDate(depDate) : '— a confirmar'}</dd>
           </div>
           <div class="voucher__field">
-            <dt>Ponto de encontro</dt>
-            <dd>A confirmar com o guia</dd>
+            <dt>Local de embarque</dt>
+            <dd>${(() => {
+              const bp = (draft._boardingPoints ?? []).find(p => p.id === (booking.boardingPointId ?? draft.boardingPointId));
+              if (!bp) return 'A confirmar com o guia';
+              const timeStr = bp.pickupAt
+                ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                : null;
+              return `${bp.label}${bp.address ? ' — ' + bp.address : ''}${timeStr ? ' às ' + timeStr : ''}`;
+            })()}</dd>
           </div>
           <div class="voucher__field">
             <dt>Horário</dt>

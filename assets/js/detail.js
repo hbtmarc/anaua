@@ -8,6 +8,7 @@ import {
   Icon, showToast, openModal, observeAnimations,
 } from './components.js';
 import { getExperienceBySlug, listDeparturesByExperience } from './repositories/experienceRepo.js';
+import { listBoardingPointsByDeparture } from './repositories/boardingPointRepo.js';
 
 initPage('experiencias.html');
 
@@ -60,11 +61,19 @@ function showNotFound() {
   exp.departures = departures ?? [];
   console.log('[detail] Experiência carregada do Supabase ✓', exp.slug, '— saídas:', exp.departures.length);
 
-  renderPage(exp);
+  // Carrega pontos de embarque para todas as saídas programadas
+  const bpMap = {};
+  const scheduledIds = exp.departures.filter(d => d.status === 'scheduled' || d.status === 'sold_out').map(d => d.id);
+  await Promise.all(scheduledIds.map(async depId => {
+    const { data: bps } = await listBoardingPointsByDeparture(depId);
+    if (bps?.length) bpMap[depId] = bps;
+  }));
+
+  renderPage(exp, bpMap);
 })();
 
 /* ── Main render ─────────────────────────────────────────── */
-function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp) {
+function renderPage(/** @type {import('./data.js').EXPERIENCES[0]} */ exp, bpMap = {}) {
   const BASE_URL = 'https://www.anaua.com.br';
 
   // ── <title> & description
@@ -214,7 +223,7 @@ function renderContent(exp) {
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">Saídas disponíveis</h2>
       <div class="exit-list" id="exit-list">
-        ${(exp.departures ?? []).map(dep => renderExitItem(dep)).join('')
+        ${(exp.departures ?? []).map(dep => renderExitItem(dep, bpMap)).join('')
           || '<p style="color:var(--color-muted);font-size:var(--text-sm)">Nenhuma saída programada no momento.</p>'}
       </div>
     </div>
@@ -350,12 +359,24 @@ function openGalleryModal(images, startIndex, alt) {
 }
 
 /* ── Exit item ───────────────────────────────────────────── */
-function renderExitItem(dep) {
+function renderExitItem(dep, bpMap = {}) {
   const isSoldOut = dep.status !== 'scheduled';
   const dateLabel = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
   const timeLabel = dep.start_at ? dep.start_at.split('T')[1]?.slice(0, 5) : null;
   const titleLabel = dep.title ? `<p class="exit-item__title">${dep.title}</p>` : '';
-  const meetLabel  = dep.meeting_point ? `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>` : '';
+  const bps = bpMap[dep.id] ?? [];
+  let meetLabel;
+  if (bps.length > 0) {
+    const firstPickup = bps[0].pickupAt
+      ? new Date(bps[0].pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const bpSummary = bps.length === 1
+      ? bps[0].label
+      : `${bps[0].label} +${bps.length - 1} ponto${bps.length - 1 > 1 ? 's' : ''} de embarque`;
+    meetLabel = `<p class="exit-item__meeting">${Icon.map} ${bpSummary}${firstPickup ? ' às ' + firstPickup : ''}</p>`;
+  } else {
+    meetLabel = dep.meeting_point ? `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>` : '';
+  }
   const priceLabel = dep.price ? `<p class="exit-item__price">${formatBRL(dep.price)}/pessoa</p>` : '';
 
   return `

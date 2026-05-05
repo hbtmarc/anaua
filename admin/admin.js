@@ -10,7 +10,8 @@
 
 import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
-import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus, createExperienceBundle } from '../assets/js/repositories/experienceRepo.js';
+import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus, createExperienceBundle, getExperienceById } from '../assets/js/repositories/experienceRepo.js';
+import { listAllBoardingPointsByDeparture, createBoardingPoints, replaceBoardingPoints } from '../assets/js/repositories/boardingPointRepo.js';
 // ReservationStore removido — dados vêm do Supabase
 
 // ─── Admin auth guard ─────────────────────────────────────────────────────────
@@ -621,9 +622,6 @@ function openNovaExperienciaModal() {
             <input id="ne-dep-end" class="adm-input" type="datetime-local" />
           </div>
         </div>
-        <div class="adm-field"><label>Ponto de encontro</label>
-          <input id="ne-dep-meeting" class="adm-input" placeholder="Ex: Estacionamento do Parque" />
-        </div>
         <div class="adm-grid-2">
           <div class="adm-field"><label>Capacidade (vagas)</label>
             <input id="ne-dep-capacity" class="adm-input" type="number" min="1" placeholder="Igual à capacidade máxima" />
@@ -641,6 +639,15 @@ function openNovaExperienciaModal() {
         </div>
         <div class="adm-field"><label>Título da saída (opcional)</label>
           <input id="ne-dep-title" class="adm-input" placeholder="Ex: Saída de verão" />
+        </div>
+
+        <!-- Pontos de embarque -->
+        <div style="margin-top:4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label style="font-weight:600;font-size:13px">Pontos de embarque</label>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-dep-add-bp-btn">+ Adicionar ponto</button>
+          </div>
+          <div id="ne-dep-bp-list" style="display:flex;flex-direction:column;gap:10px"></div>
         </div>
       </div>
 
@@ -735,6 +742,38 @@ function openNovaExperienciaModal() {
     if (depCap && !depCap.value) depCap.value = e.target.value;
   });
 
+  // ── Section B: boarding point rows ──────────────────────────────────────
+  let neBpCount = 0;
+  function addNeBpRow() {
+    const i = neBpCount++;
+    const row = document.createElement('div');
+    row.id = `ne-dep-bp-row-${i}`;
+    row.style.cssText = 'background:var(--adm-surface-2,#f8f8f8);border:1px solid var(--adm-border);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px';
+    row.innerHTML = `
+      <div class="adm-grid-2" style="gap:8px">
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Local / ponto *</label>
+          <input id="ne-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque *</label>
+          <input id="ne-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Endereço</label>
+          <input id="ne-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Obs.</label>
+          <input id="ne-bp-notes-${i}" class="adm-input adm-input--sm" placeholder="Opcional" />
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+          <input id="ne-bp-active-${i}" type="checkbox" checked style="width:14px;height:14px" /> Ativo
+        </label>
+        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ne-dep-bp-row-${i}').remove()">Remover</button>
+      </div>`;
+    document.getElementById('ne-dep-bp-list')?.appendChild(row);
+  }
+  document.getElementById('ne-dep-add-bp-btn')?.addEventListener('click', addNeBpRow);
+
   // ── Section B toggle ───────────────────────────────────────────────────────
   document.getElementById('ne-dep-check')?.addEventListener('change', e => {
     const sec = document.getElementById('ne-dep-section');
@@ -745,6 +784,8 @@ function openNovaExperienciaModal() {
       const depCap   = document.getElementById('ne-dep-capacity');
       if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ne-price')?.value ?? '';
       if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ne-maxpax')?.value ?? '';
+      // Add a default boarding point row
+      if (document.getElementById('ne-dep-bp-list')?.children.length === 0) addNeBpRow();
     }
   });
 
@@ -857,14 +898,29 @@ function openNovaExperienciaModal() {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar experiência'; }
         return;
       }
+      // Collect boarding point rows
+      const neBpRows = Array.from(document.querySelectorAll('[id^="ne-dep-bp-row-"]'));
+      const neBpPoints = neBpRows.map((r, idx) => {
+        const i = r.id.replace('ne-dep-bp-row-', '');
+        return {
+          label:       document.getElementById(`ne-bp-label-${i}`)?.value.trim() || null,
+          pickup_at:   document.getElementById(`ne-bp-pickup-${i}`)?.value ? new Date(document.getElementById(`ne-bp-pickup-${i}`).value).toISOString() : null,
+          address:     document.getElementById(`ne-bp-address-${i}`)?.value.trim() || null,
+          notes:       document.getElementById(`ne-bp-notes-${i}`)?.value.trim() || null,
+          is_active:   document.getElementById(`ne-bp-active-${i}`)?.checked ?? true,
+          order_index: idx,
+        };
+      }).filter(p => p.label && p.pickup_at);
+      const firstBpLabel = neBpPoints.find(p => p.is_active)?.label ?? null;
       departure = {
         start_at:      new Date(startVal).toISOString(),
         end_at:        document.getElementById('ne-dep-end')?.value ? new Date(document.getElementById('ne-dep-end').value).toISOString() : null,
-        meeting_point: document.getElementById('ne-dep-meeting')?.value.trim() || null,
+        meeting_point: firstBpLabel,
         capacity:      parseInt(document.getElementById('ne-dep-capacity')?.value, 10) || experience.max_participants || null,
         price:         parseFloat(document.getElementById('ne-dep-price')?.value) || experience.base_price || null,
         status:        document.getElementById('ne-dep-status')?.value || 'scheduled',
         title:         document.getElementById('ne-dep-title')?.value.trim() || null,
+        _bpPoints:     neBpPoints,
       };
     }
 
@@ -904,6 +960,9 @@ function openNovaExperienciaModal() {
     }
 
     // Persist
+    const bpPointsToCreate = departure?._bpPoints ?? [];
+    if (departure) delete departure._bpPoints;
+
     const { data, error } = await createExperienceBundle({ experience, departure, reservation, participants });
 
     if (error) {
@@ -916,7 +975,14 @@ function openNovaExperienciaModal() {
     console.log('[nova-exp] Bundle criado ✓', data);
 
     const msgs = ['Experiência cadastrada!'];
-    if (data?.departure_id)  msgs.push('Saída criada.');
+    if (data?.departure_id) {
+      msgs.push('Saída criada.');
+      if (bpPointsToCreate.length > 0) {
+        const { error: bpErr } = await createBoardingPoints(data.departure_id, bpPointsToCreate);
+        if (bpErr) toast('Pontos de embarque não salvos: ' + bpErr.message, 'error');
+        else msgs.push(`${bpPointsToCreate.length} ponto(s) de embarque criados.`);
+      }
+    }
     if (data?.reservation_id) msgs.push('Reserva criada.');
     toast(msgs.join(' '), 'success');
 
@@ -1095,9 +1161,6 @@ async function openEditExperienciaModal(id) {
             <input id="ee-dep-end" class="adm-input" type="datetime-local" />
           </div>
         </div>
-        <div class="adm-field"><label>Ponto de encontro</label>
-          <input id="ee-dep-meeting" class="adm-input" placeholder="Ex: Estacionamento do Parque" />
-        </div>
         <div class="adm-grid-2">
           <div class="adm-field"><label>Capacidade (vagas)</label>
             <input id="ee-dep-capacity" class="adm-input" type="number" min="1" placeholder="Igual à capacidade máxima" />
@@ -1115,6 +1178,15 @@ async function openEditExperienciaModal(id) {
         </div>
         <div class="adm-field"><label>Título da saída (opcional)</label>
           <input id="ee-dep-title" class="adm-input" placeholder="Ex: Saída de verão" />
+        </div>
+
+        <!-- Pontos de embarque -->
+        <div style="margin-top:4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label style="font-weight:600;font-size:13px">Pontos de embarque</label>
+            <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-dep-add-bp-btn">+ Adicionar ponto</button>
+          </div>
+          <div id="ee-dep-bp-list" style="display:flex;flex-direction:column;gap:10px"></div>
         </div>
       </div>
 
@@ -1220,6 +1292,38 @@ async function openEditExperienciaModal(id) {
     toast('Imagem enviada!', 'success');
   });
 
+  // ── Section B: boarding point rows ─────────────────────────────────────
+  let eeBpCount = 0;
+  function addEeBpRow() {
+    const i = eeBpCount++;
+    const row = document.createElement('div');
+    row.id = `ee-dep-bp-row-${i}`;
+    row.style.cssText = 'background:var(--adm-surface-2,#f8f8f8);border:1px solid var(--adm-border);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px';
+    row.innerHTML = `
+      <div class="adm-grid-2" style="gap:8px">
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Local / ponto *</label>
+          <input id="ee-bp-label-${i}" class="adm-input adm-input--sm" placeholder="Ex: Estacionamento do Parque" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Horário de embarque *</label>
+          <input id="ee-bp-pickup-${i}" class="adm-input adm-input--sm" type="datetime-local" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Endereço</label>
+          <input id="ee-bp-address-${i}" class="adm-input adm-input--sm" placeholder="Endereço completo" />
+        </div>
+        <div class="adm-field" style="margin:0"><label style="font-size:11px">Obs.</label>
+          <input id="ee-bp-notes-${i}" class="adm-input adm-input--sm" placeholder="Opcional" />
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+          <input id="ee-bp-active-${i}" type="checkbox" checked style="width:14px;height:14px" /> Ativo
+        </label>
+        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm" onclick="document.getElementById('ee-dep-bp-row-${i}').remove()">Remover</button>
+      </div>`;
+    document.getElementById('ee-dep-bp-list')?.appendChild(row);
+  }
+  document.getElementById('ee-dep-add-bp-btn')?.addEventListener('click', addEeBpRow);
+
   // ── Section B toggle ──────────────────────────────────────────────────────
   document.getElementById('ee-dep-check')?.addEventListener('change', e => {
     const sec = document.getElementById('ee-dep-section');
@@ -1229,6 +1333,7 @@ async function openEditExperienciaModal(id) {
       const depCap   = document.getElementById('ee-dep-capacity');
       if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ee-price')?.value ?? '';
       if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ee-maxpax')?.value ?? '';
+      if (document.getElementById('ee-dep-bp-list')?.children.length === 0) addEeBpRow();
     }
   });
 
@@ -1344,19 +1449,39 @@ async function openEditExperienciaModal(id) {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
         return;
       }
+      const eeBpRows = Array.from(document.querySelectorAll('[id^="ee-dep-bp-row-"]'));
+      const eeBpPoints = eeBpRows.map((r, idx) => {
+        const i = r.id.replace('ee-dep-bp-row-', '');
+        return {
+          label:       document.getElementById(`ee-bp-label-${i}`)?.value.trim() || null,
+          pickup_at:   document.getElementById(`ee-bp-pickup-${i}`)?.value ? new Date(document.getElementById(`ee-bp-pickup-${i}`).value).toISOString() : null,
+          address:     document.getElementById(`ee-bp-address-${i}`)?.value.trim() || null,
+          notes:       document.getElementById(`ee-bp-notes-${i}`)?.value.trim() || null,
+          is_active:   document.getElementById(`ee-bp-active-${i}`)?.checked ?? true,
+          order_index: idx,
+        };
+      }).filter(p => p.label && p.pickup_at);
+      const firstEeBpLabel = eeBpPoints.find(p => p.is_active)?.label ?? null;
       const depPayload = {
         experience_id: id,
         start_at:      new Date(startVal).toISOString(),
         end_at:        document.getElementById('ee-dep-end')?.value ? new Date(document.getElementById('ee-dep-end').value).toISOString() : null,
-        meeting_point: document.getElementById('ee-dep-meeting')?.value.trim() || null,
+        meeting_point: firstEeBpLabel,
         capacity:      parseInt(document.getElementById('ee-dep-capacity')?.value, 10) || expPayload.max_participants || null,
         price:         parseFloat(document.getElementById('ee-dep-price')?.value) || expPayload.base_price || null,
         status:        document.getElementById('ee-dep-status')?.value || 'scheduled',
         title:         document.getElementById('ee-dep-title')?.value.trim() || null,
       };
-      const { error: depErr } = await createDeparture(depPayload);
+      const { data: newDep, error: depErr } = await createDeparture(depPayload);
       if (depErr) toast('Saída não criada: ' + depErr.message, 'error');
-      else msgs.push('Saída criada.');
+      else {
+        msgs.push('Saída criada.');
+        if (eeBpPoints.length > 0 && newDep?.id) {
+          const { error: bpErr } = await createBoardingPoints(newDep.id, eeBpPoints);
+          if (bpErr) toast('Pontos de embarque não salvos: ' + bpErr.message, 'error');
+          else msgs.push(`${eeBpPoints.length} ponto(s) de embarque criados.`);
+        }
+      }
     }
 
     // 3. Optional new reservation
@@ -1624,14 +1749,7 @@ async function renderSaidas(root) {
       const { data: freshExps } = await db.from('experiences').select('id, title').eq('is_active', true).order('title');
       experiences = freshExps ?? [];
     }
-    openExitFormModal(null, null, experiences, async (payload) => {
-      const { data: created, error } = await createDeparture(payload);
-      if (error) { toast('Erro ao criar saída: ' + error.message, 'error'); return false; }
-      toast('Saída criada com sucesso!', 'success');
-      closeModal();
-      renderSaidas(root);
-      return true;
-    });
+    openExitFormDrawer(null, null, experiences, () => renderSaidas(root));
   });
 
   renderRows(allExits);
@@ -2293,13 +2411,29 @@ function openBookingDrawer(bookingId) {
 //  EXIT DRAWER
 // ─────────────────────────────────────────────────────────────────────────────
 
-function openExitDrawer(exitId) {
+async function openExitDrawer(exitId) {
   const ref = findExit(exitId);
   if (!ref) { toast('Saída não encontrada no cache. Recarregue a lista.', 'error'); return; }
   const { exp, exit } = ref;
 
   const st = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'soldout' : 'active';
   const stLabel = st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta';
+
+  // Load boarding points eagerly
+  const { data: bps } = await listAllBoardingPointsByDeparture(exit.id);
+  const bpsHtml = bps?.length
+    ? bps.map(bp => {
+        const pickupStr = bp.pickupAt
+          ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          : '—';
+        const activeTag = bp.isActive ? '' : ' <span style="font-size:10px;background:#999;color:#fff;border-radius:3px;padding:0 4px">inativo</span>';
+        return `<div style="border-left:3px solid var(--adm-primary,#2d6a4f);padding:6px 10px;margin-bottom:6px;line-height:1.5">
+          <strong>${escHtml(bp.label)}</strong>${activeTag}<br>
+          <span style="font-size:12px;color:var(--adm-text-muted)">🕐 Embarque: ${pickupStr}${bp.address ? ' · ' + escHtml(bp.address) : ''}</span>
+          ${bp.notes ? `<br><span style="font-size:11px;color:var(--adm-text-muted)">${escHtml(bp.notes)}</span>` : ''}
+        </div>`;
+      }).join('')
+    : '<p class="text-muted text-small">Nenhum ponto cadastrado.</p>';
 
   const html = `
     <div class="adm-section">
@@ -2309,11 +2443,15 @@ function openExitDrawer(exitId) {
         ${exit.title ? `<dt>Título</dt><dd>${escHtml(exit.title)}</dd>` : ''}
         <dt>Data/Hora início</dt><dd>${fmtDate(exit.start_at)}</dd>
         ${exit.end_at ? `<dt>Data/Hora fim</dt><dd>${fmtDate(exit.end_at)}</dd>` : ''}
-        ${exit.meeting_point ? `<dt>Ponto de encontro</dt><dd>${escHtml(exit.meeting_point)}</dd>` : ''}
         <dt>Capacidade</dt><dd>${exit.capacity} vagas</dd>
         ${exit.price != null ? `<dt>Preço</dt><dd>${fmt(exit.price)}</dd>` : ''}
         <dt>Status</dt><dd><span class="badge badge--${st}">${stLabel}</span></dd>
       </div>
+    </div>
+
+    <div class="adm-section">
+      <div class="adm-section__title">Pontos de embarque (${bps?.length ?? 0})</div>
+      ${bpsHtml}
     </div>
 
     <div class="adm-section">
@@ -2345,15 +2483,9 @@ function openExitDrawer(exitId) {
     const db = window.anauaDb;
     const { data: exps } = db ? await db.from('experiences').select('id, title').eq('is_active', true).order('title') : { data: [] };
     closeDrawer();
-    openExitFormModal(exit, exp, exps ?? [], async (payload) => {
-      const { error } = await updateDeparture(exit.id, payload);
-      if (error) { toast('Erro ao salvar: ' + error.message, 'error'); return false; }
-      toast('Saída atualizada!', 'success');
-      closeModal();
-      // Refresh cache entry
+    openExitFormDrawer(exit, exp, exps ?? [], (updatedPayload) => {
       const r = findExit(exit.id);
-      if (r) { Object.assign(r.exit, { ...payload, capacity: payload.capacity ?? r.exit.capacity }); }
-      return true;
+      if (r && updatedPayload) Object.assign(r.exit, updatedPayload);
     });
   });
 
@@ -2374,15 +2506,17 @@ function openExitDrawer(exitId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  EXIT FORM MODAL  (create / edit Saída)
+//  EXIT FORM DRAWER  (create / edit Saída + Pontos de embarque)
 // ─────────────────────────────────────────────────────────────────────────────
-function openExitFormModal(exit, expObj, experiences, onSave) {
+/**
+ * Opens a drawer to create or edit a departure, including boarding points.
+ * @param {object|null} exit - Existing departure (null for create)
+ * @param {object|null} expObj - Pre-selected experience object
+ * @param {{ id: string, title: string }[]} experiences - Available experiences
+ * @param {(updatedPayload?: object) => void} onAfterSave - Called after successful save
+ */
+async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
   const isEdit = exit !== null;
-  const modalTitle = isEdit ? 'Editar Saída' : 'Nova Saída';
-
-  const startAtValue = exit?.start_at
-    ? new Date(exit.start_at).toISOString().slice(0, 16)
-    : '';
 
   const expOptions = experiences.map(e =>
     `<option value="${e.id}" ${exit?.experience_id === e.id ? 'selected' : ''}>${escHtml(e.title)}</option>`
@@ -2396,91 +2530,244 @@ function openExitFormModal(exit, expObj, experiences, onSave) {
     `<option value="${o.v}" ${(exit?.status ?? 'scheduled') === o.v ? 'selected' : ''}>${o.l}</option>`
   ).join('');
 
-  openModal(modalTitle, `
-    <div class="adm-field">
-      <label>Experiência *</label>
-      <select class="adm-select" id="ef-exp">
-        <option value="">Selecione…</option>${expOptions}
-      </select>
-    </div>
-    <div class="adm-field">
-      <label>Título (opcional)</label>
-      <input class="adm-input" type="text" id="ef-title"
-        value="${escHtml(exit?.title ?? '')}"
-        placeholder="Ex: Saída especial de verão" />
-    </div>
-    <div class="adm-field">
-      <label>Data e hora *</label>
-      <input class="adm-input" type="datetime-local" id="ef-start" value="${startAtValue}" />
-    </div>
-    <div class="adm-field">
-      <label>Data/hora de término</label>
-      <input class="adm-input" type="datetime-local" id="ef-end" value="${exit?.end_at ? new Date(exit.end_at).toISOString().slice(0,16) : ''}" />
-    </div>
-    <div class="adm-field">
-      <label>Ponto de encontro</label>
-      <input class="adm-input" type="text" id="ef-meeting"
-        value="${escHtml(exit?.meeting_point ?? '')}"
-        placeholder="Ex: Estacionamento do Parque Municipal" />
-    </div>
-    <div class="adm-field">
-      <label>Capacidade (vagas) *</label>
-      <input class="adm-input" type="number" id="ef-capacity"
-        value="${exit?.capacity ?? ''}" min="1" placeholder="10" />
-    </div>
-    <div class="adm-field">
-      <label>Preço (R$)</label>
-      <input class="adm-input" type="number" id="ef-price"
-        value="${exit?.price ?? ''}" min="0" step="0.01" placeholder="180.00" />
-    </div>
-    ${isEdit ? `
-    <div class="adm-field">
-      <label>Status</label>
-      <select class="adm-select" id="ef-status">${statusOptions}</select>
-    </div>` : ''}
-    <p id="ef-error" style="color:var(--adm-danger,#e53e3e);font-size:13px;display:none"></p>
-  `,
-  `<button class="adm-btn adm-btn--secondary" id="ef-cancel">Cancelar</button>
-   <button class="adm-btn adm-btn--primary"   id="ef-save">${isEdit ? 'Salvar alterações' : 'Criar saída'}</button>`
-  );
+  const startVal = exit?.start_at ? new Date(exit.start_at).toISOString().slice(0, 16) : '';
+  const endVal   = exit?.end_at   ? new Date(exit.end_at  ).toISOString().slice(0, 16) : '';
 
-  $('ef-cancel')?.addEventListener('click', closeModal);
+  openDrawer(isEdit ? 'Editar Saída' : 'Nova Saída', `
+    <form id="ef-form" autocomplete="off">
 
-  $('ef-save')?.addEventListener('click', async () => {
-    const expId      = $('ef-exp')?.value;
-    const depTitle   = $('ef-title')?.value.trim() || null;
-    const startAt    = $('ef-start')?.value;
-    const endAt      = $('ef-end')?.value || null;
-    const meetPoint  = $('ef-meeting')?.value.trim() || null;
-    const capacity   = parseInt($('ef-capacity')?.value, 10);
-    const price      = parseFloat($('ef-price')?.value) || null;
-    const status     = $('ef-status')?.value ?? 'scheduled';
-    const errEl      = $('ef-error');
+      <div class="adm-section-hd">Dados da saída</div>
 
-    if (!expId)          { errEl.textContent = 'Selecione uma experiência.';         errEl.style.display = 'block'; return; }
-    if (!startAt)        { errEl.textContent = 'Informe a data e hora.';             errEl.style.display = 'block'; return; }
-    if (!capacity || capacity < 1) { errEl.textContent = 'Capacidade deve ser ≥ 1.'; errEl.style.display = 'block'; return; }
-    errEl.style.display = 'none';
+      <div class="adm-field">
+        <label>Experiência *</label>
+        <select class="adm-select" id="ef-exp">
+          <option value="">Selecione…</option>${expOptions}
+        </select>
+      </div>
+      <div class="adm-field">
+        <label>Título da saída (opcional)</label>
+        <input class="adm-input" type="text" id="ef-title"
+          value="${escHtml(exit?.title ?? '')}"
+          placeholder="Ex: Saída especial de verão" />
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field">
+          <label>Data e hora de início *</label>
+          <input class="adm-input" type="datetime-local" id="ef-start" value="${startVal}" />
+        </div>
+        <div class="adm-field">
+          <label>Data/hora de término</label>
+          <input class="adm-input" type="datetime-local" id="ef-end" value="${endVal}" />
+        </div>
+      </div>
+      <div class="adm-grid-2">
+        <div class="adm-field">
+          <label>Capacidade (vagas) *</label>
+          <input class="adm-input" type="number" id="ef-capacity"
+            value="${exit?.capacity ?? ''}" min="1" placeholder="10" />
+        </div>
+        <div class="adm-field">
+          <label>Preço (R$)</label>
+          <input class="adm-input" type="number" id="ef-price"
+            value="${exit?.price ?? ''}" min="0" step="0.01" placeholder="180.00" />
+        </div>
+      </div>
+      ${isEdit ? `
+      <div class="adm-field">
+        <label>Status</label>
+        <select class="adm-select" id="ef-status">${statusOptions}</select>
+      </div>` : ''}
 
-    const saveBtn = $('ef-save');
+      <!-- ══ PONTOS DE EMBARQUE ═══════════════════════════════════════════ -->
+      <div class="adm-section-hd" style="margin-top:20px">Pontos de embarque</div>
+      <p style="font-size:12px;color:var(--adm-text-muted);margin-bottom:10px">
+        Pelo menos um ponto ativo é obrigatório para criar a saída.
+      </p>
+      <div id="ef-bp-list" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ef-add-bp-btn" style="margin-top:8px">+ Adicionar ponto de embarque</button>
+
+      <!-- ══ FOOTER ═══════════════════════════════════════════════════════ -->
+      <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--adm-border)">
+        <button type="submit" id="ef-save-btn" class="adm-btn adm-btn--primary" style="flex:1">${isEdit ? 'Salvar alterações' : 'Criar saída'}</button>
+        <button type="button" class="adm-btn adm-btn--secondary" onclick="closeDrawer()">Cancelar</button>
+      </div>
+
+    </form>
+  `);
+
+  // ── Boarding point rows ──────────────────────────────────────────────────
+  let bpCount = 0;
+
+  function addBpRow(point) {
+    const i = bpCount++;
+    const pickupVal = point?.pickupAt ? new Date(point.pickupAt).toISOString().slice(0, 16)
+      : point?.pickup_at ? new Date(point.pickup_at).toISOString().slice(0, 16) : '';
+    const row = document.createElement('div');
+    row.className = 'adm-bp-row';
+    row.id = `ef-bp-row-${i}`;
+    row.style.cssText = 'background:var(--adm-bg-alt,#f8f8f8);border:1px solid var(--adm-border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px';
+    row.innerHTML = `
+      <div class="adm-grid-2" style="gap:8px">
+        <div class="adm-field" style="margin:0">
+          <label style="font-size:11px">Nome do ponto *</label>
+          <input id="ef-bp-label-${i}" class="adm-input adm-input--sm"
+            placeholder="Ex: Terminal Central" value="${escHtml(point?.label ?? '')}" />
+        </div>
+        <div class="adm-field" style="margin:0">
+          <label style="font-size:11px">Horário de embarque *</label>
+          <input id="ef-bp-pickup-${i}" class="adm-input adm-input--sm"
+            type="datetime-local" value="${pickupVal}" />
+        </div>
+        <div class="adm-field" style="margin:0">
+          <label style="font-size:11px">Endereço / referência</label>
+          <input id="ef-bp-address-${i}" class="adm-input adm-input--sm"
+            placeholder="Rua, nº ou ponto de referência" value="${escHtml(point?.address ?? '')}" />
+        </div>
+        <div class="adm-field" style="margin:0">
+          <label style="font-size:11px">Observações</label>
+          <input id="ef-bp-notes-${i}" class="adm-input adm-input--sm"
+            placeholder="Info adicional" value="${escHtml(point?.notes ?? '')}" />
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+          <input id="ef-bp-active-${i}" type="checkbox" ${point?.isActive !== false ? 'checked' : ''} style="width:14px;height:14px" />
+          Ativo
+        </label>
+        <button type="button" class="adm-btn adm-btn--danger adm-btn--sm"
+          onclick="document.getElementById('ef-bp-row-${i}').remove()">Remover</button>
+      </div>`;
+    document.getElementById('ef-bp-list')?.appendChild(row);
+  }
+
+  document.getElementById('ef-add-bp-btn')?.addEventListener('click', () => addBpRow(null));
+
+  // Pre-load existing boarding points on edit
+  if (isEdit && exit.id) {
+    const { data: existingBps } = await listAllBoardingPointsByDeparture(exit.id);
+    if (existingBps?.length) {
+      existingBps.forEach(bp => addBpRow(bp));
+    } else {
+      addBpRow(null); // default empty row
+    }
+  } else {
+    addBpRow(null); // default empty row for create
+  }
+
+  // ── Auto-fill from experience on select ─────────────────────────────────
+  async function autofillFromExp(expId) {
+    if (!expId) return;
+    const { data: fullExp } = await getExperienceById(expId);
+    if (!fullExp) return;
+    // Only fill if the field is empty (don't override user's changes)
+    const capEl   = document.getElementById('ef-capacity');
+    const priceEl = document.getElementById('ef-price');
+    const endEl   = document.getElementById('ef-end');
+    const startEl = document.getElementById('ef-start');
+    if (capEl   && !capEl.value)   capEl.value   = fullExp.max_participants ?? '';
+    if (priceEl && !priceEl.value) priceEl.value = fullExp.base_price ?? '';
+    // Auto-set end_at from start_at + duration_hours if both available
+    if (fullExp.duration_hours && startEl?.value && endEl && !endEl.value) {
+      const startMs = new Date(startEl.value).getTime();
+      if (!isNaN(startMs)) {
+        const endMs = startMs + fullExp.duration_hours * 3600_000;
+        endEl.value = new Date(endMs).toISOString().slice(0, 16);
+      }
+    }
+  }
+
+  document.getElementById('ef-exp')?.addEventListener('change', e => autofillFromExp(e.target.value));
+  // If pre-selected experience, autofill on open (create only)
+  if (!isEdit && expObj?.id) autofillFromExp(expObj.id);
+
+  // ── end_at auto-calc when start changes ─────────────────────────────────
+  document.getElementById('ef-start')?.addEventListener('change', async () => {
+    const expId = document.getElementById('ef-exp')?.value;
+    if (expId) autofillFromExp(expId);
+  });
+
+  // ── Form submit ──────────────────────────────────────────────────────────
+  document.getElementById('ef-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+
+    const expId    = document.getElementById('ef-exp')?.value;
+    const depTitle = document.getElementById('ef-title')?.value.trim() || null;
+    const startAt  = document.getElementById('ef-start')?.value;
+    const endAt    = document.getElementById('ef-end')?.value || null;
+    const capacity = parseInt(document.getElementById('ef-capacity')?.value, 10);
+    const price    = parseFloat(document.getElementById('ef-price')?.value) || null;
+    const status   = document.getElementById('ef-status')?.value ?? 'scheduled';
+
+    // Collect boarding points
+    const bpRows   = document.querySelectorAll('[id^="ef-bp-row-"]');
+    const bpPoints = Array.from(bpRows).map(r => {
+      const i = r.id.replace('ef-bp-row-', '');
+      const label    = document.getElementById(`ef-bp-label-${i}`)?.value.trim();
+      const pickupRaw = document.getElementById(`ef-bp-pickup-${i}`)?.value;
+      const address  = document.getElementById(`ef-bp-address-${i}`)?.value.trim() || null;
+      const notes    = document.getElementById(`ef-bp-notes-${i}`)?.value.trim() || null;
+      const isActive = document.getElementById(`ef-bp-active-${i}`)?.checked ?? true;
+      return { label, pickup_at: pickupRaw ? new Date(pickupRaw).toISOString() : null, address, notes, is_active: isActive };
+    }).filter(p => p.label && p.pickup_at);
+
+    // Validate
+    if (!expId)             { toast('Selecione uma experiência.', 'error'); return; }
+    if (!startAt)           { toast('Informe a data e hora de início.', 'error'); return; }
+    if (!capacity || capacity < 1) { toast('Capacidade deve ser ≥ 1.', 'error'); return; }
+    const activeBps = bpPoints.filter(p => p.is_active);
+    if (activeBps.length === 0) { toast('Adicione ao menos um ponto de embarque ativo.', 'error'); return; }
+
+    const saveBtn = document.getElementById('ef-save-btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
 
-    const payload = {
+    const depPayload = {
       experience_id: expId,
       title:         depTitle,
       start_at:      new Date(startAt).toISOString(),
       end_at:        endAt ? new Date(endAt).toISOString() : null,
-      meeting_point: meetPoint,
+      meeting_point: activeBps[0]?.label ?? null, // keep meeting_point for backwards compat
       capacity,
       price,
       status: isEdit ? status : 'scheduled',
     };
 
-    const ok = await onSave(payload);
-    if (!ok && saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.textContent = isEdit ? 'Salvar alterações' : 'Criar saída';
+    let departureId = exit?.id ?? null;
+
+    if (isEdit) {
+      const { error: updErr } = await updateDeparture(exit.id, depPayload);
+      if (updErr) {
+        toast('Erro ao salvar saída: ' + updErr.message, 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Salvar alterações'; }
+        return;
+      }
+    } else {
+      const { data: created, error: crtErr } = await createDeparture(depPayload);
+      if (crtErr || !created?.id) {
+        toast('Erro ao criar saída: ' + (crtErr?.message ?? 'sem resposta'), 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Criar saída'; }
+        return;
+      }
+      departureId = created.id;
     }
+
+    // Boarding points
+    const bpFn = isEdit ? replaceBoardingPoints : createBoardingPoints;
+    const { error: bpErr } = await bpFn(departureId, bpPoints);
+    if (bpErr) {
+      // Rollback: delete department if we just created it
+      if (!isEdit && departureId) {
+        await window.anauaDb?.from('departures').delete().eq('id', departureId);
+        toast(`Pontos de embarque falharam e a saída foi revertida. ${bpErr.message}`, 'error');
+      } else {
+        toast('Saída salva, mas pontos de embarque falharam: ' + bpErr.message, 'error');
+      }
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Salvar alterações' : 'Criar saída'; }
+      return;
+    }
+
+    toast(isEdit ? 'Saída atualizada!' : 'Saída criada com sucesso!', 'success');
+    closeDrawer();
+    if (onAfterSave) onAfterSave(depPayload);
   });
 }
 
