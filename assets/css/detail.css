@@ -225,6 +225,12 @@
 .bp-chip.is-selected            { border-color: var(--color-forest); background: var(--color-forest); color: #fff; }
 .bp-chip:disabled               { opacity: 0.45; cursor: not-allowed; }
 
+/* Small variant for use inside booking box dep cards */
+.bp-chip--sm {
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
 /* ── What to bring ───────────────────────────────────────── */
 .bring-list {
   display: grid;
