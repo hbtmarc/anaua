@@ -219,11 +219,16 @@ $('next-1').addEventListener('click', async () => {
   // Try to load boarding points for the selected departure
   const { data: boardingPoints } = await listBoardingPointsByDeparture(draft.exitId);
   draft._boardingPoints = boardingPoints ?? [];
-  draft.boardingPointId = null;
-  if (draft._boardingPoints.length > 0) {
+  // Preserve pre-selected boardingPointId (from experiencia.html) if still valid
+  if (!draft._boardingPoints.some(b => b.id === draft.boardingPointId)) {
+    draft.boardingPointId = null;
+  }
+  if (draft._boardingPoints.length > 0 && !draft.boardingPointId) {
+    // Boarding points exist but none selected yet → show step 2
     goTo(2);
     renderStep2();
   } else {
+    // Either no BPs for this departure, or bp already pre-selected → skip to step 3
     goTo(3);
     renderStep3();
   }
@@ -1144,6 +1149,13 @@ function renderVoucher(booking, paymentResult, split) {
     console.log('[reserva] Saída pré-selecionada via URL ✓', depParam);
   } else if (!draft.exitId && exp.departures.length > 0) {
     draft.exitId = exp.departures[0].id;
+  }
+
+  // Pre-seleciona ponto de embarque passado via URL (?bp=<uuid>)
+  const bpParam = params.get('bp');
+  if (bpParam) {
+    draft.boardingPointId = bpParam;
+    console.log('[reserva] Ponto de embarque pré-selecionado via URL ✓', bpParam);
   }
 
   try {

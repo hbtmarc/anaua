@@ -363,6 +363,9 @@ function openGalleryModal(images, startIndex, alt) {
   });
 }
 
+/* ── Boarding point selection state (depId → bpId) ─────── */
+const _selectedBp = {};
+
 /* ── Exit item ───────────────────────────────────────────── */
 function renderExitItem(dep, bpMap = {}) {
   const isSoldOut = dep.status !== 'scheduled';
@@ -370,18 +373,26 @@ function renderExitItem(dep, bpMap = {}) {
   const timeLabel = dep.start_at ? dep.start_at.split('T')[1]?.slice(0, 5) : null;
   const titleLabel = dep.title ? `<p class="exit-item__title">${dep.title}</p>` : '';
   const bps = bpMap[dep.id] ?? [];
-  let meetLabel;
+
+  // Pre-select single boarding point automatically
+  if (bps.length === 1 && !_selectedBp[dep.id]) _selectedBp[dep.id] = bps[0].id;
+
+  let meetLabel = '';
+  let bpSelector = '';
+
   if (bps.length > 0) {
-    const firstPickup = bps[0].pickupAt
-      ? new Date(bps[0].pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      : null;
-    const bpSummary = bps.length === 1
-      ? bps[0].displayName
-      : `${bps[0].displayName} +${bps.length - 1} ponto${bps.length - 1 > 1 ? 's' : ''} de embarque`;
-    meetLabel = `<p class="exit-item__meeting">${Icon.map} ${bpSummary}${firstPickup ? ' às ' + firstPickup : ''}</p>`;
-  } else {
-    meetLabel = dep.meeting_point ? `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>` : '';
+    const chips = bps.map(bp => {
+      const time = bp.pickupAt
+        ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : null;
+      const isSel = _selectedBp[dep.id] === bp.id;
+      return `<button class="bp-chip${isSel ? ' is-selected' : ''}" data-bp-id="${bp.id}" data-dep-id="${dep.id}" type="button" aria-pressed="${isSel}"${isSoldOut ? ' disabled' : ''}>${bp.displayName}${time ? ' · ' + time : ''}</button>`;
+    }).join('');
+    bpSelector = `<div class="bp-selector"><span class="bp-selector__label">${Icon.map} Ponto de embarque</span><div class="bp-selector__chips">${chips}</div></div>`;
+  } else if (dep.meeting_point) {
+    meetLabel = `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>`;
   }
+
   const priceLabel = dep.price ? `<p class="exit-item__price">${formatBRL(dep.price)}/pessoa</p>` : '';
 
   return `
@@ -397,6 +408,7 @@ function renderExitItem(dep, bpMap = {}) {
         ${titleLabel}
         <p class="exit-item__date">${Icon.calendar} ${dateLabel}${timeLabel ? ' às ' + timeLabel : ''}</p>
         ${meetLabel}
+        ${bpSelector}
         ${priceLabel}
       </div>
       <div>
@@ -428,6 +440,22 @@ function initExitSelection(exp) {
     const bookingSelect = document.getElementById('exit-select');
     if (bookingSelect instanceof HTMLSelectElement) bookingSelect.value = exitId;
   }
+
+  // Boarding point chip selection
+  exitList.addEventListener('click', e => {
+    const chip = e.target.closest('.bp-chip');
+    if (!chip || chip.disabled) return;
+    e.stopPropagation(); // don't bubble to exit-item click
+    const depId = chip.dataset.depId;
+    const bpId  = chip.dataset.bpId;
+    _selectedBp[depId] = bpId;
+    exitList.querySelectorAll(`.bp-chip[data-dep-id="${depId}"]`).forEach(c => {
+      const active = c.dataset.bpId === bpId;
+      c.classList.toggle('is-selected', active);
+      c.setAttribute('aria-pressed', String(active));
+    });
+    selectExit(depId);
+  });
 
   exitList.querySelectorAll('.exit-item:not(.exit-item--sold-out)').forEach(item => {
     item.addEventListener('click', () => selectExit(item.getAttribute('data-exit-id') ?? ''));
@@ -571,7 +599,9 @@ function renderBookingBox(exp) {
     document.getElementById('modal-cancel-btn')?.addEventListener('click', close);
     document.getElementById('modal-confirm-btn')?.addEventListener('click', () => {
       close();
-      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${exitId}`;
+      const bpId = _selectedBp[exitId];
+      const bpParam = bpId ? `&bp=${bpId}` : '';
+      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${exitId}${bpParam}`;
     });
   });
 
