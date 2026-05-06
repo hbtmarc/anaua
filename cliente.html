@@ -70,25 +70,44 @@
 
     <!-- Dashboard view (hidden until login) -->
     <div id="dashboard-view" class="dashboard">
-      <div class="dashboard-header">
+
+      <!-- Hero / profile bar -->
+      <div class="dash-hero">
         <div class="container">
-          <p class="dashboard-greeting">Olá, <span id="user-name">visitante</span>!</p>
-          <a id="backoffice-link" href="admin/index.html"
-             class="btn btn--sm"
-             style="display:none;margin-right:8px;background:var(--color-earth,#8b5e3c);color:#fff"
-          >Ir para o Backoffice</a>
-          <button class="dashboard-logout" id="logout-btn">Sair</button>
+          <div class="dash-hero__inner">
+            <div class="dash-hero__left">
+              <div class="dash-avatar" id="user-avatar" aria-hidden="true">A</div>
+              <div>
+                <p class="dash-hero__greeting">Bem-vindo(a) de volta</p>
+                <p class="dash-hero__name">Olá, <em id="user-name">visitante</em>!</p>
+                <p class="dash-hero__email" id="user-email"></p>
+              </div>
+            </div>
+            <div class="dash-hero__actions">
+              <a id="backoffice-link" href="admin/index.html"
+                 class="btn--backoffice"
+                 style="display:none">
+                ⚙ Backoffice
+              </a>
+              <button class="btn--logout" id="logout-btn">Sair</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <section class="section">
+      <!-- Reservations -->
+      <section class="dash-section">
         <div class="container">
-          <h2 class="reservations-title">Minhas Reservas</h2>
-          <div id="reservation-list" class="reservation-list">
+          <div class="dash-section__header">
+            <h2 class="dash-section__title">Minhas Reservas</h2>
+            <span class="dash-section__count" id="resa-count" style="display:none"></span>
+          </div>
+          <div id="reservation-list" class="resa-list">
             <!-- populated by cliente.js -->
           </div>
         </div>
       </section>
+
     </div>
   </main>
 

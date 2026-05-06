@@ -124,6 +124,22 @@ const CATEGORY_MAP = {
   'kids':            'kids',
 };
 
+/**
+ * Garante que um valor do banco seja sempre um array.
+ * Suporta arrays nativos, arrays JSON (string) e valores nulos.
+ * @param {*} v
+ * @returns {Array}
+ */
+function toArray(v) {
+  if (Array.isArray(v)) return v;
+  if (v == null || v === '') return [];
+  if (typeof v === 'string') {
+    try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : [parsed]; }
+    catch { return v.split(',').map(s => s.trim()).filter(Boolean); }
+  }
+  return [v];
+}
+
 function normalizeExperience(row) {
   const rawDifficulty = (row.difficulty ?? '').toLowerCase().trim();
   const rawCategory   = (row.category   ?? '').toLowerCase().trim();
@@ -140,7 +156,7 @@ function normalizeExperience(row) {
     coverImage:       (row.cover_image_url && row.cover_image_url.trim() !== '' && row.cover_image_url !== 'null' && row.cover_image_url !== 'undefined')
                         ? row.cover_image_url
                         : 'assets/img/placeholder.svg',
-    gallery:          row.gallery      ?? [],
+    gallery:          toArray(row.gallery),
     durationHours:    row.duration_hours  ?? null,
     durationLabel:    row.duration_label  ?? (row.duration_hours ? `${row.duration_hours}h` : '—'),
     minAge:           row.min_age          ?? null,
@@ -153,13 +169,13 @@ function normalizeExperience(row) {
     pricePerPerson:   row.price_per_person ?? row.base_price ?? 0,
     priceChildren:    row.price_children   ?? null,
     currency:         row.currency         ?? 'BRL',
-    includes:         row.includes         ?? [],
-    excludes:         row.excludes         ?? [],
-    whatToBring:      row.what_to_bring    ?? [],
+    includes:         toArray(row.includes),
+    excludes:         toArray(row.excludes),
+    whatToBring:      toArray(row.what_to_bring),
     cancellationPolicy: row.cancellation_policy ?? null,
     isFeatured:       row.featured         ?? false,
     isNew:            row.is_new           ?? false,
-    highlights:       row.highlights       ?? [],
+    highlights:       toArray(row.highlights),
     nextExits:        [],                  // saídas carregadas separadamente via listDeparturesByExperience
     departures:       row.departures       ?? [],
     createdAt:        row.created_at,

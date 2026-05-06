@@ -69,7 +69,12 @@ function showNotFound() {
     if (bps?.length) bpMap[depId] = bps;
   }));
 
-  renderPage(exp, bpMap);
+  try {
+    renderPage(exp, bpMap);
+  } catch (err) {
+    console.error('[detail] Erro ao renderizar experiência:', err);
+    showNotFound();
+  }
 })();
 
 /* ── Main render ─────────────────────────────────────────── */
@@ -130,7 +135,7 @@ const expSlug = exp.slug ?? exp.id;
   renderHero(exp);
 
   // Content
-  renderContent(exp);
+  renderContent(exp, bpMap);
 
   // Booking sidebar + sticky CTA
   const isSoldOut = renderBookingBox(exp);
@@ -173,7 +178,7 @@ function renderHero(exp) {
 }
 
 /* ── Main content ────────────────────────────────────────── */
-function renderContent(exp) {
+function renderContent(exp, bpMap = {}) {
   const el = document.getElementById('detail-content');
   if (!el) return;
 

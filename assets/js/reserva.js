@@ -1146,6 +1146,12 @@ function renderVoucher(booking, paymentResult, split) {
     draft.exitId = exp.departures[0].id;
   }
 
-  renderStep1();
-  goTo(1);
+  try {
+    renderStep1();
+    goTo(1);
+  } catch (err) {
+    console.error('[reserva] Erro ao inicializar wizard:', err);
+    const wrap = document.getElementById('wizard-wrap');
+    if (wrap) wrap.innerHTML = `<div class="empty-state"><p>Ocorreu um erro ao carregar a reserva. Por favor, <a href="experiencias.html">volte às experiências</a> e tente novamente.</p></div>`;
+  }
 })();

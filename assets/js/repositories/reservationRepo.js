@@ -144,7 +144,22 @@ export async function getUserReservations(userId) {
 
   const { data, error } = await supabase
     .from('reservations')
-    .select('*')
+    .select(`
+      id,
+      user_id,
+      experience_id,
+      departure_id,
+      customer_name,
+      customer_email,
+      reservation_status,
+      total_amount,
+      amount_paid,
+      payment_method,
+      notes,
+      created_at,
+      experiences ( id, title, slug, cover_image_url ),
+      departures  ( id, start_at, end_at, title )
+    `)
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 

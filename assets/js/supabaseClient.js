@@ -16,7 +16,24 @@ if (!window.supabase) {
   console.error('[supabase] CDN não carregado. Adicione o <script> do Supabase antes dos módulos ES.');
 }
 
-export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let _client;
+try {
+  _client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch (e) {
+  console.error('[supabase] Falha ao inicializar cliente:', e);
+  // Stub mínimo — permite que initPage rode; todas as queries retornam erro graciosamente
+  const _err = { message: 'Supabase não disponível' };
+  const _res = () => Promise.resolve({ data: null, error: _err });
+  const _q = () => { const o = { select: _q, eq: _q, neq: _q, order: _q, gte: _q, in: _q, single: _res, insert: _q, update: _q, delete: _q, upsert: _q }; o.then = (r) => Promise.resolve({ data: null, error: _err }).then(r); return o; };
+  _client = {
+    from:  () => _q(),
+    auth:  { getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+             onAuthStateChange: (cb) => { cb('SIGNED_OUT', null); return { data: { subscription: { unsubscribe: () => {} } } }; } },
+    rpc:   _res,
+  };
+}
+
+export const supabase = _client;
 
 // Expõe o cliente inicializado globalmente para uso em components.js e admin
 // (necessário porque components.js não importa supabaseClient diretamente)
