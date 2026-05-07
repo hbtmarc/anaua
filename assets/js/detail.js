@@ -138,7 +138,7 @@ const expSlug = exp.slug ?? exp.id;
   renderContent(exp, bpMap);
 
   // Booking sidebar + sticky CTA
-  const isSoldOut = renderBookingBox(exp, bpMap);
+  const isSoldOut = renderBookingBox(exp);
   const stickyPrice = document.getElementById('sticky-price');
   if (stickyPrice) stickyPrice.textContent = formatBRL(exp.pricePerPerson);
   initStickyCTA(exp, isSoldOut);
@@ -369,31 +369,30 @@ const _selectedBp = {};
 /* ── Exit item ───────────────────────────────────────────── */
 function renderExitItem(dep, bpMap = {}) {
   const isSoldOut = dep.status !== 'scheduled';
-  const dateLabel = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
-  const timeLabel = dep.start_at ? dep.start_at.split('T')[1]?.slice(0, 5) : null;
-  const titleLabel = dep.title ? `<p class="exit-item__title">${dep.title}</p>` : '';
+  const spots = Number(dep.capacity ?? 0);
+  const isLowSpots = !isSoldOut && Number.isFinite(spots) && spots > 0 && spots <= 5;
+  const depDate = dep.start_at ? new Date(`${dep.start_at.split('T')[0]}T00:00:00`) : null;
+  const dateLabel = depDate
+    ? new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }).format(depDate)
+    : '—';
   const bps = bpMap[dep.id] ?? [];
 
   // Pre-select single boarding point automatically
   if (bps.length === 1 && !_selectedBp[dep.id]) _selectedBp[dep.id] = bps[0].id;
 
-  let meetLabel = '';
-  let bpSelector = '';
+  const chips = bps.map(bp => {
+    const time = bp.pickupAt
+      ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const isSel = _selectedBp[dep.id] === bp.id;
+    return `<button class="bp-chip${isSel ? ' is-selected' : ''}" data-bp-id="${bp.id}" data-dep-id="${dep.id}" type="button" aria-pressed="${isSel}"${isSoldOut ? ' disabled' : ''}>${bp.displayName}${time ? ' · ' + time : ''}</button>`;
+  }).join('');
 
-  if (bps.length > 0) {
-    const chips = bps.map(bp => {
-      const time = bp.pickupAt
-        ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        : null;
-      const isSel = _selectedBp[dep.id] === bp.id;
-      return `<button class="bp-chip${isSel ? ' is-selected' : ''}" data-bp-id="${bp.id}" data-dep-id="${dep.id}" type="button" aria-pressed="${isSel}"${isSoldOut ? ' disabled' : ''}>${bp.displayName}${time ? ' · ' + time : ''}</button>`;
-    }).join('');
-    bpSelector = `<div class="bp-selector"><span class="bp-selector__label">${Icon.map} Ponto de embarque</span><div class="bp-selector__chips">${chips}</div></div>`;
-  } else if (dep.meeting_point) {
-    meetLabel = `<p class="exit-item__meeting">${Icon.map} ${dep.meeting_point}</p>`;
-  }
+  const bpSelector = bps.length > 0
+    ? `<div class="bp-selector"><p class="bp-selector__label">${Icon.map} Pontos de embarque</p><div class="bp-selector__chips">${chips}</div></div>`
+    : `<div class="bp-selector"><p class="bp-selector__label">${Icon.map} Pontos de embarque</p><p class="bp-selector__empty">Pontos de embarque em definição.</p></div>`;
 
-  const priceLabel = dep.price ? `<p class="exit-item__price">${formatBRL(dep.price)}/pessoa</p>` : '';
+  const priceLabel = dep.price ? `<p class="exit-item__price-subtle">${formatBRL(dep.price)}</p>` : '';
 
   return `
     <div
@@ -405,17 +404,19 @@ function renderExitItem(dep, bpMap = {}) {
       tabindex="${isSoldOut ? -1 : 0}"
     >
       <div class="exit-item__info">
-        ${titleLabel}
-        <p class="exit-item__date">${Icon.calendar} ${dateLabel}${timeLabel ? ' às ' + timeLabel : ''}</p>
-        ${meetLabel}
+        <div class="exit-item__header">
+          <div class="exit-item__header-main">
+            <p class="exit-item__date">${Icon.calendar} ${dateLabel}</p>
+            <div class="exit-item__availability">
+              ${isSoldOut
+                ? '<span class="badge badge--sold-out">Esgotado</span>'
+                : `<span class="exit-item__spots${isLowSpots ? ' is-low' : ''}">${dep.capacity ?? '?'} vaga${dep.capacity !== 1 ? 's' : ''}</span>`
+              }
+            </div>
+          </div>
+          ${!isSoldOut ? priceLabel : ''}
+        </div>
         ${bpSelector}
-        ${priceLabel}
-      </div>
-      <div>
-        ${isSoldOut
-          ? '<span class="badge badge--sold-out">Esgotado</span>'
-          : `<span class="exit-item__spots">${dep.capacity ?? '?'} vaga${dep.capacity !== 1 ? 's' : ''}</span>`
-        }
       </div>
     </div>
   `;
@@ -436,9 +437,12 @@ function initExitSelection(exp) {
       el.setAttribute('aria-checked', String(isThis));
     });
 
-    // Sync booking box dep card
-    const box = document.getElementById('booking-box');
-    if (box?._selectDep) box._selectDep(exitId);
+    // Update booking box select
+    const bookingSelect = document.getElementById('exit-select');
+    if (bookingSelect instanceof HTMLSelectElement) {
+      bookingSelect.value = exitId;
+      bookingSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   }
 
   // Boarding point chip selection
@@ -489,210 +493,210 @@ function showMeetingPoints(exit) {
 }
 
 /* ── Booking Box (sidebar) ───────────────────────────────── */
-function renderBookingBox(exp, bpMap = {}) {
+function renderBookingBox(exp) {
   const box = document.getElementById('booking-box');
   if (!box) return;
 
   const activeDeps = (exp.departures ?? []).filter(d => d.status === 'scheduled');
+  const hasAnyDeparture = (exp.departures ?? []).length > 0;
   const isSoldOut  = activeDeps.length === 0;
 
-  // ── Departure card HTML ────────────────────────────────────
-  function depCardHtml(dep, isSelected = false) {
-    const date = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
-    const time = dep.start_at ? dep.start_at.split('T')[1]?.slice(0, 5) : null;
-    const cap  = dep.capacity ?? 0;
-    const spotsClass = cap <= 2 ? 'bb-spots--critical' : cap <= 5 ? 'bb-spots--low' : 'bb-spots--ok';
-    const spotsLabel = cap === 0 ? 'Esgotado' : cap === 1 ? '1 vaga' : `${cap} vagas`;
-    const price = dep.price ? `<span class="bb-dep__price">${formatBRL(dep.price)}/pessoa</span>` : '';
+  const formatDepartureDateOnly = (startAt) => {
+    if (!startAt) return '—';
+    const dateOnly = startAt.split('T')[0];
+    return new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' })
+      .format(new Date(`${dateOnly}T00:00:00`));
+  };
 
-    const bps = bpMap[dep.id] ?? [];
-    let bpHtml = '';
-    if (bps.length > 0) {
-      if (bps.length === 1 && !_selectedBp[dep.id]) _selectedBp[dep.id] = bps[0].id;
-      const chips = bps.map(bp => {
-        const t = bp.pickupAt
-          ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-          : null;
-        const sel = _selectedBp[dep.id] === bp.id;
-        return `<button class="bp-chip bp-chip--sm${sel ? ' is-selected' : ''}" data-bp-id="${bp.id}" data-dep-id="${dep.id}" type="button" aria-pressed="${sel}">${bp.displayName}${t ? ' · ' + t : ''}</button>`;
-      }).join('');
-      bpHtml = `<div class="bb-bp-row"><span class="bb-bp-label">${Icon.map} Embarque</span><div class="bb-bp-chips">${chips}</div></div>`;
-    } else if (dep.meeting_point) {
-      bpHtml = `<p class="bb-dep__meet">${Icon.map} ${dep.meeting_point}</p>`;
-    }
+  const getStatusLabel = (dep) => {
+    if (!dep) return '';
+    if (dep.status === 'sold_out') return 'esgotada';
+    if (dep.status === 'scheduled') return 'saída aberta';
+    return 'lista de espera';
+  };
 
-    return `
-      <div class="bb-dep-card${isSelected ? ' is-selected' : ''}" data-dep-id="${dep.id}" role="radio" aria-checked="${isSelected}" tabindex="0">
-        <div class="bb-dep-card__header">
-          <div class="bb-dep-card__datetime">
-            <span class="bb-dep__day">${date}</span>
-            ${time ? `<span class="bb-dep__time">${time}</span>` : ''}
-          </div>
-          <span class="bb-spots ${spotsClass}">${spotsLabel}</span>
-        </div>
-        ${price}
-        ${bpHtml}
-      </div>`;
-  }
-
+  // Ocultar/mostrar sticky CTA conforme disponibilidade
   box.innerHTML = `
     <div class="booking-box__price">
-      <p class="booking-box__from">a partir de</p>
+      <p class="booking-box__from">Preço por pessoa</p>
       <p class="booking-box__value">${formatBRL(exp.pricePerPerson)}</p>
-      <p class="booking-box__per">por pessoa</p>
     </div>
 
     ${!isSoldOut ? `
-      <div class="bb-section">
-        <p class="booking-box__label">Saída disponível</p>
-        <div class="bb-dep-list" id="bb-dep-list" role="radiogroup" aria-label="Selecionar saída">
-          ${activeDeps.map((d, i) => depCardHtml(d, i === 0)).join('')}
+      <div class="booking-box__row">
+        <p class="booking-box__label">Saída selecionada</p>
+
+        <div class="booking-departure" id="booking-departure-summary" aria-live="polite">
+          <p class="booking-departure__date" id="booking-departure-date">—</p>
+          <div class="booking-departure__chips">
+            <span class="booking-departure__chip" id="booking-departure-spots">—</span>
+            <span class="booking-departure__chip" id="booking-departure-price">—</span>
+            <span class="booking-departure__chip booking-departure__chip--status" id="booking-departure-status">—</span>
+          </div>
         </div>
+
+        ${activeDeps.length > 1 ? `
+          <button class="booking-dep-toggle" id="booking-switch-btn" type="button" aria-expanded="false" aria-controls="booking-switch-list">
+            Alterar saída
+          </button>
+          <div class="booking-dep-panel" id="booking-switch-list" hidden role="listbox" aria-label="Escolha uma saída">
+            ${activeDeps.map(d => {
+              const depDate = formatDepartureDateOnly(d.start_at);
+              const depSpots = `${d.capacity ?? '?'} vaga${d.capacity !== 1 ? 's' : ''}`;
+              const depPrice = d.price ? formatBRL(d.price) : '';
+              const depStatus = getStatusLabel(d);
+              return `
+                <div class="booking-dep-option" role="option" tabindex="0" data-dep-id="${d.id}" aria-checked="false">
+                  <div class="booking-dep-option__main">
+                    <span class="booking-dep-option__date">${depDate}</span>
+                    <span class="booking-dep-option__check" aria-hidden="true"></span>
+                  </div>
+                  <div class="booking-dep-option__meta">
+                    <span>${depSpots}</span>
+                    ${depPrice ? `<span>${depPrice}</span>` : ''}
+                    <span class="booking-dep-option__status">${depStatus}</span>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        <select id="exit-select" class="booking-box__select booking-box__select--hidden" aria-label="Selecionar data da saída">
+          ${activeDeps.map(d => { const label = formatDepartureDateOnly(d.start_at); return `<option value="${d.id}">${label}</option>`; }).join('')}
+        </select>
       </div>
 
-      <div class="bb-section bb-pax-section">
-        <p class="booking-box__label">Participantes</p>
-        <div class="bb-pax-stepper">
-          <button class="bb-pax-btn" id="bb-pax-minus" type="button" aria-label="Remover participante">−</button>
-          <span id="bb-pax-val" class="bb-pax-val">1 pessoa</span>
-          <button class="bb-pax-btn" id="bb-pax-plus" type="button" aria-label="Adicionar participante">+</button>
-        </div>
+      <div class="booking-box__row">
+        <label class="booking-box__label" for="pax-select">Participantes</label>
+        <select id="pax-select" class="booking-box__select" aria-label="Número de participantes">
+          ${Array.from({ length: Math.min(exp.maxParticipants, 10) }, (_, i) => i + 1).map(n =>
+            `<option value="${n}">${n} pessoa${n !== 1 ? 's' : ''}</option>`
+          ).join('')}
+        </select>
       </div>
 
       <div class="booking-box__total">
         <span>Total estimado</span>
-        <span class="booking-box__total-value" id="booking-total">${formatBRL(activeDeps[0]?.price ?? exp.pricePerPerson)}</span>
+        <span class="booking-box__total-value" id="booking-total">${formatBRL((activeDeps[0]?.price ?? exp.pricePerPerson))}</span>
       </div>
 
       <button class="btn btn--primary btn--full btn--lg" id="reserve-btn">
         Reservar vaga ${Icon.arrow}
       </button>
 
-      <p class="bb-disclaimer">Sem cobrança agora. Você confirma após verificar os detalhes.</p>
+      <p class="booking-box__footnote">
+        Sem cobrança agora. Você confirma os dados antes do pagamento.
+      </p>
     ` : `
-      <div class="bb-soldout">
-        <p class="bb-soldout__title">Esgotado</p>
-        <p class="bb-soldout__desc">Todas as vagas foram preenchidas. Entre na lista de espera e avisamos quando novas vagas abrirem.</p>
+      <div style="text-align:center;padding:var(--sp-6) 0">
+        <p style="font-family:var(--font-serif);font-size:var(--text-lg);color:var(--color-deep);margin-bottom:var(--sp-3)">${hasAnyDeparture ? 'Esgotado' : 'Nenhuma saída disponível no momento.'}</p>
+
+        <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">${hasAnyDeparture ? 'Todas as vagas foram preenchidas. Entre na lista de espera — avisamos se abrirem novas vagas.' : 'No momento não há saídas publicadas para esta experiência.'}</p>
         <button class="btn btn--secondary btn--full" id="waitlist-btn">Entrar na lista de espera</button>
       </div>
     `}
   `;
 
-  if (isSoldOut) {
-    document.getElementById('waitlist-btn')?.addEventListener('click', () => openWaitlistModal(exp));
-    return isSoldOut;
-  }
+  // Wire total calc
+  const exitSelect = document.getElementById('exit-select');
+  const paxSelect  = document.getElementById('pax-select');
+  const totalEl    = document.getElementById('booking-total');
+  const departureDateEl = document.getElementById('booking-departure-date');
+  const departureSpotsEl = document.getElementById('booking-departure-spots');
+  const departurePriceEl = document.getElementById('booking-departure-price');
+  const departureStatusEl = document.getElementById('booking-departure-status');
 
-  // ── Reactive state ─────────────────────────────────────────
-  let selectedDepId = activeDeps[0]?.id ?? null;
-  let pax = 1;
-  const maxPax = Math.max(1, exp.maxParticipants ?? 10);
-  const totalEl  = document.getElementById('booking-total');
-  const paxValEl = document.getElementById('bb-pax-val');
-  const depList  = document.getElementById('bb-dep-list');
+  function renderSelectedDeparture(depId) {
+    const selectedDep = depId ? activeDeps.find(d => d.id === depId) : activeDeps[0];
+    if (!selectedDep) return;
+    if (departureDateEl) departureDateEl.textContent = formatDepartureDateOnly(selectedDep.start_at);
+    if (departureSpotsEl) departureSpotsEl.textContent = `${selectedDep.capacity ?? '?'} vaga${selectedDep.capacity !== 1 ? 's' : ''}`;
+    if (departurePriceEl) departurePriceEl.textContent = formatBRL(selectedDep.price ?? exp.pricePerPerson);
+    if (departureStatusEl) departureStatusEl.textContent = getStatusLabel(selectedDep);
 
-  function getUnitPrice() {
-    const dep = activeDeps.find(d => d.id === selectedDepId);
-    return dep?.price ?? exp.pricePerPerson;
+    document.querySelectorAll('.booking-dep-option').forEach(opt => {
+      const active = opt.getAttribute('data-dep-id') === selectedDep.id;
+      opt.classList.toggle('is-selected', active);
+      opt.setAttribute('aria-checked', String(active));
+    });
   }
 
   function updateTotal() {
-    if (totalEl) totalEl.textContent = formatBRL(getUnitPrice() * pax);
+    if (!paxSelect || !totalEl) return;
+    const pax = Number((paxSelect instanceof HTMLSelectElement ? paxSelect.value : '1'));
+    const depId = exitSelect instanceof HTMLSelectElement ? exitSelect.value : null;
+    const selectedDep = depId ? activeDeps.find(d => d.id === depId) : null;
+    const unitPrice = selectedDep?.price ?? exp.pricePerPerson;
+    totalEl.textContent = formatBRL(unitPrice * pax);
+    renderSelectedDeparture(depId);
   }
 
-  function selectDep(depId) {
-    selectedDepId = depId;
-    depList?.querySelectorAll('.bb-dep-card').forEach(c => {
-      const isThis = c.dataset.depId === depId;
-      c.classList.toggle('is-selected', isThis);
-      c.setAttribute('aria-checked', String(isThis));
-    });
-    updateTotal();
+  if (exitSelect instanceof HTMLSelectElement && activeDeps[0]) {
+    if (!exitSelect.value) exitSelect.value = activeDeps[0].id;
+    renderSelectedDeparture(exitSelect.value);
   }
 
-  // Expose for exit-list sync
-  box._selectDep = selectDep;
+  const switchBtn = document.getElementById('booking-switch-btn');
+  const switchList = document.getElementById('booking-switch-list');
 
-  // ── Dep card interactions ──────────────────────────────────
-  depList?.addEventListener('click', e => {
-    // BP chip click
-    const chip = e.target.closest('.bp-chip');
-    if (chip) {
-      e.stopPropagation();
-      const depId = chip.dataset.depId;
-      const bpId  = chip.dataset.bpId;
-      _selectedBp[depId] = bpId;
-      depList.querySelectorAll(`.bp-chip[data-dep-id="${depId}"]`).forEach(c => {
-        const on = c.dataset.bpId === bpId;
-        c.classList.toggle('is-selected', on);
-        c.setAttribute('aria-pressed', String(on));
-      });
-      selectDep(depId);
-      return;
-    }
-    // Dep card click
-    const card = e.target.closest('.bb-dep-card');
-    if (card) {
-      selectDep(card.dataset.depId);
-      // Sync exit-item list in main content
-      document.querySelectorAll('#exit-list .exit-item').forEach(el => {
-        const isThis = el.getAttribute('data-exit-id') === card.dataset.depId;
-        el.classList.toggle('is-selected', isThis);
-        el.setAttribute('aria-checked', String(isThis));
-      });
-    }
+  switchBtn?.addEventListener('click', () => {
+    if (!switchList) return;
+    const expanded = switchBtn.getAttribute('aria-expanded') === 'true';
+    switchBtn.setAttribute('aria-expanded', String(!expanded));
+    switchList.hidden = expanded;
   });
 
-  depList?.addEventListener('keydown', e => {
-    const card = e.target.closest('.bb-dep-card');
-    if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); card.click(); }
+  const closePanel = () => {
+    if (!switchBtn || !switchList) return;
+    switchBtn.setAttribute('aria-expanded', 'false');
+    switchList.hidden = true;
+  };
+
+  switchList?.addEventListener('click', e => {
+    const opt = e.target.closest('.booking-dep-option');
+    if (!opt || !(exitSelect instanceof HTMLSelectElement)) return;
+    const depId = opt.getAttribute('data-dep-id');
+    if (!depId) return;
+    exitSelect.value = depId;
+    exitSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const relatedCard = document.querySelector(`.exit-item[data-exit-id="${depId}"]`);
+    if (relatedCard instanceof HTMLElement) relatedCard.click();
+    closePanel();
   });
 
-  // ── Pax stepper ────────────────────────────────────────────
-  const minusBtn = document.getElementById('bb-pax-minus');
-  const plusBtn  = document.getElementById('bb-pax-plus');
+  switchList?.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const opt = e.target.closest('.booking-dep-option');
+    if (opt) { e.preventDefault(); opt.click(); }
+  });
 
-  function updatePax(delta) {
-    pax = Math.max(1, Math.min(maxPax, pax + delta));
-    if (paxValEl) paxValEl.textContent = `${pax} pessoa${pax !== 1 ? 's' : ''}`;
-    if (minusBtn) minusBtn.disabled = pax <= 1;
-    if (plusBtn)  plusBtn.disabled  = pax >= maxPax;
-    updateTotal();
-  }
+  exitSelect?.addEventListener('change', updateTotal);
+  paxSelect?.addEventListener('change', updateTotal);
 
-  minusBtn?.addEventListener('click', () => updatePax(-1));
-  plusBtn?.addEventListener('click',  () => updatePax(1));
-  updatePax(0); // init
-
-  // ── Reserve button ─────────────────────────────────────────
+  // Reserve button
   document.getElementById('reserve-btn')?.addEventListener('click', () => {
-    if (!selectedDepId) return;
-    const dep = activeDeps.find(d => d.id === selectedDepId);
+    if (!(exitSelect instanceof HTMLSelectElement) || !(paxSelect instanceof HTMLSelectElement)) return;
+    const exitId = exitSelect.value;
+    const pax    = paxSelect.value;
+    const dep    = (exp.departures ?? []).find(d => d.id === exitId);
     if (!dep) return;
-
-    const bpId  = _selectedBp[selectedDepId];
-    const bps   = bpMap[selectedDepId] ?? [];
-    const selBp = bps.find(b => b.id === bpId);
-
-    const dateLabel = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
-    const timeLabel = dep.start_at ? dep.start_at.split('T')[1]?.slice(0, 5) : null;
-    const depLabel  = timeLabel ? `${dateLabel} às ${timeLabel}` : dateLabel;
+    const depDate  = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
+    const depTime  = dep.start_at ? dep.start_at.split('T')[1]?.slice(0,5) : null;
+    const depLabel = depTime ? `${depDate} às ${depTime}` : depDate;
+    const depTitle = dep.title ? ` · ${dep.title}` : '';
     const unitPrice = dep.price ?? exp.pricePerPerson;
-
-    const bpLine = selBp
-      ? `<p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.map} Embarque: ${selBp.displayName}${selBp.pickupAt ? ' · ' + new Date(selBp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}</p>`
-      : (dep.meeting_point ? `<p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.map} Encontro: ${dep.meeting_point}</p>` : '');
+    const meet = dep.meeting_point ? `<p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.map} Encontro: ${dep.meeting_point}</p>` : '';
 
     const { close } = openModal({
       title: 'Confirmar reserva',
       body: `
         <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">Você está pré-reservando:</p>
         <div style="background:var(--color-offwhite);border-radius:var(--radius-lg);padding:var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-3)">
-          <p><strong>${exp.title}</strong></p>
+          <p><strong>${exp.title}</strong>${depTitle}</p>
           <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.calendar} Saída: ${depLabel}</p>
-          ${bpLine}
-          <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.users} ${pax} participante${pax !== 1 ? 's' : ''}</p>
-          <p style="font-size:var(--text-sm);font-weight:600;color:var(--color-deep)">Total: ${formatBRL(unitPrice * pax)}</p>
+          ${meet}
+          <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.users} ${pax} participante${Number(pax) !== 1 ? 's' : ''}</p>
+          <p style="font-size:var(--text-sm);font-weight:600;color:var(--color-deep)">Total: ${formatBRL(unitPrice * Number(pax))}</p>
         </div>
         <p style="font-size:var(--text-xs);color:var(--color-muted);margin-top:var(--sp-4);line-height:var(--leading-loose)">
           Ao continuar, você concorda com os
@@ -709,8 +713,9 @@ function renderBookingBox(exp, bpMap = {}) {
     document.getElementById('modal-cancel-btn')?.addEventListener('click', close);
     document.getElementById('modal-confirm-btn')?.addEventListener('click', () => {
       close();
+      const bpId = _selectedBp[exitId];
       const bpParam = bpId ? `&bp=${bpId}` : '';
-      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${selectedDepId}${bpParam}`;
+      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${exitId}${bpParam}`;
     });
   });
 

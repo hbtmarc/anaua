@@ -58,6 +58,9 @@ let draft = null;
 let selectedPaymentMethod = null;
 let signalPct = 50;
 
+/** Loaded from app_settings.image_consent_required */
+let imageConsentRequired = false;
+
 // ─── Wizard state ─────────────────────────────────────────────────────────────
 
 const TOTAL_STEPS = 9;
@@ -303,8 +306,8 @@ $('back-2').addEventListener('click', () => goTo(1));
 /** @type {Record<string, number>} */
 const qtyMap = { adult: 0, child: 0, senior: 0, pcd: 0 };
 
-// Rehydrate from draft
-if (draft.profileQtys?.length) {
+// Rehydrate from draft (guard: draft is null until async initReserva runs)
+if (draft?.profileQtys?.length) {
   draft.profileQtys.forEach(pq => { qtyMap[pq.profile] = pq.qty; });
 }
 
@@ -425,9 +428,10 @@ function collectPayer() {
 }
 
 // ── Prefill payer fields from session/profile ───────────────────────────────
-(function prefillPayerFields() {
+// Called from initReserva() after draft is populated
+async function prefillPayerFields() {
   // Priority 1: wizard draft already has payer data (user navigated back)
-  if (draft.payer) {
+  if (draft?.payer) {
     $('payer-name').value             = draft.payer.fullName  ?? '';
     $('payer-cpf').value              = draft.payer.cpf       ?? '';
     $('payer-email').value            = draft.payer.email     ?? '';
@@ -437,16 +441,31 @@ function collectPayer() {
     return;
   }
 
-  // Priority 2: saved profile in localStorage (from previous booking / account)
+  // Priority 2: logged-in Supabase user metadata
+  let supabaseEmail = null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const m = user.user_metadata ?? {};
+      if (m.full_name)  $('payer-name').value      = m.full_name;
+      if (m.cpf)        $('payer-cpf').value        = m.cpf;
+      if (user.email)   $('payer-email').value      = user.email;
+      if (m.phone)      $('payer-phone').value      = m.phone;
+      if (m.birthdate)  $('payer-birthdate').value  = m.birthdate;
+      supabaseEmail = user.email ?? null;
+    }
+  } catch (_) { /* silencioso */ }
+
+  // Priority 3: saved profile in localStorage — preenche apenas campos ainda vazios
   const savedProfile = loadProfile();
   if (savedProfile) {
-    $('payer-name').value      = savedProfile.fullName  ?? '';
-    $('payer-cpf').value       = savedProfile.cpf       ?? '';
-    $('payer-email').value     = savedProfile.email     ?? '';
-    $('payer-phone').value     = savedProfile.phone     ?? '';
-    $('payer-birthdate').value = savedProfile.birthdate ?? '';
+    if (!$('payer-name').value      && savedProfile.fullName)  $('payer-name').value      = savedProfile.fullName;
+    if (!$('payer-cpf').value       && savedProfile.cpf)       $('payer-cpf').value        = savedProfile.cpf;
+    if (!$('payer-email').value     && savedProfile.email)     $('payer-email').value      = savedProfile.email;
+    if (!$('payer-phone').value     && savedProfile.phone)     $('payer-phone').value      = savedProfile.phone;
+    if (!$('payer-birthdate').value && savedProfile.birthdate) $('payer-birthdate').value  = savedProfile.birthdate;
   }
-})();
+}
 
 // ── Show/hide account section based on login state ───────────────────────────
 (async function setupAccountSection() {
@@ -536,7 +555,12 @@ $('next-4').addEventListener('click', async () => {
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email:   payer.email,
       password: pwd,
-      options: { data: { full_name: payer.fullName } },
+      options: { data: {
+        full_name: payer.fullName,
+        cpf:       payer.cpf       ?? '',
+        phone:     payer.phone     ?? '',
+        birthdate: payer.birthdate ?? '',
+      }},
     });
 
     if (signUpError) {
@@ -565,10 +589,23 @@ $('next-4').addEventListener('click', async () => {
       console.log('[reserva] Conta Supabase criada ✓', signUpData.user.id);
       showToast('Conta criada! Verifique seu e-mail para confirmar.');
     }
-  } else {
-    // Sem criar conta — apenas salva dados do payer para auto-preenchimento futuro
-    saveProfile(payer);
   }
+
+  // Sempre persiste o perfil do pagador para auto-preenchimento futuro
+  saveProfile(payer);
+
+  // Se o usuário já está logado, atualiza o user_metadata do Supabase
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.auth.updateUser({ data: {
+        full_name: payer.fullName,
+        cpf:       payer.cpf       ?? '',
+        phone:     payer.phone     ?? '',
+        birthdate: payer.birthdate ?? '',
+      }});
+    }
+  } catch (_) { /* best-effort */ }
 
   draft.payer = payer;
   goTo(5);
@@ -672,12 +709,12 @@ $('back-5').addEventListener('click', () => goTo(4));
 
 maskPhone(/** @type {HTMLInputElement} */ ($('ec-phone')));
 
-if (draft.emergencyContact) {
+if (draft?.emergencyContact) {
   $('ec-name').value         = draft.emergencyContact.fullName ?? '';
   $('ec-phone').value        = draft.emergencyContact.phone ?? '';
   $('ec-relationship').value = draft.emergencyContact.relationship ?? '';
 }
-if (draft.observations) $('observations').value = draft.observations;
+if (draft?.observations) $('observations').value = draft.observations;
 
 $('next-6').addEventListener('click', () => {
   clearInlineErrors();
@@ -702,30 +739,34 @@ $('back-6').addEventListener('click', () => goTo(5));
 
 // ─── STEP 7: Terms ────────────────────────────────────────────────────────────
 
-const TERMS_ITEMS = [
-  {
-    key:   'terms',
-    label: '<strong>Termos de Uso</strong> — Li e aceito os <a href="termos.html" target="_blank">Termos de Uso</a> da Anauá Ecoturismo.',
-    required: true,
-  },
-  {
-    key:   'cancellation',
-    label: `<strong>Política de Cancelamento</strong> — Estou ciente da política: "${exp.cancellationPolicy}"`,
-    required: true,
-  },
-  {
-    key:   'riskAwareness',
-    label: '<strong>Ciência de riscos</strong> — Declaro que estou ciente dos riscos inerentes a atividades de ecoturismo e que todos os participantes estão em condições físicas adequadas, salvo declaração em contrário nas observações.',
-    required: true,
-  },
-  {
-    key:   'imageConsent',
-    label: '<strong>Uso de imagem</strong> — Autorizo o uso de fotos e vídeos da minha participação para fins de divulgação da Anauá Ecoturismo. (optional)',
-    required: false,
-  },
-];
+/** Built lazily inside renderStep7 so exp.cancellationPolicy is available */
+function buildTermsItems() {
+  return [
+    {
+      key:   'terms',
+      label: '<strong>Termos de Uso</strong> — Li e aceito os <a href="termos.html" target="_blank">Termos de Uso</a> da Anauá Ecoturismo.',
+      required: true,
+    },
+    {
+      key:   'cancellation',
+      label: `<strong>Política de Cancelamento</strong> — Estou ciente da política: "${exp?.cancellationPolicy ?? ''}"`,
+      required: true,
+    },
+    {
+      key:   'riskAwareness',
+      label: '<strong>Ciência de riscos</strong> — Declaro que estou ciente dos riscos inerentes a atividades de ecoturismo e que todos os participantes estão em condições físicas adequadas, salvo declaração em contrário nas observações.',
+      required: true,
+    },
+    {
+      key:   'imageConsent',
+      label: '<strong>Uso de imagem</strong> — Autorizo o uso de fotos e vídeos da minha participação para fins de divulgação da Anauá Ecoturismo.',
+      required: imageConsentRequired,
+    },
+  ];
+}
 
 function renderStep7() {
+  const TERMS_ITEMS = buildTermsItems();
   const saved = draft.termsAcceptance ?? {};
   $('terms-list').innerHTML = TERMS_ITEMS.map(item => `
     <label class="term-item ${saved[item.key] ? 'is-checked' : ''}" data-key="${item.key}">
@@ -747,6 +788,10 @@ $('next-7').addEventListener('click', () => {
   $('terms-list').querySelectorAll('input[type=checkbox]').forEach(cb => {
     acceptance[cb.name] = cb.checked;
   });
+  if (imageConsentRequired && !acceptance.imageConsent) {
+    showError('O consentimento de uso de imagem é obrigatório para esta experiência.');
+    return;
+  }
   const errs = validateStep6(acceptance);
   if (Object.keys(errs).length) { showError(Object.values(errs)[0]); return; }
 
@@ -927,6 +972,22 @@ $('next-8').addEventListener('click', async () => {
 
       if (resOk && resId) {
         await insertParticipants(resId, booking.participants ?? []);
+
+        // Decrementa vagas disponíveis na saída escolhida
+        const totalPax = (draft.profileQtys ?? []).reduce((s, p) => s + p.qty, 0);
+        if (totalPax > 0 && draft.exitId) {
+          const dep = (exp?.departures ?? []).find(d => d.id === draft.exitId);
+          const newCap = Math.max(0, (dep?.capacity ?? 0) - totalPax);
+          const { error: capErr } = await supabase
+            .from('departures')
+            .update({ capacity: newCap })
+            .eq('id', draft.exitId);
+          if (capErr) {
+            console.warn('[reserva] Falha ao decrementar vagas:', capErr.message);
+          } else {
+            console.log('[reserva] Vagas atualizadas ✓ novo capacity:', newCap);
+          }
+        }
         if (booking.paymentMethod) {
           await insertPaymentRecord({
             reservationId: resId,
@@ -1117,6 +1178,18 @@ function renderVoucher(booking, paymentResult, split) {
   exp = loadedExp;
   console.log('[reserva] Experiência carregada do Supabase ✓', exp.slug);
 
+  // Carrega configurações da plataforma (ex.: consentimento de imagem obrigatório)
+  try {
+    const { data: appSettings } = await supabase
+      .from('app_settings')
+      .select('image_consent_required')
+      .limit(1)
+      .single();
+    if (appSettings) {
+      imageConsentRequired = appSettings.image_consent_required ?? false;
+    }
+  } catch (_) { /* app_settings pode não existir ainda; usa default false */ }
+
   // Carrega saídas reais do banco
   const { data: departures } = await listDeparturesByExperience(exp.id);
   exp.departures = departures ?? [];
@@ -1157,6 +1230,9 @@ function renderVoucher(booking, paymentResult, split) {
     draft.boardingPointId = bpParam;
     console.log('[reserva] Ponto de embarque pré-selecionado via URL ✓', bpParam);
   }
+
+  // Prefill payer fields agora que draft está populado
+  prefillPayerFields();
 
   try {
     renderStep1();

@@ -835,7 +835,7 @@
   padding: var(--sp-6);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-4);
   box-shadow: var(--shadow-md);
   position: sticky;
   top: calc(var(--header-h) + var(--sp-4));
@@ -848,23 +848,184 @@
 
 .booking-box__from {
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
   color: var(--color-muted);
   font-weight: var(--weight-medium);
+  margin-bottom: 2px;
 }
 
 .booking-box__value {
   font-family: var(--font-serif);
-  font-size: var(--text-3xl);
+  font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   color: var(--color-deep);
   line-height: 1;
 }
 
-.booking-box__per {
-  font-size: var(--text-sm);
+.booking-box__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.booking-departure {
+  border: 1px solid color-mix(in srgb, var(--color-stone) 70%, transparent 30%);
+  border-radius: var(--radius-md);
+  background: var(--color-offwhite);
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.booking-departure__date {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-deep);
+  line-height: var(--leading-tight);
+}
+
+.booking-departure__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.booking-departure__chip {
+  border: 1px solid var(--color-stone);
+  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  font-size: var(--text-xs);
   color: var(--color-muted);
+  background: white;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.booking-departure__chip--status {
+  background: color-mix(in srgb, var(--color-sage) 12%, white 88%);
+  border-color: color-mix(in srgb, var(--color-sage) 40%, var(--color-stone) 60%);
+  color: var(--color-forest);
+}
+
+.booking-dep-toggle {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--color-forest);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semi);
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.75;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.booking-dep-toggle::after { content: '\203A'; font-size: var(--text-sm); }
+.booking-dep-toggle[aria-expanded="true"]::after { content: '\2039'; }
+.booking-dep-toggle:hover { opacity: 1; text-decoration: underline; }
+
+.booking-dep-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--color-stone);
+  border-radius: var(--radius-md);
+  padding: var(--sp-2);
+  background: var(--color-offwhite);
+}
+
+.booking-dep-panel[hidden] { display: none; }
+
+@keyframes depPanelIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.booking-dep-panel:not([hidden]) { animation: depPanelIn 0.15s ease; }
+
+.booking-dep-option {
+  border: 1.5px solid var(--color-stone);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s, background 0.15s;
+  outline: none;
+}
+
+.booking-dep-option:hover { border-color: var(--color-forest); }
+.booking-dep-option:focus-visible { box-shadow: 0 0 0 3px rgba(27,61,42,0.15); }
+.booking-dep-option.is-selected {
+  border-color: var(--color-forest);
+  background: color-mix(in srgb, var(--color-offwhite) 60%, white 40%);
+}
+
+.booking-dep-option__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.booking-dep-option__date {
+  font-family: var(--font-serif);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--color-deep);
+  line-height: var(--leading-tight);
+}
+
+.booking-dep-option__check {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-stone);
+  flex-shrink: 0;
+  background: white;
+  position: relative;
+  transition: border-color 0.15s;
+}
+
+.booking-dep-option.is-selected .booking-dep-option__check {
+  border-color: var(--color-forest);
+  background: var(--color-forest);
+}
+
+.booking-dep-option.is-selected .booking-dep-option__check::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: white;
+  transform: translate(-50%, -50%);
+}
+
+.booking-dep-option__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.booking-dep-option__meta > span {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  background: white;
+  border: 1px solid var(--color-stone);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.booking-dep-option__status {
+  color: var(--color-forest) !important;
+  border-color: color-mix(in srgb, var(--color-sage) 40%, var(--color-stone) 60%) !important;
 }
 
 .booking-box__label {
@@ -875,7 +1036,6 @@
   color: var(--color-muted);
 }
 
-/* kept for back-compat (reserva.js inputs) */
 .booking-box__select,
 .booking-box__input {
   width: 100%;
@@ -890,6 +1050,18 @@
   -webkit-appearance: none;
 }
 
+.booking-box__select--hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .booking-box__select:focus,
 .booking-box__input:focus {
   outline: none;
@@ -899,198 +1071,41 @@
 .booking-box__total {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  font-weight: var(--weight-semi);
-  color: var(--color-ink);
-  padding-top: var(--sp-4);
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-4) 0 var(--sp-3);
   border-top: 1px solid var(--color-stone);
+}
+
+.booking-box__total > span:first-child {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semi);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  font-size: var(--text-xs);
 }
 
 .booking-box__total-value {
   font-family: var(--font-serif);
-  font-size: var(--text-xl);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
   color: var(--color-deep);
+  line-height: 1;
 }
 
-/* ── Booking box — sections ──────────────────────────────── */
-.bb-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.bb-disclaimer {
+.booking-box__footnote {
   font-size: var(--text-xs);
   color: var(--color-muted);
   text-align: center;
   line-height: var(--leading-snug);
 }
 
-/* ── Departure cards ─────────────────────────────────────── */
-.bb-dep-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.bb-dep-card {
-  border: 1.5px solid var(--color-stone);
-  border-radius: var(--radius-lg);
-  padding: var(--sp-3) var(--sp-4);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-  background: var(--color-cream);
-}
-
-.bb-dep-card:hover {
-  border-color: var(--color-forest);
-  box-shadow: 0 0 0 3px rgba(27,61,42,0.07);
-}
-
-.bb-dep-card.is-selected {
-  border-color: var(--color-forest);
-  background: rgba(27,61,42,0.04);
-  box-shadow: 0 0 0 3px rgba(27,61,42,0.10);
-}
-
-.bb-dep-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-}
-
-.bb-dep-card__datetime {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-
-.bb-dep__day {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semi);
-  color: var(--color-deep);
-}
-
-.bb-dep__time {
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-  background: var(--color-stone);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-weight: var(--weight-medium);
-}
-
-.bb-dep__price {
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-}
-
-.bb-dep__meet {
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-  margin: 0;
-}
-
-/* ── Spots badge ─────────────────────────────────────────── */
-.bb-spots {
-  font-size: 11px;
-  font-weight: var(--weight-semi);
-  border-radius: 999px;
-  padding: 2px 10px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.bb-spots--ok       { background: rgba(27,61,42,0.10); color: var(--color-forest); }
-.bb-spots--low      { background: rgba(200,145,42,0.15); color: #8a5e0a; }
-.bb-spots--critical { background: rgba(192,57,43,0.12); color: #c0392b; }
-
-/* ── BP chips inside dep card ────────────────────────────── */
-.bb-bp-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.bb-bp-label {
-  font-size: 10px;
-  font-weight: var(--weight-semi);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-muted);
-}
-
-.bb-bp-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-/* ── Pax stepper ─────────────────────────────────────────── */
-.bb-pax-section { border-top: 1px solid var(--color-stone); padding-top: var(--sp-4); }
-
-.bb-pax-stepper {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  background: var(--color-cream);
-  border: 1.5px solid var(--color-stone);
-  border-radius: var(--radius-md);
-  padding: var(--sp-2) var(--sp-3);
-}
-
-.bb-pax-btn {
-  width: 32px;
-  height: 32px;
-  border: 1.5px solid var(--color-stone);
-  border-radius: 50%;
-  background: white;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.15s, background 0.15s;
-  color: var(--color-deep);
-  flex-shrink: 0;
-}
-
-.bb-pax-btn:hover:not(:disabled) { border-color: var(--color-forest); background: rgba(27,61,42,0.06); }
-.bb-pax-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-.bb-pax-val {
-  flex: 1;
-  text-align: center;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semi);
-  color: var(--color-deep);
-}
-
-/* ── Sold-out state ──────────────────────────────────────── */
-.bb-soldout {
-  text-align: center;
-  padding: var(--sp-4) 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-}
-
-.bb-soldout__title {
-  font-family: var(--font-serif);
-  font-size: var(--text-lg);
-  color: var(--color-deep);
-}
-
-.bb-soldout__desc {
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-  line-height: var(--leading-loose);
+@media (max-width: 639px) {
+  .booking-box { padding: var(--sp-4); gap: var(--sp-3); }
+  .booking-departure { padding: var(--sp-3); }
+  .booking-departure__date { font-size: var(--text-md); }
+  .booking-box__total-value { font-size: var(--text-2xl); }
 }
 
 /* ── FORM ────────────────────────────────────────────────── */
