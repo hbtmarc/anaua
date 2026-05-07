@@ -1521,7 +1521,66 @@
   display: flex; gap: var(--sp-3);
   padding: var(--sp-5) var(--sp-6);
   border-top: 1px solid var(--color-stone);
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.modal__footer .btn--secondary { margin-inline-end: auto; }
+
+/* ── RESERVATION CONFIRMATION MODAL ─────────────────────── */
+.rsvp-modal__subtitle {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  margin-bottom: var(--sp-5);
+}
+
+.rsvp-summary {
+  background: var(--color-offwhite, #f7f4ee);
+  border: 1px solid var(--color-stone, #e0dbd0);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--sp-5);
+}
+
+.rsvp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--color-stone, #e0dbd0);
+}
+.rsvp-row:last-child { border-bottom: none; }
+
+.rsvp-row__label {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rsvp-row__value {
+  font-size: var(--text-sm);
+  color: var(--color-deep);
+  font-weight: 500;
+  text-align: right;
+}
+
+.rsvp-row--total .rsvp-row__label,
+.rsvp-row--total .rsvp-row__value {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-forest);
+}
+
+.rsvp-modal__terms {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  line-height: var(--leading-loose);
+}
+.rsvp-modal__terms a {
+  color: var(--color-forest);
+  text-decoration: underline;
 }
 
 /* ── PAGE HEADER (internal pages) ────────────────────────── */

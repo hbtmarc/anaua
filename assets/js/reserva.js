@@ -32,6 +32,10 @@ import {
 } from './services/BookingService.js';
 import { supabase } from './supabaseClient.js';
 import {
+  getCustomerProfile, upsertCustomerProfile,
+  getEmergencyContact, upsertEmergencyContact,
+} from './repositories/customerRepo.js';
+import {
   insertReservation, insertParticipants, insertPaymentRecord,
 } from './repositories/reservationRepo.js';
 
@@ -148,16 +152,16 @@ function renderContext() {
   if (currentStep < 2) { $context.style.display = 'none'; return; }
   $context.style.display = '';
 
-  const dep   = currentStep >= 2
-    ? (exp.departures ?? []).find(d => d.id === draft.exitId)
-    : null;
-  const total = computeTotal(draft.profileQtys ?? []);
+  const dep    = (exp.departures ?? []).find(d => d.id === draft.exitId);
+  const pickup = draft._selectedPickupPoint ?? null;
+  const total  = computeTotal(draft.profileQtys ?? []);
 
   $context.innerHTML = `
     <div class="booking-context__title">${exp.title}</div>
     <div class="booking-context__meta">
-      ${dep   ? `<span>📅 ${dep.start_at.split('T')[0]}</span>` : ''}
-      ${total ? `<span>💰 ${formatBRL(total)}</span>` : ''}
+      ${dep    ? `<span>📅 ${dep.start_at.split('T')[0]}</span>` : ''}
+      ${pickup ? `<span>📍 ${pickup.displayName}</span>` : ''}
+      ${total  ? `<span>💰 ${formatBRL(total)}</span>` : ''}
     </div>`;
 }
 
@@ -219,19 +223,28 @@ function renderStep1() {
 
 $('next-1').addEventListener('click', async () => {
   if (!draft.exitId) { showError('Selecione uma saída.'); return; }
-  // Try to load boarding points for the selected departure
+  // Recarrega pontos de embarque ao avançar (saída pode ter mudado no step 1)
   const { data: boardingPoints } = await listBoardingPointsByDeparture(draft.exitId);
   draft._boardingPoints = boardingPoints ?? [];
-  // Preserve pre-selected boardingPointId (from experiencia.html) if still valid
+  // Valida se o ponto pré-selecionado ainda é válido para esta saída
   if (!draft._boardingPoints.some(b => b.id === draft.boardingPointId)) {
-    draft.boardingPointId = null;
+    draft.boardingPointId      = null;
+    draft._selectedPickupPoint = null;
+  } else {
+    // Re-hidrata o objeto completo caso só tenhamos o ID
+    draft._selectedPickupPoint = draft._boardingPoints.find(b => b.id === draft.boardingPointId) ?? null;
   }
-  if (draft._boardingPoints.length > 0 && !draft.boardingPointId) {
-    // Boarding points exist but none selected yet → show step 2
+  // Auto-seleciona ponto único silenciosamente só se nenhum ainda escolhido
+  if (!draft.boardingPointId && draft._boardingPoints.length === 1) {
+    draft.boardingPointId      = draft._boardingPoints[0].id;
+    draft._selectedPickupPoint = draft._boardingPoints[0];
+  }
+  if (draft._boardingPoints.length > 0) {
+    // Sempre exibe step 2 quando existem pontos (confirma ou muda seleção)
     goTo(2);
     renderStep2();
   } else {
-    // Either no BPs for this departure, or bp already pre-selected → skip to step 3
+    // Sem pontos de embarque → pula step 2
     goTo(3);
     renderStep3();
   }
@@ -244,50 +257,62 @@ function renderStep2() {
   const panel = $('panel-2');
   if (!panel) return;
 
-  const cardsHtml = points.map(bp => {
-    const timeStr = bp.pickupAt
-      ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      : '--:--';
-    const sel = draft.boardingPointId === bp.id;
-    return `
-      <div class="exit-card boarding-point-card ${sel ? 'is-selected' : ''}"
-           data-bp="${bp.id}" role="button" tabindex="0"
-           aria-pressed="${sel}" style="cursor:pointer">
-        <div class="exit-card__info">
-          <p class="exit-card__title">${bp.displayName}</p>
-          <p class="exit-card__meta">⏰ Embarque: ${timeStr}</p>
-          ${bp.displayAddress ? `<p class="exit-card__meta" style="font-size:12px;color:var(--color-muted)">${bp.displayAddress}</p>` : ''}
-          ${bp.notes   ? `<p class="exit-card__meta" style="font-size:11px;color:var(--color-muted);font-style:italic">${bp.notes}</p>` : ''}
-        </div>
-      </div>`;
-  }).join('');
+  const cardsHtml = points.length === 0
+    ? `<div class="pickup-empty"><p>Nenhum ponto de embarque cadastrado para esta saída.</p><p style="font-size:var(--text-sm);color:var(--color-muted);margin-top:var(--sp-2)">O ponto de encontro será confirmado pela equipe Anauá.</p></div>`
+    : points.map(bp => {
+      const timeStr = bp.pickupAt
+        ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : null;
+      const sel = draft.boardingPointId === bp.id;
+      return `
+        <div class="pickup-card${sel ? ' is-selected' : ''}"
+             data-bp="${bp.id}" role="button" tabindex="0" aria-pressed="${sel}">
+          <div class="pickup-card__check" aria-hidden="true"></div>
+          <div class="pickup-card__body">
+            <p class="pickup-card__name">${bp.displayName}</p>
+            ${timeStr ? `<p class="pickup-card__time">🕐 Embarque às ${timeStr}</p>` : ''}
+            ${bp.displayAddress ? `<p class="pickup-card__address">📍 ${bp.displayAddress}</p>` : ''}
+            ${bp.displayReference ? `<p class="pickup-card__ref">${bp.displayReference}</p>` : ''}
+            ${bp.notes ? `<p class="pickup-card__notes">${bp.notes}</p>` : ''}
+          </div>
+        </div>`;
+    }).join('');
 
-  // Inject into panel-2 content area (after heading)
-  const contentArea = panel.querySelector('[data-step-content]') ?? panel;
-  // Replace or append the cards block
-  let cardsWrap = panel.querySelector('#bp-cards-wrap');
-  if (!cardsWrap) {
-    cardsWrap = document.createElement('div');
-    cardsWrap.id = 'bp-cards-wrap';
-    cardsWrap.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-top:16px';
-    // Insert before the nav buttons (last child)
+  // Usa o container #mp-cards já presente no HTML do painel
+  const cardsWrap = panel.querySelector('#mp-cards') ?? panel.querySelector('#bp-cards-wrap') ?? (() => {
+    const el = document.createElement('div');
+    el.id = 'mp-cards';
+    el.style.cssText = 'display:flex;flex-direction:column;gap:var(--sp-3,12px);margin-top:var(--sp-5,20px)';
     const navEl = panel.querySelector('.wiz-nav');
-    if (navEl) panel.insertBefore(cardsWrap, navEl);
-    else contentArea.appendChild(cardsWrap);
-  }
+    if (navEl) panel.insertBefore(el, navEl);
+    else panel.appendChild(el);
+    return el;
+  })();
+
   cardsWrap.innerHTML = cardsHtml;
 
-  cardsWrap.addEventListener('click', (e) => {
-    const card = e.target.closest('.boarding-point-card');
+  // Limpa listeners antigos clonando o nó
+  const fresh = cardsWrap.cloneNode(true);
+  cardsWrap.replaceWith(fresh);
+
+  fresh.addEventListener('click', (e) => {
+    const card = e.target.closest('.pickup-card');
     if (!card) return;
-    cardsWrap.querySelectorAll('.boarding-point-card').forEach(c => {
+    e.currentTarget.querySelectorAll('.pickup-card').forEach(c => {
       c.classList.remove('is-selected');
       c.setAttribute('aria-pressed', 'false');
     });
     card.classList.add('is-selected');
     card.setAttribute('aria-pressed', 'true');
-    draft.boardingPointId = card.dataset.bp;
+    draft.boardingPointId      = card.dataset.bp;
+    draft._selectedPickupPoint = points.find(b => b.id === card.dataset.bp) ?? null;
     clearError();
+  });
+
+  fresh.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.pickup-card');
+    if (card) { e.preventDefault(); card.click(); }
   });
 }
 
@@ -405,10 +430,55 @@ $('next-3').addEventListener('click', () => {
 $('back-3').addEventListener('click', () => {
   if ((draft._boardingPoints ?? []).length > 0) {
     goTo(2);
+    renderStep2();
   } else {
     goTo(1);
   }
 });
+
+// ─── CPF helpers ────────────────────────────────────────────────────────────────
+
+/** Retorna apenas os dígitos de uma string. */
+function onlyDigits(v) {
+  return String(v ?? '').replace(/\D/g, '');
+}
+
+/** Formata 11 dígitos como 000.000.000-00. Passthrough se inválido. */
+function formatCpf(v) {
+  const d = onlyDigits(v);
+  if (d.length !== 11) return v ?? '';
+  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+}
+
+/** Valida CPF pelo algoritmo dos dígitos verificadores. */
+function isValidCpf(v) {
+  const d = onlyDigits(v);
+  if (d.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(d)) return false; // dígitos repetidos
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(d[i]) * (10 - i);
+  let r = (sum * 10) % 11;
+  if (r === 10 || r === 11) r = 0;
+  if (r !== Number(d[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += Number(d[i]) * (11 - i);
+  r = (sum * 10) % 11;
+  if (r === 10 || r === 11) r = 0;
+  return r === Number(d[10]);
+}
+
+/**
+ * Aplica máscara CPF a todos os inputs `.js-cpf-mask` ativos no DOM.
+ * Deve ser chamado após renderizar os cartões de participante.
+ * Reutiliza a mesma lógica de maskCPF de components.js.
+ */
+function bindCpfMasks() {
+  document.querySelectorAll('.js-cpf-mask').forEach(el => {
+    if (el.dataset.cpfBound) return; // evita duplo binding
+    el.dataset.cpfBound = '1';
+    maskCPF(/** @type {HTMLInputElement} */ (el));
+  });
+}
 
 // ─── STEP 4: Payer ────────────────────────────────────────────────────────────
 
@@ -453,6 +523,18 @@ async function prefillPayerFields() {
       if (m.phone)      $('payer-phone').value      = m.phone;
       if (m.birthdate)  $('payer-birthdate').value  = m.birthdate;
       supabaseEmail = user.email ?? null;
+    }
+  } catch (_) { /* silencioso */ }
+
+  // Priority 2.5: customer_profiles table (saved account data) — fills only empty fields
+  try {
+    const { data: cp } = await getCustomerProfile();
+    if (cp) {
+      if (!$('payer-name').value      && cp.full_name)       $('payer-name').value      = cp.full_name;
+      if (!$('payer-cpf').value       && cp.document_number) $('payer-cpf').value        = maskCPF(cp.document_number);
+      if (!$('payer-email').value     && cp.email)           $('payer-email').value      = cp.email;
+      if (!$('payer-phone').value     && cp.phone)           $('payer-phone').value      = maskPhone(cp.phone);
+      if (!$('payer-birthdate').value && cp.birthdate)       $('payer-birthdate').value  = cp.birthdate.slice(0, 10);
     }
   } catch (_) { /* silencioso */ }
 
@@ -634,6 +716,8 @@ function renderStep5() {
     const isPayer = isAlsoPart && i === 0;
     const label   = `${PROFILES[slot.profile].label} ${i + 1}`;
     const prefill = isPayer ? { fullName: draft.payer.fullName, docNumber: draft.payer.cpf, birthdate: draft.payer.birthdate } : {};
+    // Normalize payer CPF from raw digits if needed
+    if (isPayer && prefill.docNumber) prefill.docNumber = formatCpf(onlyDigits(prefill.docNumber)) || prefill.docNumber;
 
     return `
       <div class="participant-card" data-slot="${i}">
@@ -648,8 +732,10 @@ function renderStep5() {
             <span class="field-error" id="p${i}-name-err" role="alert"></span>
           </div>
           <div class="field">
-            <label class="label" for="p${i}-doc">CPF / RG / Passaporte *</label>
-            <input class="input" type="text" id="p${i}-doc" value="${p.docNumber ?? prefill.docNumber ?? ''}" />
+            <label class="label" for="p${i}-doc">CPF *</label>
+            <input class="input js-cpf-mask" type="text" id="p${i}-doc"
+              value="${formatCpf(p.docNumber ?? prefill.docNumber ?? '')}"
+              maxlength="14" autocomplete="off" placeholder="000.000.000-00" />
             <span class="field-error" id="p${i}-doc-err" role="alert"></span>
           </div>
           <div class="field">
@@ -660,6 +746,8 @@ function renderStep5() {
         </div>
       </div>`;
   }).join('');
+
+  bindCpfMasks();
 }
 
 function collectParticipants() {
@@ -672,7 +760,7 @@ function collectParticipants() {
   return slots.map((slot, i) => ({
     id:           `part-${i}`,
     fullName:     $(`p${i}-name`)?.value.trim() ?? '',
-    docNumber:    $(`p${i}-doc`)?.value.trim() ?? '',
+    docNumber:    onlyDigits($(`p${i}-doc`)?.value) || '',  // store digits only
     birthdate:    $(`p${i}-birth`)?.value ?? '',
     profile:      slot.profile,
     isResponsible:i === 0 && (draft.payer?.isAlsoParticipant ?? false),
@@ -683,6 +771,17 @@ function collectParticipants() {
 $('next-5').addEventListener('click', () => {
   clearInlineErrors();
   const participants = collectParticipants();
+
+  // ── CPF validation per participant ──────────────────────────────────────
+  let cpfErrors = false;
+  participants.forEach((p, i) => {
+    if (!isValidCpf(p.docNumber)) {
+      setInlineError(`p${i}-doc`, 'Informe um CPF válido no formato 000.000.000-00.');
+      cpfErrors = true;
+    }
+  });
+  if (cpfErrors) { showError('Corrija os CPFs dos participantes.'); return; }
+
   const errs = validateStep4(participants, draft.profileQtys ?? []);
 
   if (Object.keys(errs).length) {
@@ -701,20 +800,56 @@ $('next-5').addEventListener('click', () => {
 
   draft.participants = participants;
   goTo(6);
+  renderStep6();
 });
 
 $('back-5').addEventListener('click', () => goTo(4));
 
 // ─── STEP 6: Emergency + observations ────────────────────────────────────────
 
-maskPhone(/** @type {HTMLInputElement} */ ($('ec-phone')));
-
-if (draft?.emergencyContact) {
-  $('ec-name').value         = draft.emergencyContact.fullName ?? '';
-  $('ec-phone').value        = draft.emergencyContact.phone ?? '';
-  $('ec-relationship').value = draft.emergencyContact.relationship ?? '';
+/** Formata string numérica de telefone sem máscara para exibição. */
+function fmtPhoneVal(v) {
+  if (!v) return '';
+  const d = String(v).replace(/\D/g, '');
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return v; // já formatado ou desconhecido
 }
-if (draft?.observations) $('observations').value = draft.observations;
+
+function renderStep6() {
+  const phoneInput = $('ec-phone');
+  // Aplica máscara ao input de telefone (DOM binder)
+  if (phoneInput && !phoneInput.dataset.maskBound) {
+    maskPhone(/** @type {HTMLInputElement} */ (phoneInput));
+    phoneInput.dataset.maskBound = '1';
+  }
+
+  // Prioridade 1: dados já no draft (usuário voltou da etapa seguinte)
+  if (draft?.emergencyContact?.fullName) {
+    $('ec-name').value         = draft.emergencyContact.fullName ?? '';
+    $('ec-phone').value        = draft.emergencyContact.phone ?? '';
+    $('ec-relationship').value = draft.emergencyContact.relationship ?? '';
+    if (draft.observations) $('observations').value = draft.observations;
+    return;
+  }
+
+  // Prioridade 2: busca no Supabase (necessita auth — só funciona se o usuário está logado)
+  getEmergencyContact().then(({ data: ec }) => {
+    if (!ec) return;
+    const nameEl = $('ec-name');
+    const phoneEl = $('ec-phone');
+    const relEl   = $('ec-relationship');
+    if (nameEl  && !nameEl.value  && ec.full_name)    nameEl.value    = ec.full_name;
+    if (phoneEl && !phoneEl.value && ec.phone)        phoneEl.value   = fmtPhoneVal(ec.phone);
+    if (relEl   && !relEl.value   && ec.relationship) relEl.value     = ec.relationship;
+    console.log('[reserva] Contato de emergência pré-preenchido do Supabase ✓');
+  }).catch(() => {});
+
+  if (draft?.observations) {
+    const obsEl = $('observations');
+    if (obsEl) obsEl.value = draft.observations;
+  }
+}
 
 $('next-6').addEventListener('click', () => {
   clearInlineErrors();
@@ -788,11 +923,7 @@ $('next-7').addEventListener('click', () => {
   $('terms-list').querySelectorAll('input[type=checkbox]').forEach(cb => {
     acceptance[cb.name] = cb.checked;
   });
-  if (imageConsentRequired && !acceptance.imageConsent) {
-    showError('O consentimento de uso de imagem é obrigatório para esta experiência.');
-    return;
-  }
-  const errs = validateStep6(acceptance);
+  const errs = validateStep6(acceptance, { imageConsentRequired });
   if (Object.keys(errs).length) { showError(Object.values(errs)[0]); return; }
 
   draft.termsAcceptance = {
@@ -804,7 +935,7 @@ $('next-7').addEventListener('click', () => {
   renderStep8();
 });
 
-$('back-7').addEventListener('click', () => goTo(6));
+$('back-7').addEventListener('click', () => { goTo(6); renderStep6(); });
 
 // ─── STEP 8: Payment ──────────────────────────────────────────────────────────
 
@@ -971,7 +1102,35 @@ $('next-8').addEventListener('click', async () => {
       });
 
       if (resOk && resId) {
-        await insertParticipants(resId, booking.participants ?? []);
+        const { ok: partOk, count: partCount, error: partErr } = await insertParticipants(resId, booking.participants ?? []);
+        if (!partOk) {
+          console.error('[reserva] insertParticipants falhou — resId:', resId, '| erro:', partErr);
+          showToast('Reserva criada, mas participantes não foram salvos. contate o suporte com o código da reserva.', 'warning', 10000);
+        } else {
+          console.log('[reserva] Participantes salvos no Supabase ✓', partCount);
+        }
+
+        // Sync: update customer_profiles + emergency_contacts with latest confirmed booking data
+        if (user?.id) {
+          const payer = booking.payer ?? {};
+          upsertCustomerProfile({
+            userId:               user.id,
+            fullName:             payer.fullName  ?? null,
+            email:                payer.email     ?? null,
+            documentNumber:       payer.cpf?.replace(/\D/g,'') ?? null,
+            phone:                payer.phone?.replace(/\D/g,'') ?? null,
+            birthdate:            payer.birthdate ?? null,
+          }).catch(() => {});
+          const ec = draft.emergencyContact ?? {};
+          if (ec.fullName || ec.phone) {
+            upsertEmergencyContact({
+              userId:       user.id,
+              fullName:     ec.fullName     ?? null,
+              phone:        ec.phone?.replace(/\D/g,'') ?? null,
+              relationship: ec.relationship ?? null,
+            }).catch(() => {});
+          }
+        }
 
         // Decrementa vagas disponíveis na saída escolhida
         const totalPax = (draft.profileQtys ?? []).reduce((s, p) => s + p.qty, 0);
@@ -999,7 +1158,8 @@ $('next-8').addEventListener('click', async () => {
         }
         console.log('[reserva] Reserva persistida no Supabase ✓ id:', resId);
       } else if (resErr) {
-        console.warn('[reserva] Supabase insert falhou (reserva salva localmente):', resErr);
+        console.error('[reserva] Supabase insert falhou — reserva salva apenas localmente. Execute a migration fix_schema_and_rls.sql.', resErr);
+        showToast('Reserva gerada, mas não foi possível salvá-la no servidor. Anote o código e entre em contato.', 'warning', 10000);
       }
     } catch (supaErr) {
       // Supabase persist é best-effort; não bloqueia o fluxo do usuário
@@ -1040,14 +1200,27 @@ function buildWhatsAppCancelLink(booking, experience) {
 }
 
 function renderVoucher(booking, paymentResult, split) {
-  const dep    = (exp.departures ?? []).find(d => d.id === booking.exitId);
-  const depDate = dep?.start_at?.split('T')[0] ?? null;
-  const status  = booking.status;
+  const dep      = (exp.departures ?? []).find(d => d.id === booking.exitId);
+  const depDate  = dep?.start_at?.split('T')[0] ?? null;
+  const status   = booking.status;
   const hasPending = booking.pendingAmount > 0;
 
   const dueStr = split.balanceDueDate
     ? new Date(split.balanceDueDate).toLocaleDateString('pt-BR')
     : null;
+
+  // Resolve boarding point for display
+  const bp = draft._selectedPickupPoint
+    ?? (draft._boardingPoints ?? []).find(p => p.id === (booking.boardingPointId ?? draft.boardingPointId))
+    ?? null;
+  const bpName = bp?.displayName ?? 'A confirmar com o guia';
+  const bpTime = bp?.pickupAt
+    ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const bpAddress = bp?.displayAddress ?? null;
+
+  const paxCount  = (booking.participants ?? []).length || booking.totalPax || 1;
+  const paxLabel  = `${paxCount} pessoa${paxCount !== 1 ? 's' : ''}`;
 
   $('voucher-wrap').innerHTML = `
     ${hasPending ? `
@@ -1057,19 +1230,24 @@ function renderVoucher(booking, paymentResult, split) {
       </div>` : ''}
 
     <div class="voucher">
+
       <div class="voucher__header">
-        <div>
-          <p class="voucher__brand">Anauá</p>
-          <p style="font-size:var(--text-sm);opacity:.8">Ecoturismo</p>
+        <div class="voucher__brand-block">
+          <div class="voucher__logo-mark" aria-hidden="true">A</div>
+          <div>
+            <p class="voucher__brand">Anauá</p>
+            <p class="voucher__brand-sub">Ecoturismo</p>
+          </div>
         </div>
-        <div class="voucher__status">
-          <span class="badge ${STATUS_CLASS[status]}">${STATUS_LABEL[status]}</span>
-        </div>
+        <span class="badge ${STATUS_CLASS[status]}">${STATUS_LABEL[status]}</span>
+      </div>
+
+      <div class="voucher__code-section">
+        <p class="voucher__code-label">Código da reserva</p>
+        <div class="voucher__code">${booking.voucherCode}</div>
       </div>
 
       <div class="voucher__body">
-        <div class="voucher__code">${booking.voucherCode}</div>
-
         <dl class="voucher__grid">
           <div class="voucher__field">
             <dt>Experiência</dt>
@@ -1080,19 +1258,12 @@ function renderVoucher(booking, paymentResult, split) {
             <dd>${depDate ? formatDate(depDate) : '— a confirmar'}</dd>
           </div>
           <div class="voucher__field">
-            <dt>Local de embarque</dt>
-            <dd>${(() => {
-              const bp = (draft._boardingPoints ?? []).find(p => p.id === (booking.boardingPointId ?? draft.boardingPointId));
-              if (!bp) return 'A confirmar com o guia';
-              const timeStr = bp.pickupAt
-                ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                : null;
-              return `${bp.displayName}${bp.displayAddress ? ' — ' + bp.displayAddress : ''}${timeStr ? ' às ' + timeStr : ''}`;
-            })()}</dd>
+            <dt>Ponto de embarque</dt>
+            <dd>${bpName}${bpAddress ? `<span class="voucher__field-sub">${bpAddress}</span>` : ''}</dd>
           </div>
           <div class="voucher__field">
-            <dt>Horário</dt>
-            <dd>A confirmar</dd>
+            <dt>Horário de embarque</dt>
+            <dd>${bpTime ?? 'A confirmar'}</dd>
           </div>
           <div class="voucher__field">
             <dt>Responsável</dt>
@@ -1116,13 +1287,9 @@ function renderVoucher(booking, paymentResult, split) {
         </div>
 
         <div class="voucher__payment">
-          ${(() => {
-            const rows = [];
-            rows.push(`<div class="price-summary__row is-total"><span>Total</span><span>${formatBRL(booking.totalAmount)}</span></div>`);
-            rows.push(`<div class="price-summary__row is-signal"><span>Pago: ${PAYMENT_LABEL[paymentResult.method] ?? paymentResult.method}</span><span>${formatBRL(booking.paidAmount)}</span></div>`);
-            if (hasPending) rows.push(`<div class="price-summary__row"><span>Saldo a pagar</span><span>${formatBRL(booking.pendingAmount)}</span></div>`);
-            return rows.join('');
-          })()}
+          <div class="price-summary__row is-total"><span>Total da reserva</span><span>${formatBRL(booking.totalAmount)}</span></div>
+          <div class="price-summary__row is-signal"><span>Pago: ${PAYMENT_LABEL[paymentResult.method] ?? paymentResult.method}</span><span>${formatBRL(booking.paidAmount)}</span></div>
+          ${hasPending ? `<div class="price-summary__row"><span>Saldo a pagar até ${dueStr}</span><span>${formatBRL(booking.pendingAmount)}</span></div>` : ''}
 
           ${paymentResult.pixCode ? `
             <div class="pix-box" style="margin-block-start:var(--sp-4)">
@@ -1138,16 +1305,11 @@ function renderVoucher(booking, paymentResult, split) {
       <div class="voucher__actions">
         <button class="btn btn--secondary" onclick="window.print()">🖨️ Imprimir</button>
         <a href="cliente.html" class="btn btn--primary">Ver minhas reservas</a>
-        <a
-          href="${buildWhatsAppCancelLink(booking, exp)}"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="btn btn--ghost-light"
-          style="color:var(--color-text-muted)"
-          aria-label="Cancelar reserva via WhatsApp"
-        >Cancelar reserva</a>
+        <a href="${buildWhatsAppCancelLink(booking, exp)}" target="_blank" rel="noopener noreferrer"
+           class="btn btn--ghost-light" style="color:var(--color-text-muted)" aria-label="Cancelar reserva via WhatsApp">Cancelar reserva</a>
         <a href="experiencias.html" class="btn btn--ghost-light" style="color:var(--color-text-muted)">Ver mais experiências</a>
       </div>
+
     </div>`;
 }
 
@@ -1178,16 +1340,17 @@ function renderVoucher(booking, paymentResult, split) {
   exp = loadedExp;
   console.log('[reserva] Experiência carregada do Supabase ✓', exp.slug);
 
-  // Carrega configurações da plataforma (ex.: consentimento de imagem obrigatório)
+  // Carrega configurações da plataforma — lê da mesma linha que o admin salva
   try {
-    const { data: appSettings } = await supabase
+    const { data: appSettings, error: asErr } = await supabase
       .from('app_settings')
-      .select('image_consent_required')
-      .limit(1)
-      .single();
-    if (appSettings) {
-      imageConsentRequired = appSettings.image_consent_required ?? false;
+      .select('value')
+      .eq('key', 'company_settings')
+      .maybeSingle();
+    if (!asErr && appSettings?.value) {
+      imageConsentRequired = appSettings.value?.reservations?.image_consent_required ?? false;
     }
+    console.log('[reserva] imageConsentRequired:', imageConsentRequired);
   } catch (_) { /* app_settings pode não existir ainda; usa default false */ }
 
   // Carrega saídas reais do banco
@@ -1224,11 +1387,34 @@ function renderVoucher(booking, paymentResult, split) {
     draft.exitId = exp.departures[0].id;
   }
 
-  // Pre-seleciona ponto de embarque passado via URL (?bp=<uuid>)
-  const bpParam = params.get('bp');
-  if (bpParam) {
-    draft.boardingPointId = bpParam;
-    console.log('[reserva] Ponto de embarque pré-selecionado via URL ✓', bpParam);
+  // Pré-carrega pontos de embarque da saída selecionada (necessário para validar ?pickup= e exibir voucher)
+  if (draft.exitId) {
+    const { data: bps, error: bpErr } = await listBoardingPointsByDeparture(draft.exitId);
+    if (bpErr) console.warn('[reserva] Erro ao carregar pontos de embarque:', bpErr.message);
+    draft._boardingPoints = bps ?? [];
+    console.log('[reserva] Pontos de embarque carregados ✓', draft._boardingPoints.length);
+  }
+
+  // Pre-seleciona ponto de embarque passado via URL (?pickup=<uuid>; aceita ?bp= como legado)
+  const pickupParam = params.get('pickup') ?? params.get('bp');
+  if (pickupParam) {
+    const matchedBp = (draft._boardingPoints ?? []).find(b => b.id === pickupParam);
+    if (matchedBp) {
+      draft.boardingPointId     = matchedBp.id;
+      draft._selectedPickupPoint = matchedBp;
+      console.log('[reserva] Ponto de embarque pré-selecionado via URL ✓', matchedBp.displayName);
+    } else if ((draft._boardingPoints ?? []).length > 0) {
+      // URL tem pickup mas não bate com os disponíveis — força seleção no step 2
+      console.warn('[reserva] Pickup da URL não encontrado entre os disponíveis; step 2 será exibido.', pickupParam);
+      draft.boardingPointId     = null;
+      draft._selectedPickupPoint = null;
+    }
+  } else if (!draft.boardingPointId && (draft._boardingPoints ?? []).length === 1) {
+    // Auto-seleciona quando há apenas um ponto disponível
+    const only = draft._boardingPoints[0];
+    draft.boardingPointId     = only.id;
+    draft._selectedPickupPoint = only;
+    console.log('[reserva] Único ponto de embarque auto-selecionado ✓', only.displayName);
   }
 
   // Prefill payer fields agora que draft está populado

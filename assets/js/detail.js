@@ -138,7 +138,7 @@ const expSlug = exp.slug ?? exp.id;
   renderContent(exp, bpMap);
 
   // Booking sidebar + sticky CTA
-  const isSoldOut = renderBookingBox(exp);
+  const isSoldOut = renderBookingBox(exp, bpMap);
   const stickyPrice = document.getElementById('sticky-price');
   if (stickyPrice) stickyPrice.textContent = formatBRL(exp.pricePerPerson);
   initStickyCTA(exp, isSoldOut);
@@ -493,7 +493,7 @@ function showMeetingPoints(exit) {
 }
 
 /* ── Booking Box (sidebar) ───────────────────────────────── */
-function renderBookingBox(exp) {
+function renderBookingBox(exp, bpMap = {}) {
   const box = document.getElementById('booking-box');
   if (!box) return;
 
@@ -674,34 +674,72 @@ function renderBookingBox(exp) {
   paxSelect?.addEventListener('change', updateTotal);
 
   // Reserve button
-  document.getElementById('reserve-btn')?.addEventListener('click', () => {
+  const reserveBtn = document.getElementById('reserve-btn');
+  reserveBtn?.addEventListener('click', () => {
     if (!(exitSelect instanceof HTMLSelectElement) || !(paxSelect instanceof HTMLSelectElement)) return;
-    const exitId = exitSelect.value;
-    const pax    = paxSelect.value;
-    const dep    = (exp.departures ?? []).find(d => d.id === exitId);
-    if (!dep) return;
-    const depDate  = dep.start_at ? formatDate(dep.start_at.split('T')[0]) : '—';
-    const depTime  = dep.start_at ? dep.start_at.split('T')[1]?.slice(0,5) : null;
-    const depLabel = depTime ? `${depDate} às ${depTime}` : depDate;
-    const depTitle = dep.title ? ` · ${dep.title}` : '';
-    const unitPrice = dep.price ?? exp.pricePerPerson;
-    const meet = dep.meeting_point ? `<p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.map} Encontro: ${dep.meeting_point}</p>` : '';
+    const exitId    = exitSelect.value;
+    const paxCount  = Number(paxSelect.value) || 1;
+    const dep       = (exp.departures ?? []).find(d => d.id === exitId);
+
+    if (!dep) {
+      showToast('Selecione uma saída antes de continuar.', 'warning');
+      return;
+    }
+
+    // Look up selected boarding point from live bpMap (optional on this page)
+    const bps          = bpMap[exitId] ?? [];
+    const selectedBpId = _selectedBp[exitId];
+    const bp           = bps.find(b => b.id === selectedBpId) ?? null;
+
+    // ── Build display values from live state only ──────────────────────────
+    const depDateStr  = dep.start_at ? dep.start_at.split('T')[0] : null;
+    const depLabel    = depDateStr ? formatDate(depDateStr) : '—';
+    const unitPrice   = dep.price ?? exp.pricePerPerson ?? 0;
+    const total       = formatBRL(unitPrice * paxCount);
+    const paxLabel    = `${paxCount} pessoa${paxCount !== 1 ? 's' : ''}`;
+
+    const bpTime = bp?.pickupAt
+      ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const bpLabel = bp
+      ? `${bp.displayName}${bpTime ? ' · ' + bpTime : ''}`
+      : (bps.length > 0 ? 'A confirmar no checkout' : '—');
+
+    console.log('[reservation-modal] opening with state:', { exitId, depLabel, bp: bp?.displayName ?? null, pax: paxCount, total });
 
     const { close } = openModal({
-      title: 'Confirmar reserva',
+      title:     'Confirmar reserva',
+      titleId:   'rsvp-modal-title',
+      descId:    'rsvp-modal-desc',
+      triggerEl: reserveBtn,
       body: `
-        <p style="font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--sp-5)">Você está pré-reservando:</p>
-        <div style="background:var(--color-offwhite);border-radius:var(--radius-lg);padding:var(--sp-5);display:flex;flex-direction:column;gap:var(--sp-3)">
-          <p><strong>${exp.title}</strong>${depTitle}</p>
-          <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.calendar} Saída: ${depLabel}</p>
-          ${meet}
-          <p style="font-size:var(--text-sm);color:var(--color-muted)">${Icon.users} ${pax} participante${Number(pax) !== 1 ? 's' : ''}</p>
-          <p style="font-size:var(--text-sm);font-weight:600;color:var(--color-deep)">Total: ${formatBRL(unitPrice * Number(pax))}</p>
+        <p class="rsvp-modal__subtitle" id="rsvp-modal-desc">Revise os detalhes antes de continuar.</p>
+        <div class="rsvp-summary" role="list">
+          <div class="rsvp-row" role="listitem">
+            <span class="rsvp-row__label">Experiência</span>
+            <span class="rsvp-row__value">${exp.title}</span>
+          </div>
+          <div class="rsvp-row" role="listitem">
+            <span class="rsvp-row__label">Saída</span>
+            <span class="rsvp-row__value">${depLabel}</span>
+          </div>
+          <div class="rsvp-row" role="listitem">
+            <span class="rsvp-row__label">Embarque</span>
+            <span class="rsvp-row__value">${bpLabel}</span>
+          </div>
+          <div class="rsvp-row" role="listitem">
+            <span class="rsvp-row__label">Participantes</span>
+            <span class="rsvp-row__value">${paxLabel}</span>
+          </div>
+          <div class="rsvp-row rsvp-row--total" role="listitem">
+            <span class="rsvp-row__label">Total</span>
+            <span class="rsvp-row__value">${total}</span>
+          </div>
         </div>
-        <p style="font-size:var(--text-xs);color:var(--color-muted);margin-top:var(--sp-4);line-height:var(--leading-loose)">
+        <p class="rsvp-modal__terms">
           Ao continuar, você concorda com os
-          <a href="termos.html" style="color:var(--color-forest)">Termos de Uso</a> e a
-          <a href="privacidade.html" style="color:var(--color-forest)">Política de Privacidade</a> da Anauá.
+          <a href="termos.html">Termos de Uso</a> e a
+          <a href="privacidade.html">Política de Privacidade</a> da Anauá.
         </p>
       `,
       footer: `
@@ -714,8 +752,9 @@ function renderBookingBox(exp) {
     document.getElementById('modal-confirm-btn')?.addEventListener('click', () => {
       close();
       const bpId = _selectedBp[exitId];
-      const bpParam = bpId ? `&bp=${bpId}` : '';
-      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${exitId}${bpParam}`;
+      const pickupParam = bpId ? `&pickup=${bpId}` : '';
+      console.log('[reservation-state] navegando para checkout — dep:', exitId, 'pickup:', bpId ?? 'nenhum');
+      location.href = `reserva.html?id=${exp.slug ?? exp.id}&dep=${exitId}${pickupParam}`;
     });
   });
 

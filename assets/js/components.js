@@ -363,17 +363,21 @@ export function showToast(message, type = 'success', duration = 4000) {
  * @param {{ title: string, body: string, footer?: string }} options
  * @returns {{ close: () => void }}
  */
-export function openModal({ title, body, footer = '' }) {
+export function openModal({ title, body, footer = '', titleId = null, descId = null, triggerEl = null }) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.setAttribute('role', 'dialog');
   backdrop.setAttribute('aria-modal', 'true');
-  backdrop.setAttribute('aria-label', title);
+  if (titleId) backdrop.setAttribute('aria-labelledby', titleId);
+  else         backdrop.setAttribute('aria-label', title);
+  if (descId)  backdrop.setAttribute('aria-describedby', descId);
+
+  const resolvedTitleId = titleId ?? 'modal-title-' + Math.random().toString(36).slice(2);
 
   backdrop.innerHTML = `
     <div class="modal">
       <div class="modal__header">
-        <h2 class="modal__title">${title}</h2>
+        <h2 class="modal__title" id="${resolvedTitleId}">${title}</h2>
         <button class="modal__close" aria-label="Fechar modal">${Icon.close}</button>
       </div>
       <div class="modal__body">${body}</div>
@@ -382,12 +386,11 @@ export function openModal({ title, body, footer = '' }) {
   `;
 
   const close = () => {
-    // Disable pointer-events immediately so nothing blocks while fading out
     backdrop.style.pointerEvents = 'none';
     document.body.style.overflow = '';
     backdrop.style.animation = 'fadeOut 180ms var(--ease-out) forwards';
-    const fallback = setTimeout(() => backdrop.remove(), 220);
-    backdrop.addEventListener('animationend', () => { clearTimeout(fallback); backdrop.remove(); }, { once: true });
+    const fallback = setTimeout(() => { backdrop.remove(); triggerEl?.focus(); }, 220);
+    backdrop.addEventListener('animationend', () => { clearTimeout(fallback); backdrop.remove(); triggerEl?.focus(); }, { once: true });
   };
 
   backdrop.querySelector('.modal__close')?.addEventListener('click', close);
@@ -396,6 +399,8 @@ export function openModal({ title, body, footer = '' }) {
 
   document.body.appendChild(backdrop);
   document.body.style.overflow = 'hidden';
+  // Move focus into modal for accessibility
+  requestAnimationFrame(() => backdrop.querySelector('.modal__close')?.focus());
 
   return { close };
 }

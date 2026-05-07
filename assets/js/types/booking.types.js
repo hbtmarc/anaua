@@ -27,6 +27,7 @@ export const STATUS_TRANSITIONS = {
 /** Human-readable labels for each status. */
 export const STATUS_LABEL = {
   draft:           'Rascunho',
+  pending:         'Pendente',
   pending_payment: 'Aguardando pagamento',
   reserved:        'Reservado',
   confirmed:       'Confirmado',
@@ -38,6 +39,7 @@ export const STATUS_LABEL = {
 /** Badge CSS class suffix per status. */
 export const STATUS_CLASS = {
   draft:           'badge--draft',
+  pending:         'badge--pending',
   pending_payment: 'badge--pending',
   reserved:        'badge--reserved',
   confirmed:       'badge--confirmed',

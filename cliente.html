@@ -81,6 +81,7 @@
                 <p class="dash-hero__greeting">Bem-vindo(a) de volta</p>
                 <p class="dash-hero__name">Olá, <em id="user-name">visitante</em>!</p>
                 <p class="dash-hero__email" id="user-email"></p>
+                <span class="dash-hero__badge" id="hero-status-badge">Conta ativa</span>
               </div>
             </div>
             <div class="dash-hero__actions">
@@ -95,17 +96,205 @@
         </div>
       </div>
 
-      <!-- Reservations -->
-      <section class="dash-section">
+      <!-- Tab navigation -->
+      <div class="dash-tabs-wrap">
         <div class="container">
-          <div class="dash-section__header">
-            <h2 class="dash-section__title">Minhas Reservas</h2>
+          <nav class="dash-tabs" role="tablist" aria-label="Área do cliente">
+            <button class="dash-tab is-active" role="tab" aria-selected="true"  data-tab="reservas"   id="tab-reservas">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Minhas Reservas
+            </button>
+            <button class="dash-tab" role="tab" aria-selected="false" data-tab="dados" id="tab-dados">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Dados da Conta
+            </button>
+            <button class="dash-tab" role="tab" aria-selected="false" data-tab="emergencia" id="tab-emergencia">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.63 1.2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l1.06-1.06a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              Emergência
+            </button>
+            <button class="dash-tab" role="tab" aria-selected="false" data-tab="pagamento" id="tab-pagamento">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              Pagamento
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      <!-- ── Tab: Minhas Reservas ──────────────────────────────────────────── -->
+      <section class="dash-panel is-active" id="panel-reservas" role="tabpanel" aria-labelledby="tab-reservas">
+        <div class="acc-wrap">
+          <div class="acc-section-header">
+            <h2>Minhas Reservas</h2>
             <span class="dash-section__count" id="resa-count" style="display:none"></span>
           </div>
           <div id="reservation-list" class="resa-list">
             <!-- populated by cliente.js -->
           </div>
         </div>
+      </section>
+
+      <!-- ── Tab: Dados da Conta ───────────────────────────────────────────── -->
+      <section class="dash-panel" id="panel-dados" role="tabpanel" aria-labelledby="tab-dados">
+        <div class="acc-wrap">
+          <div class="acc-card">
+            <div class="acc-card__header">
+              <h2 class="acc-card__title">Dados da Conta</h2>
+              <p class="acc-card__sub">Esses dados agilizam futuras reservas e são preenchidos automaticamente no formulário de reserva.</p>
+            </div>
+
+          <form id="profile-form" class="dash-form" novalidate>
+            <div class="dash-form__row">
+              <div class="field">
+                <label class="label" for="p-name">Nome completo</label>
+                <input class="input" type="text" id="p-name" name="full_name" autocomplete="name" />
+                <span class="field-error" id="p-name-err" role="alert"></span>
+              </div>
+              <div class="field">
+                <label class="label" for="p-email">E-mail</label>
+                <input class="input" type="email" id="p-email" name="email" autocomplete="email" />
+              </div>
+            </div>
+            <div class="dash-form__row">
+              <div class="field">
+                <label class="label" for="p-cpf">CPF</label>
+                <input class="input" type="text" id="p-cpf" name="document_number" autocomplete="off" maxlength="14" placeholder="000.000.000-00" />
+              </div>
+              <div class="field">
+                <label class="label" for="p-phone">Telefone</label>
+                <input class="input" type="tel" id="p-phone" name="phone" autocomplete="tel" placeholder="(00) 00000-0000" />
+              </div>
+            </div>
+            <div class="dash-form__row">
+              <div class="field">
+                <label class="label" for="p-birthdate">Data de nascimento</label>
+                <input class="input" type="date" id="p-birthdate" name="birthdate" />
+              </div>
+              <div class="field">
+                <label class="label" for="p-pax">Participantes padrão por reserva</label>
+                <input class="input" type="number" id="p-pax" name="default_participants_count" min="1" max="20" value="1" />
+              </div>
+            </div>
+
+            <div class="dash-form__actions">
+              <button type="submit" class="btn btn--primary" id="profile-save-btn">Salvar dados</button>
+              <span class="dash-form__feedback" id="profile-feedback" aria-live="polite"></span>
+            </div>
+          </form>
+          </div><!-- /.acc-card -->
+        </div><!-- /.acc-wrap -->
+      </section>
+
+      <!-- ── Tab: Contato de Emergência ───────────────────────────────────── -->
+      <section class="dash-panel" id="panel-emergencia" role="tabpanel" aria-labelledby="tab-emergencia">
+        <div class="acc-wrap">
+          <div class="acc-card">
+            <div class="acc-card__header">
+              <h2 class="acc-card__title">Contato de Emergência</h2>
+              <p class="acc-card__sub">Usado durante suas aventuras — informado ao guia responsável se necessário.</p>
+              <p class="acc-card__icon-hint">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.72 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.63 1.2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l1.06-1.06a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                Preenchido automaticamente ao confirmar uma reserva
+              </p>
+            </div>
+
+          <form id="ec-form" class="dash-form" novalidate>
+            <div class="dash-form__row">
+              <div class="field">
+                <label class="label" for="ec-name-acc">Nome completo</label>
+                <input class="input" type="text" id="ec-name-acc" name="full_name" autocomplete="name" />
+                <span class="field-error" id="ec-name-err" role="alert"></span>
+              </div>
+              <div class="field">
+                <label class="label" for="ec-phone-acc">Telefone</label>
+                <input class="input" type="tel" id="ec-phone-acc" name="phone" placeholder="(00) 00000-0000" />
+                <span class="field-error" id="ec-phone-err" role="alert"></span>
+              </div>
+            </div>
+            <div class="dash-form__row">
+              <div class="field">
+                <label class="label" for="ec-relationship-acc">Relação / parentesco</label>
+                <input class="input" type="text" id="ec-relationship-acc" name="relationship" placeholder="Ex: cônjuge, pai, irmão" />
+              </div>
+              <div class="field">
+                <label class="label" for="ec-notes-acc">Observações (opcional)</label>
+                <input class="input" type="text" id="ec-notes-acc" name="notes" placeholder="Ex: prefira contato por WhatsApp" />
+              </div>
+            </div>
+
+            <div class="dash-form__actions">
+              <button type="submit" class="btn btn--primary" id="ec-save-btn">Salvar contato</button>
+              <span class="dash-form__feedback" id="ec-feedback" aria-live="polite"></span>
+            </div>
+          </form>
+          </div><!-- /.acc-card -->
+        </div><!-- /.acc-wrap -->
+      </section>
+
+      <!-- ── Tab: Pagamento ───────────────────────────────────────────────── -->
+      <section class="dash-panel" id="panel-pagamento" role="tabpanel" aria-labelledby="tab-pagamento">
+        <div class="acc-wrap">
+          <div class="acc-card">
+            <div class="acc-card__header">
+              <h2 class="acc-card__title">Métodos de Pagamento</h2>
+              <p class="acc-card__sub">Armazenamos somente bandeira, últimos 4 dígitos, validade e titular. Nunca guardamos o número completo do cartão.</p>
+            </div>
+
+          <!-- Cards list -->
+          <div id="payment-list" class="payment-list">
+            <!-- populated by cliente.js -->
+          </div>
+
+          <!-- Add card form (collapsed by default) -->
+          <details class="dash-card-add" id="add-card-details">
+            <summary>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Adicionar cartão
+            </summary>
+
+            <form id="card-form" class="dash-form dash-card-add__body" novalidate>
+              <div class="dash-form__row">
+                <div class="field">
+                  <label class="label" for="card-holder">Nome no cartão</label>
+                  <input class="input" type="text" id="card-holder" name="holder_name" autocomplete="cc-name" />
+                  <span class="field-error" id="card-holder-err" role="alert"></span>
+                </div>
+                <div class="field">
+                  <label class="label" for="card-brand">Bandeira</label>
+                  <select class="input" id="card-brand" name="brand">
+                    <option value="">Selecione</option>
+                    <option value="Visa">Visa</option>
+                    <option value="Mastercard">Mastercard</option>
+                    <option value="Elo">Elo</option>
+                    <option value="Hipercard">Hipercard</option>
+                    <option value="American Express">American Express</option>
+                  </select>
+                  <span class="field-error" id="card-brand-err" role="alert"></span>
+                </div>
+              </div>
+              <div class="dash-form__row">
+                <div class="field">
+                  <label class="label" for="card-last4">Últimos 4 dígitos</label>
+                  <input class="input" type="text" id="card-last4" name="last4" maxlength="4" pattern="\d{4}" autocomplete="off" placeholder="0000" />
+                  <span class="field-error" id="card-last4-err" role="alert"></span>
+                </div>
+                <div class="field">
+                  <label class="label" for="card-exp-month">Mês validade</label>
+                  <input class="input" type="number" id="card-exp-month" name="exp_month" min="1" max="12" placeholder="MM" />
+                </div>
+                <div class="field">
+                  <label class="label" for="card-exp-year">Ano validade</label>
+                  <input class="input" type="number" id="card-exp-year" name="exp_year" min="2024" max="2040" placeholder="AAAA" />
+                </div>
+              </div>
+              <p class="dash-form__security-note">🔒 Apenas metadados são salvos. Não armazenamos o número completo do cartão.</p>
+              <div class="dash-form__actions">
+                <button type="submit" class="btn btn--primary" id="card-save-btn">Salvar cartão</button>
+                <span class="dash-form__feedback" id="card-feedback" aria-live="polite"></span>
+              </div>
+            </form>
+          </details>
+          </div><!-- /.acc-card -->
+        </div><!-- /.acc-wrap -->
       </section>
 
     </div>

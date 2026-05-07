@@ -175,11 +175,30 @@ body.sidebar-collapsed .adm-shell     { margin-left: 0; }
 }
 .adm-user__exit {
   padding: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   color: var(--adm-sb-text2);
   border-radius: 4px;
   transition: color .15s, background .15s;
 }
 .adm-user__exit:hover { color: #fff; background: var(--adm-sb-hover); }
+
+.adm-sidebar-site-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 12px;
+  color: var(--adm-sb-text2);
+  font-size: 11.5px;
+  text-decoration: none;
+  transition: color .15s;
+}
+.adm-sidebar-site-link:hover { color: rgba(255,255,255,.8); }
 
 /* ── Topbar ──────────────────────────────────────────────────────────────── */
 
@@ -1057,3 +1076,230 @@ body.sidebar-collapsed .adm-shell     { margin-left: 0; }
   border-top: 1px solid var(--adm-border); flex-shrink: 0;
 }
 .adm-dtp__footer button { flex: 1; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESERVAS v2 — operational center
+══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Utility additions ───────────────────────────────────────────────────── */
+.text-amber  { color: #d97706; }
+.text-right  { text-align: right; }
+.text-center { text-align: center; }
+.adm-mono    { font-family: ui-monospace, 'Cascadia Code', monospace; }
+.adm-input--sm { padding: 5px 9px; font-size: 12px; }
+.adm-avatar--sm { width: 28px; height: 28px; font-size: 10px; flex-shrink: 0; }
+
+.adm-spinner {
+  display: inline-block; width: 22px; height: 22px;
+  border: 3px solid var(--adm-border); border-top-color: var(--adm-forest);
+  border-radius: 50%; animation: adm-spin .7s linear infinite;
+}
+@keyframes adm-spin { to { transform: rotate(360deg); } }
+
+/* ── Reservas toolbar (filters row) ─────────────────────────────────────── */
+.adm-res-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 12px;
+  flex-wrap: wrap;
+}
+
+.adm-res-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.adm-res-filters .adm-input {
+  min-width: 0;
+}
+.adm-res-filters input[type="search"] { min-width: 200px; }
+.adm-res-filters select               { min-width: 120px; max-width: 180px; }
+
+/* ── Reservas table ──────────────────────────────────────────────────────── */
+.adm-res-table tbody tr { cursor: pointer; }
+.adm-res-table tbody tr:hover { background: #f5f5f2; }
+
+.adm-res-code {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--adm-forest);
+  background: #e8f0e9;
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: .5px;
+}
+
+.adm-badge-pax {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--adm-forest);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.adm-avatar-row {
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* compact table variant */
+.adm-table--compact th, .adm-table--compact td {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ── Right-side Drawer ───────────────────────────────────────────────────── */
+/* Override drawer width for reservas detail pane */
+#res-drawer { width: min(480px, 96vw); }
+
+/* Forest-themed drawer header for reservas */
+#res-drawer .adm-drawer__header {
+  background: var(--adm-forest);
+  color: #fff;
+  border-bottom-color: var(--adm-forest-2);
+}
+#res-drawer .adm-drawer__title { color: #fff; }
+#res-drawer .adm-drawer__close { color: rgba(255,255,255,.7); }
+#res-drawer .adm-drawer__close:hover { color: #fff; background: rgba(255,255,255,.12); }
+
+/* Drawer body uses bg for sections */
+#res-drawer .adm-drawer__body { background: var(--adm-bg); padding: 0; }
+
+body.adm-drawer-open { overflow: hidden; }
+
+/* ── Drawer sections ─────────────────────────────────────────────────────── */
+.adm-drawer-section {
+  background: var(--adm-surface);
+  margin: 12px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius);
+  overflow: hidden;
+}
+
+.adm-drawer-section__header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--adm-muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--adm-border);
+  background: #fafaf8;
+}
+
+.adm-drawer-section--actions .adm-drawer-section__header {
+  color: var(--adm-text-2);
+  background: #f0efea;
+}
+
+.adm-drawer-section--actions {
+  border-color: var(--adm-border);
+}
+
+/* ── Info grid (label/value pairs) ──────────────────────────────────────── */
+.adm-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 8px;
+}
+
+.adm-info-cell {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px;
+}
+.adm-info-cell--full { grid-column: 1 / -1; }
+
+.adm-info-cell__label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--adm-muted);
+}
+.adm-info-cell__val {
+  font-size: 13px; color: var(--adm-text); font-weight: 500;
+  line-height: 1.4;
+}
+
+.adm-sub-section { padding: 8px 14px 12px; }
+.adm-sub-section__label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--adm-muted); margin-bottom: 4px;
+}
+
+/* ── Modal overlay (wide) ────────────────────────────────────────────────── */
+/* #organizar-overlay uses style.display directly — override opacity-based toggle */
+#organizar-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, .45);
+  z-index: 500;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px 24px;
+  overflow-y: auto;
+  opacity: 1 !important; pointer-events: auto !important;
+}
+
+.adm-modal--wide { width: 860px; max-width: 100%; }
+
+#organizar-overlay .adm-modal {
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - 80px);
+  overflow: hidden;
+  width: 860px; max-width: 100%;
+  transform: none;
+  position: static;
+  top: auto; left: auto;
+}
+
+#organizar-overlay .adm-modal__body {
+  flex: 1; overflow-y: auto;
+  padding: 16px;
+  background: var(--adm-bg);
+}
+
+/* ── Organizar saída ─────────────────────────────────────────────────────── */
+.adm-org-dep {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.adm-org-dep__header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--adm-forest);
+  color: #fff;
+  gap: 12px;
+}
+
+.adm-org-dep__title {
+  font-size: 14px; font-weight: 600; line-height: 1.3;
+}
+
+.adm-org-dep__header .text-muted { color: rgba(255,255,255,.65); }
+.adm-org-dep__header .adm-btn--ghost {
+  color: rgba(255,255,255,.8); border-color: rgba(255,255,255,.3);
+}
+.adm-org-dep__header .adm-btn--ghost:hover { background: rgba(255,255,255,.12); color: #fff; }
+
+.adm-org-bp {
+  padding: 0;
+  border-top: 1px solid var(--adm-border);
+}
+
+.adm-org-bp__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px 6px;
+  background: #fafaf8;
+  gap: 8px;
+}
+
+.adm-org-bp__name {
+  font-size: 13px; font-weight: 600; color: var(--adm-text);
+}
+

@@ -161,14 +161,13 @@ export function validateStep5(ec) {
  * @param {import('../types/booking.types.js').TermsAcceptance} terms
  * @returns {Record<string,string>}
  */
-export function validateStep6(terms) {
+export function validateStep6(terms, { imageConsentRequired = false } = {}) {
   const errors = {};
   if (!terms?.terms)          errors.terms          = 'Aceite os Termos de Uso.';
   if (!terms?.cancellation)   errors.cancellation   = 'Aceite a Política de Cancelamento.';
   if (!terms?.riskAwareness)  errors.riskAwareness  = 'Confirme a ciência de riscos.';
-  if (!terms?.imageConsent !== false && terms?.imageConsent === undefined) {
-    // imageConsent is optional (user may decline) — no validation needed
-  }
+  if (imageConsentRequired && !terms?.imageConsent)
+    errors.imageConsent = 'O consentimento de uso de imagem é obrigatório para esta experiência.';
   return errors;
 }
 
@@ -228,6 +227,7 @@ export function createDraft(experienceId) {
     id:              uid(),
     experienceId,
     exitId:          null,
+    boardingPointId: null,      // UUID do ponto de embarque (departure_boarding_points.id)
     meetingPointId:  null,
     profileQtys:     [],
     payer:           null,
