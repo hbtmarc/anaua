@@ -198,9 +198,9 @@ function renderContent(exp, bpMap = {}) {
       <h1 class="detail-header__title">${exp.title}</h1>
       <p class="detail-header__subtitle">${exp.subtitle}</p>
       <div class="detail-header__meta">
-        <span class="detail-meta-item">${Icon.clock} <strong>${exp.durationLabel}</strong></span>
-        <span class="detail-meta-item">${Icon.map} <strong>${exp.location}</strong></span>
-        <span class="detail-meta-item">${Icon.users} Máx. <strong>${exp.maxParticipants} pessoas</strong></span>
+        ${exp.durationLabel && exp.durationLabel !== '—' ? `<span class="detail-meta-item">${Icon.clock} <strong>${exp.durationLabel}</strong></span>` : ''}
+        ${exp.location ? `<span class="detail-meta-item">${Icon.map} <strong>${exp.location}</strong></span>` : ''}
+        ${exp.maxParticipants ? `<span class="detail-meta-item">${Icon.users} Máx. <strong>${exp.maxParticipants} pessoas</strong></span>` : ''}
         ${exp.distanceKm ? `<span class="detail-meta-item">${Icon.arrow} <strong>${exp.distanceKm} km</strong></span>` : ''}
         ${exp.minAge ? `<span class="detail-meta-item">👶 A partir de <strong>${exp.minAge} anos</strong></span>` : ''}
       </div>
@@ -213,10 +213,11 @@ function renderContent(exp, bpMap = {}) {
     </div>` : ''}
 
     <!-- Description -->
+    ${exp.description ? `
     <div class="detail-block">
       <h2 class="detail-block__title">Sobre a experiência</h2>
       <p class="detail-desc">${exp.description}</p>
-    </div>
+    </div>` : ''}
 
     <!-- Gallery -->
     <div class="detail-block" data-animate>
@@ -240,9 +241,11 @@ function renderContent(exp, bpMap = {}) {
     </div>
 
     <!-- Inclusions -->
+    ${(exp.includes?.length || exp.excludes?.length) ? `
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">O que está incluso</h2>
       <div class="detail-inclusions">
+        ${exp.includes?.length ? `
         <div>
           <p class="detail-inclusions__subtitle">✅ Incluso</p>
           <ul class="inclusion-list">
@@ -253,7 +256,8 @@ function renderContent(exp, bpMap = {}) {
               </li>
             `).join('')}
           </ul>
-        </div>
+        </div>` : ''}
+        ${exp.excludes?.length ? `
         <div>
           <p class="detail-inclusions__subtitle">❌ Não incluso</p>
           <ul class="inclusion-list">
@@ -264,23 +268,25 @@ function renderContent(exp, bpMap = {}) {
               </li>
             `).join('')}
           </ul>
-        </div>
+        </div>` : ''}
       </div>
-    </div>
+    </div>` : ''}
 
     <!-- What to bring -->
+    ${exp.whatToBring?.length ? `
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">O que levar</h2>
       <ul class="bring-list">
         ${exp.whatToBring.map(i => `<li class="bring-item">${i}</li>`).join('')}
       </ul>
-    </div>
+    </div>` : ''}
 
     <!-- Cancellation -->
+    ${exp.cancellationPolicy ? `
     <div class="detail-block" data-animate>
       <h2 class="detail-block__title">Política de cancelamento</h2>
-      <div class="cancellation-box">${exp.cancellationPolicy ?? 'Consulte nossa equipe para informações sobre cancelamento e reembolso.'}</div>
-    </div>
+      <div class="cancellation-box">${exp.cancellationPolicy}</div>
+    </div>` : ''}
   `;
 
   // Wire exit selection

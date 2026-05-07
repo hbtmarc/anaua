@@ -1353,3 +1353,57 @@ body.adm-drawer-open { overflow: hidden; }
   font-size: 13px; font-weight: 600; color: var(--adm-text);
 }
 
+/* ── Experience form sections ──────────────────────────────────────────────── */
+
+fieldset.exp-section {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius);
+  overflow: hidden;
+  margin-bottom: 14px;
+  padding: 0;
+  min-width: 0;
+}
+
+.exp-section__title {
+  display: block;
+  background: var(--adm-bg);
+  border-bottom: 1px solid var(--adm-border);
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--adm-muted);
+  margin: 0;
+}
+
+.exp-section__body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exp-section__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+label.exp-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+label.exp-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--adm-forest);
+}
+

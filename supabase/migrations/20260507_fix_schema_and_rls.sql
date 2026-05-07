@@ -244,5 +244,52 @@ CREATE POLICY "departures_admin" ON departures
     )
   );
 
--- ─── 10. Reload PostgREST schema cache ───────────────────────────────────────
+-- ─── 10. experiences: extended content fields ───────────────────────────────
+-- These are the full set of fields used by the public pages and admin forms.
+-- JSONB columns store arrays (highlights, includes, excludes, what_to_bring, gallery).
+-- All additions are safe/idempotent via ADD COLUMN IF NOT EXISTS.
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS short_description    text;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS duration_text        text;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS highlights           jsonb;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS includes             jsonb;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS excludes             jsonb;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS what_to_bring        jsonb;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS gallery              jsonb;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS cancellation_policy  text;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS region               text;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS currency             text NOT NULL DEFAULT 'BRL';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS min_age              int;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS distance_km          numeric(6,1);
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS elevation_gain_m     int;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS is_new               boolean NOT NULL DEFAULT false;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS featured             boolean NOT NULL DEFAULT false;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS subtitle             text;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS description          text;
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS duration_hours       numeric(4,1);
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS max_participants     int;
+
+-- RLS: experiences are readable by all (public listing); admin can write
+ALTER TABLE experiences ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "experiences_public_read" ON experiences;
+DROP POLICY IF EXISTS "experiences_admin"        ON experiences;
+
+CREATE POLICY "experiences_public_read" ON experiences
+  FOR SELECT USING (true);
+
+CREATE POLICY "experiences_admin" ON experiences
+  FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin','operator')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin','operator')
+    )
+  );
+
+-- ─── 11. Reload PostgREST schema cache ───────────────────────────────────────
 NOTIFY pgrst, 'reload schema';

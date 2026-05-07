@@ -798,87 +798,196 @@ function openNovaExperienciaModal() {
   openDrawer('Nova experiência', `
     <form id="nova-exp-form" autocomplete="off">
 
-      <!-- ══ A: DADOS DA EXPERIÊNCIA ══════════════════════════════════ -->
-      <div class="adm-section-hd">Dados da experiência</div>
+      <!-- ═══ 1. DADOS PRINCIPAIS ══════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Dados principais</legend>
+        <div class="exp-section__body">
+          <div class="adm-field">
+            <label>Título *</label>
+            <input id="ne-title" class="adm-input" required placeholder="Ex: Trilha do Pico da Bandeira" />
+          </div>
+          <div class="adm-field">
+            <label>Slug *</label>
+            <input id="ne-slug" class="adm-input" required placeholder="trilha-pico-bandeira" />
+            <span class="adm-hint">Gerado automaticamente. Pode editar.</span>
+          </div>
+          <div class="adm-field">
+            <label>Subtítulo</label>
+            <input id="ne-subtitle" class="adm-input" placeholder="Frase curta para o card e SEO" />
+          </div>
+          <div class="adm-field">
+            <label>Descrição curta</label>
+            <textarea id="ne-short-desc" class="adm-input" rows="2" placeholder="1–2 frases para redes e compartilhamento"></textarea>
+          </div>
+          <div class="adm-field">
+            <label>Descrição completa</label>
+            <textarea id="ne-description" class="adm-input" rows="4" placeholder="Texto narrativo completo da experiência"></textarea>
+          </div>
+        </div>
+      </fieldset>
 
-      <div class="adm-field">
-        <label>Título *</label>
-        <input id="ne-title" class="adm-input" required placeholder="Ex: Trilha do Pico" />
-      </div>
-      <div class="adm-field">
-        <label>Slug *</label>
-        <input id="ne-slug" class="adm-input" required placeholder="trilha-do-pico" />
-        <span class="adm-hint">Gerado automaticamente. Pode editar.</span>
-      </div>
-      <div class="adm-field">
-        <label>Subtítulo</label>
-        <input id="ne-subtitle" class="adm-input" placeholder="Frase curta de apresentação" />
-      </div>
-      <div class="adm-field">
-        <label>Descrição</label>
-        <textarea id="ne-description" class="adm-input" rows="3" placeholder="Descrição completa da experiência"></textarea>
-      </div>
-      <div class="adm-grid-2">
-        <div class="adm-field"><label>Local</label><input id="ne-location" class="adm-input" placeholder="Ex: Serra da Canastra" /></div>
-        <div class="adm-field"><label>Categoria</label>
-          <select id="ne-category" class="adm-select">
-            <option value="">— selecione —</option>
-            <option value="day-experience">Experiência de 1 dia</option>
-            <option value="expedition">Expedição</option>
-            <option value="event">Evento</option>
-            <option value="kids">Kids</option>
-          </select>
-        </div>
-      </div>
-      <div class="adm-grid-2">
-        <div class="adm-field"><label>Dificuldade</label>
-          <select id="ne-difficulty" class="adm-select">
-            <option value="">— selecione —</option>
-            <option value="iniciante">Iniciante (Fácil)</option>
-            <option value="moderado">Moderado</option>
-            <option value="aventura">Aventura (Difícil)</option>
-          </select>
-        </div>
-        <div class="adm-field"><label>Preço base (R$)</label>
-          <input id="ne-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
-        </div>
-      </div>
-      <div class="adm-grid-2">
-        <div class="adm-field"><label>Duração (horas)</label>
-          <input id="ne-duration" class="adm-input" type="number" min="0.5" step="0.5" placeholder="Ex: 8" />
-        </div>
-        <div class="adm-field"><label>Capacidade máxima</label>
-          <input id="ne-maxpax" class="adm-input" type="number" min="1" step="1" placeholder="Ex: 20" />
-        </div>
-      </div>
-      <div class="adm-field">
-        <label>Imagem de capa</label>
-        <div class="adm-upload-widget">
-          <input type="file" id="ne-cover-file" accept="image/*" style="display:none" />
-          <div id="ne-cover-preview" style="display:none;align-items:center;gap:10px">
-            <img id="ne-cover-img" src="" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--adm-border)" />
-            <div>
-              <span id="ne-cover-name" style="font-size:12px;color:var(--adm-text-muted)"></span><br>
-              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-cover-change-btn">Trocar</button>
+      <!-- ═══ 2. CLASSIFICAÇÃO ══════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Classificação</legend>
+        <div class="exp-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Categoria</label>
+              <select id="ne-category" class="adm-select">
+                <option value="">— selecione —</option>
+                <option value="day-experience">Experiência de 1 dia</option>
+                <option value="expedition">Expedição</option>
+                <option value="event">Evento</option>
+                <option value="kids">Kids</option>
+              </select>
+            </div>
+            <div class="adm-field"><label>Dificuldade</label>
+              <select id="ne-difficulty" class="adm-select">
+                <option value="">— selecione —</option>
+                <option value="iniciante">Iniciante (Fácil)</option>
+                <option value="moderado">Moderado</option>
+                <option value="aventura">Aventura (Difícil)</option>
+              </select>
             </div>
           </div>
-          <div id="ne-cover-empty">
-            <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" id="ne-cover-pick-btn">📷 Escolher imagem</button>
-            <span id="ne-cover-status" style="font-size:12px;color:var(--adm-text-muted);margin-left:8px"></span>
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Região</label>
+              <input id="ne-region" class="adm-input" placeholder="Ex: Serra do Espinhaço" />
+            </div>
+            <div class="adm-field"><label>Local / ponto de partida</label>
+              <input id="ne-location" class="adm-input" placeholder="Ex: Serra da Canastra" />
+            </div>
           </div>
-          <input type="hidden" id="ne-cover" />
         </div>
-      </div>
-      <div class="adm-grid-2" style="margin-top:4px">
-        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input id="ne-active" type="checkbox" checked style="width:16px;height:16px" />
-          <label for="ne-active" style="margin:0;font-weight:400">Ativa (visível no site)</label>
+      </fieldset>
+
+      <!-- ═══ 3. OPERAÇÃO ════════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Operação</legend>
+        <div class="exp-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label>Duração (texto)</label>
+              <input id="ne-duration-text" class="adm-input" placeholder="Ex: 2 dias / 1 noite" />
+              <span class="adm-hint">Texto livre exibido na página pública.</span>
+            </div>
+            <div class="adm-field">
+              <label>Duração (horas)</label>
+              <input id="ne-duration" class="adm-input" type="number" min="0.5" step="0.5" placeholder="Ex: 8" />
+              <span class="adm-hint">Usado para calcular término da saída.</span>
+            </div>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Capacidade máxima (pax)</label>
+              <input id="ne-maxpax" class="adm-input" type="number" min="1" step="1" placeholder="Ex: 20" />
+            </div>
+            <div class="adm-field"><label>Idade mínima (anos)</label>
+              <input id="ne-minage" class="adm-input" type="number" min="0" step="1" placeholder="Ex: 10" />
+            </div>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Distância (km)</label>
+              <input id="ne-distance" class="adm-input" type="number" min="0" step="0.1" placeholder="Ex: 14.5" />
+            </div>
+            <div class="adm-field"><label>Ganho de elevação (m)</label>
+              <input id="ne-elevation" class="adm-input" type="number" min="0" step="1" placeholder="Ex: 850" />
+            </div>
+          </div>
         </div>
-        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input id="ne-featured" type="checkbox" style="width:16px;height:16px" />
-          <label for="ne-featured" style="margin:0;font-weight:400">Destaque</label>
+      </fieldset>
+
+      <!-- ═══ 4. COMERCIAL ══════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Comercial</legend>
+        <div class="exp-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Preço base (R$)</label>
+              <input id="ne-price" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00" />
+            </div>
+            <div class="adm-field"><label>Moeda</label>
+              <select id="ne-currency" class="adm-select">
+                <option value="BRL">BRL — Real</option>
+                <option value="USD">USD — Dólar</option>
+                <option value="EUR">EUR — Euro</option>
+              </select>
+            </div>
+          </div>
         </div>
-      </div>
+      </fieldset>
+
+      <!-- ═══ 5. CONTEÚDO DA PÁGINA ══════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Conteúdo da página pública</legend>
+        <div class="exp-section__body">
+          <div class="adm-field">
+            <label>Destaques / Highlights</label>
+            <textarea id="ne-highlights" class="adm-input" rows="4" placeholder="Uma linha por item&#10;Ex: Guia especializado&#10;Vista 360° do pico"></textarea>
+            <span class="adm-hint">Uma linha por item.</span>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label>O que está incluído</label>
+              <textarea id="ne-includes" class="adm-input" rows="4" placeholder="Uma linha por item&#10;Ex: Transporte&#10;Refeição"></textarea>
+              <span class="adm-hint">Uma linha por item.</span>
+            </div>
+            <div class="adm-field">
+              <label>O que NÃO está incluído</label>
+              <textarea id="ne-excludes" class="adm-input" rows="4" placeholder="Uma linha por item&#10;Ex: Bebidas"></textarea>
+              <span class="adm-hint">Uma linha por item.</span>
+            </div>
+          </div>
+          <div class="adm-field">
+            <label>O que levar / trazer</label>
+            <textarea id="ne-bring" class="adm-input" rows="3" placeholder="Uma linha por item&#10;Ex: Garrafa d'água&#10;Protetor solar"></textarea>
+            <span class="adm-hint">Uma linha por item.</span>
+          </div>
+          <div class="adm-field">
+            <label>Política de cancelamento</label>
+            <textarea id="ne-cancel-policy" class="adm-input" rows="2" placeholder="Ex: Cancelamento gratuito até 7 dias antes."></textarea>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ═══ 6. MÍDIA ══════════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Mídia</legend>
+        <div class="exp-section__body">
+          <div class="adm-field">
+            <label>Imagem de capa</label>
+            <div class="adm-upload-widget">
+              <input type="file" id="ne-cover-file" accept="image/*" style="display:none" />
+              <div id="ne-cover-preview" style="display:none;align-items:center;gap:10px">
+                <img id="ne-cover-img" src="" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--adm-border)" />
+                <div>
+                  <span id="ne-cover-name" style="font-size:12px;color:var(--adm-muted)"></span><br>
+                  <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ne-cover-change-btn">Trocar</button>
+                </div>
+              </div>
+              <div id="ne-cover-empty">
+                <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" id="ne-cover-pick-btn">📷 Escolher imagem</button>
+                <span id="ne-cover-status" style="font-size:12px;color:var(--adm-muted);margin-left:8px"></span>
+              </div>
+              <input type="hidden" id="ne-cover" />
+            </div>
+          </div>
+          <div class="adm-field">
+            <label>Galeria (URLs)</label>
+            <textarea id="ne-gallery" class="adm-input" rows="3" placeholder="Uma URL por linha&#10;https://...imagem1.jpg"></textarea>
+            <span class="adm-hint">Uma URL por linha.</span>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ═══ 7. VISIBILIDADE ════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Visibilidade</legend>
+        <div class="exp-section__body">
+          <div class="exp-section__checks">
+            <label class="exp-check"><input id="ne-active" type="checkbox" checked /><span><strong>Ativa</strong> — visível no site público</span></label>
+            <label class="exp-check"><input id="ne-featured" type="checkbox" /><span><strong>Destaque</strong> — aparece em promoções e home</span></label>
+            <label class="exp-check"><input id="ne-is-new" type="checkbox" /><span><strong>Novidade</strong> — exibe selo "Novo" no card</span></label>
+          </div>
+        </div>
+      </fieldset>
 
       <!-- ══ B: SAÍDA INICIAL ═════════════════════════════════════════ -->
       <div class="adm-section-hd" style="margin-top:20px">
@@ -1198,20 +1307,35 @@ function openNovaExperienciaModal() {
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
 
     // A — Experience payload
+    const _taToArr = v => (v || '').split('\n').map(s => s.trim()).filter(Boolean);
     const experience = {
-      title:            document.getElementById('ne-title').value.trim(),
-      slug:             document.getElementById('ne-slug').value.trim(),
-      subtitle:         document.getElementById('ne-subtitle')?.value.trim() || null,
-      description:      document.getElementById('ne-description')?.value.trim() || null,
-      location:         document.getElementById('ne-location')?.value.trim() || null,
-      category:         document.getElementById('ne-category')?.value || null,
-      difficulty:       document.getElementById('ne-difficulty')?.value || null,
-      base_price:       parseFloat(document.getElementById('ne-price')?.value) || 0,
-      duration_hours:   parseFloat(document.getElementById('ne-duration')?.value) || null,
-      max_participants: parseInt(document.getElementById('ne-maxpax')?.value, 10) || null,
-      cover_image_url:  document.getElementById('ne-cover')?.value.trim() || null,
-      is_active:        document.getElementById('ne-active')?.checked ?? true,
-      featured:         document.getElementById('ne-featured')?.checked ?? false,
+      title:               document.getElementById('ne-title').value.trim(),
+      slug:                document.getElementById('ne-slug').value.trim(),
+      subtitle:            document.getElementById('ne-subtitle')?.value.trim() || null,
+      short_description:   document.getElementById('ne-short-desc')?.value.trim() || null,
+      description:         document.getElementById('ne-description')?.value.trim() || null,
+      location:            document.getElementById('ne-location')?.value.trim() || null,
+      region:              document.getElementById('ne-region')?.value.trim() || null,
+      category:            document.getElementById('ne-category')?.value || null,
+      difficulty:          document.getElementById('ne-difficulty')?.value || null,
+      base_price:          parseFloat(document.getElementById('ne-price')?.value) || 0,
+      currency:            document.getElementById('ne-currency')?.value || 'BRL',
+      duration_text:       document.getElementById('ne-duration-text')?.value.trim() || null,
+      duration_hours:      parseFloat(document.getElementById('ne-duration')?.value) || null,
+      max_participants:    parseInt(document.getElementById('ne-maxpax')?.value, 10) || null,
+      min_age:             parseInt(document.getElementById('ne-minage')?.value, 10) || null,
+      distance_km:         parseFloat(document.getElementById('ne-distance')?.value) || null,
+      elevation_gain_m:    parseInt(document.getElementById('ne-elevation')?.value, 10) || null,
+      highlights:          _taToArr(document.getElementById('ne-highlights')?.value),
+      includes:            _taToArr(document.getElementById('ne-includes')?.value),
+      excludes:            _taToArr(document.getElementById('ne-excludes')?.value),
+      what_to_bring:       _taToArr(document.getElementById('ne-bring')?.value),
+      cancellation_policy: document.getElementById('ne-cancel-policy')?.value.trim() || null,
+      cover_image_url:     document.getElementById('ne-cover')?.value.trim() || null,
+      gallery:             _taToArr(document.getElementById('ne-gallery')?.value),
+      is_active:           document.getElementById('ne-active')?.checked ?? true,
+      featured:            document.getElementById('ne-featured')?.checked ?? false,
+      is_new:              document.getElementById('ne-is-new')?.checked ?? false,
     };
 
     if (!experience.title || !experience.slug) {
@@ -1410,91 +1534,201 @@ async function openEditExperienciaModal(id) {
 
   const esc = escHtml;
   const sel = (val, opt) => val === opt ? 'selected' : '';
+  const toArr = v => Array.isArray(v) ? v : (!v ? [] : (typeof v === 'string' ? (() => { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } })() : []));
+  const arrToTa = arr => toArr(arr).join('\n');
 
   $('adm-drawer-title').textContent = 'Editar experiência';
   $('adm-drawer-body').innerHTML = `
     <form id="edit-exp-form" autocomplete="off">
 
-      <!-- ══ DADOS DA EXPERIÊNCIA ══════════════════════════════════ -->
-      <div class="adm-section-hd">Dados da experiência</div>
+      <!-- ═══ 1. DADOS PRINCIPAIS ══════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Dados principais</legend>
+        <div class="exp-section__body">
+          <div class="adm-field">
+            <label>Título *</label>
+            <input id="ee-title" class="adm-input" required value="${esc(row.title ?? '')}" />
+          </div>
+          <div class="adm-field">
+            <label>Slug *</label>
+            <input id="ee-slug" class="adm-input" required value="${esc(row.slug ?? '')}" />
+          </div>
+          <div class="adm-field">
+            <label>Subtítulo</label>
+            <input id="ee-subtitle" class="adm-input" value="${esc(row.subtitle ?? '')}" placeholder="Frase curta para o card e SEO" />
+          </div>
+          <div class="adm-field">
+            <label>Descrição curta</label>
+            <textarea id="ee-short-desc" class="adm-input" rows="2">${esc(row.short_description ?? '')}</textarea>
+          </div>
+          <div class="adm-field">
+            <label>Descrição completa</label>
+            <textarea id="ee-description" class="adm-input" rows="4">${esc(row.description ?? '')}</textarea>
+          </div>
+        </div>
+      </fieldset>
 
-      <div class="adm-field">
-        <label>Título *</label>
-        <input id="ee-title" class="adm-input" required value="${esc(row.title ?? '')}" />
-      </div>
-      <div class="adm-field">
-        <label>Slug *</label>
-        <input id="ee-slug" class="adm-input" required value="${esc(row.slug ?? '')}" />
-      </div>
-      <div class="adm-field">
-        <label>Subtítulo</label>
-        <input id="ee-subtitle" class="adm-input" value="${esc(row.subtitle ?? '')}" placeholder="Frase curta de apresentação" />
-      </div>
-      <div class="adm-field">
-        <label>Descrição</label>
-        <textarea id="ee-description" class="adm-input" rows="3">${esc(row.description ?? '')}</textarea>
-      </div>
-      <div class="adm-grid-2">
-        <div class="adm-field"><label>Local</label><input id="ee-location" class="adm-input" value="${esc(row.location ?? '')}" /></div>
-        <div class="adm-field"><label>Categoria</label>
-          <select id="ee-category" class="adm-select">
-            <option value="">— selecione —</option>
-            <option value="day-experience" ${sel(row.category,'day-experience')}>Experiência de 1 dia</option>
-            <option value="expedition" ${sel(row.category,'expedition')}>Expedição</option>
-            <option value="event" ${sel(row.category,'event')}>Evento</option>
-            <option value="kids" ${sel(row.category,'kids')}>Kids</option>
-          </select>
-        </div>
-      </div>
-      <div class="adm-grid-2">
-        <div class="adm-field"><label>Dificuldade</label>
-          <select id="ee-difficulty" class="adm-select">
-            <option value="">— selecione —</option>
-            <option value="iniciante" ${sel(row.difficulty,'iniciante')}>Iniciante (Fácil)</option>
-            <option value="moderado" ${sel(row.difficulty,'moderado')}>Moderado</option>
-            <option value="aventura" ${sel(row.difficulty,'aventura')}>Aventura (Difícil)</option>
-          </select>
-        </div>
-        <div class="adm-field"><label>Preço base (R$)</label>
-          <input id="ee-price" class="adm-input" type="number" min="0" step="0.01" value="${row.base_price ?? 0}" />
-        </div>
-      </div>
-      <div class="adm-grid-2">
-        <div class="adm-field"><label>Duração (horas)</label>
-          <input id="ee-duration" class="adm-input" type="number" min="0.5" step="0.5" value="${row.duration_hours ?? ''}" />
-        </div>
-        <div class="adm-field"><label>Capacidade máxima</label>
-          <input id="ee-maxpax" class="adm-input" type="number" min="1" value="${row.max_participants ?? ''}" />
-        </div>
-      </div>
-      <div class="adm-field">
-        <label>Imagem de capa</label>
-        <div class="adm-upload-widget">
-          <input type="file" id="ee-cover-file" accept="image/*" style="display:none" />
-          <div id="ee-cover-preview" style="display:${row.cover_image_url ? 'flex' : 'none'};align-items:center;gap:10px">
-            <img id="ee-cover-img" src="${esc(row.cover_image_url ?? '')}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--adm-border)" />
-            <div>
-              <span id="ee-cover-name" style="font-size:12px;color:var(--adm-text-muted)"></span><br>
-              <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-cover-change-btn">Trocar</button>
+      <!-- ═══ 2. CLASSIFICAÇÃO ══════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Classificação</legend>
+        <div class="exp-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Categoria</label>
+              <select id="ee-category" class="adm-select">
+                <option value="">— selecione —</option>
+                <option value="day-experience" ${sel(row.category,'day-experience')}>Experiência de 1 dia</option>
+                <option value="expedition" ${sel(row.category,'expedition')}>Expedição</option>
+                <option value="event" ${sel(row.category,'event')}>Evento</option>
+                <option value="kids" ${sel(row.category,'kids')}>Kids</option>
+              </select>
+            </div>
+            <div class="adm-field"><label>Dificuldade</label>
+              <select id="ee-difficulty" class="adm-select">
+                <option value="">— selecione —</option>
+                <option value="iniciante" ${sel(row.difficulty,'iniciante')}>Iniciante (Fácil)</option>
+                <option value="moderado" ${sel(row.difficulty,'moderado')}>Moderado</option>
+                <option value="aventura" ${sel(row.difficulty,'aventura')}>Aventura (Difícil)</option>
+              </select>
             </div>
           </div>
-          <div id="ee-cover-empty" style="display:${row.cover_image_url ? 'none' : 'block'}">
-            <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" id="ee-cover-pick-btn">📷 Escolher imagem</button>
-            <span id="ee-cover-status" style="font-size:12px;color:var(--adm-text-muted);margin-left:8px"></span>
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Região</label>
+              <input id="ee-region" class="adm-input" value="${esc(row.region ?? '')}" placeholder="Ex: Serra do Espinhaço" />
+            </div>
+            <div class="adm-field"><label>Local / ponto de partida</label>
+              <input id="ee-location" class="adm-input" value="${esc(row.location ?? '')}" />
+            </div>
           </div>
-          <input type="hidden" id="ee-cover" value="${esc(row.cover_image_url ?? '')}" />
         </div>
-      </div>
-      <div class="adm-grid-2" style="margin-top:4px">
-        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input id="ee-active" type="checkbox" ${row.is_active !== false ? 'checked' : ''} style="width:16px;height:16px" />
-          <label for="ee-active" style="margin:0;font-weight:400">Ativa (visível no site)</label>
+      </fieldset>
+
+      <!-- ═══ 3. OPERAÇÃO ════════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Operação</legend>
+        <div class="exp-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label>Duração (texto)</label>
+              <input id="ee-duration-text" class="adm-input" value="${esc(row.duration_text ?? '')}" placeholder="Ex: 2 dias / 1 noite" />
+              <span class="adm-hint">Texto livre exibido na página pública.</span>
+            </div>
+            <div class="adm-field">
+              <label>Duração (horas)</label>
+              <input id="ee-duration" class="adm-input" type="number" min="0.5" step="0.5" value="${row.duration_hours ?? ''}" />
+            </div>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Capacidade máxima (pax)</label>
+              <input id="ee-maxpax" class="adm-input" type="number" min="1" value="${row.max_participants ?? ''}" />
+            </div>
+            <div class="adm-field"><label>Idade mínima (anos)</label>
+              <input id="ee-minage" class="adm-input" type="number" min="0" value="${row.min_age ?? ''}" />
+            </div>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Distância (km)</label>
+              <input id="ee-distance" class="adm-input" type="number" min="0" step="0.1" value="${row.distance_km ?? ''}" />
+            </div>
+            <div class="adm-field"><label>Ganho de elevação (m)</label>
+              <input id="ee-elevation" class="adm-input" type="number" min="0" value="${row.elevation_gain_m ?? ''}" />
+            </div>
+          </div>
         </div>
-        <div class="adm-field" style="flex-direction:row;align-items:center;gap:8px">
-          <input id="ee-featured" type="checkbox" ${row.featured ? 'checked' : ''} style="width:16px;height:16px" />
-          <label for="ee-featured" style="margin:0;font-weight:400">Destaque</label>
+      </fieldset>
+
+      <!-- ═══ 4. COMERCIAL ══════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Comercial</legend>
+        <div class="exp-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field"><label>Preço base (R$)</label>
+              <input id="ee-price" class="adm-input" type="number" min="0" step="0.01" value="${row.base_price ?? 0}" />
+            </div>
+            <div class="adm-field"><label>Moeda</label>
+              <select id="ee-currency" class="adm-select">
+                <option value="BRL" ${sel(row.currency ?? 'BRL','BRL')}>BRL — Real</option>
+                <option value="USD" ${sel(row.currency,'USD')}>USD — Dólar</option>
+                <option value="EUR" ${sel(row.currency,'EUR')}>EUR — Euro</option>
+              </select>
+            </div>
+          </div>
         </div>
-      </div>
+      </fieldset>
+
+      <!-- ═══ 5. CONTEÚDO DA PÁGINA ══════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Conteúdo da página pública</legend>
+        <div class="exp-section__body">
+          <div class="adm-field">
+            <label>Destaques / Highlights</label>
+            <textarea id="ee-highlights" class="adm-input" rows="4" placeholder="Uma linha por item">${esc(arrToTa(row.highlights))}</textarea>
+            <span class="adm-hint">Uma linha por item.</span>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label>O que está incluído</label>
+              <textarea id="ee-includes" class="adm-input" rows="4" placeholder="Uma linha por item">${esc(arrToTa(row.includes))}</textarea>
+              <span class="adm-hint">Uma linha por item.</span>
+            </div>
+            <div class="adm-field">
+              <label>O que NÃO está incluído</label>
+              <textarea id="ee-excludes" class="adm-input" rows="4" placeholder="Uma linha por item">${esc(arrToTa(row.excludes))}</textarea>
+              <span class="adm-hint">Uma linha por item.</span>
+            </div>
+          </div>
+          <div class="adm-field">
+            <label>O que levar / trazer</label>
+            <textarea id="ee-bring" class="adm-input" rows="3" placeholder="Uma linha por item">${esc(arrToTa(row.what_to_bring))}</textarea>
+            <span class="adm-hint">Uma linha por item.</span>
+          </div>
+          <div class="adm-field">
+            <label>Política de cancelamento</label>
+            <textarea id="ee-cancel-policy" class="adm-input" rows="2">${esc(row.cancellation_policy ?? '')}</textarea>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ═══ 6. MÍDIA ══════════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Mídia</legend>
+        <div class="exp-section__body">
+          <div class="adm-field">
+            <label>Imagem de capa</label>
+            <div class="adm-upload-widget">
+              <input type="file" id="ee-cover-file" accept="image/*" style="display:none" />
+              <div id="ee-cover-preview" style="display:${row.cover_image_url ? 'flex' : 'none'};align-items:center;gap:10px">
+                <img id="ee-cover-img" src="${esc(row.cover_image_url ?? '')}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--adm-border)" />
+                <div>
+                  <span id="ee-cover-name" style="font-size:12px;color:var(--adm-muted)"></span><br>
+                  <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ee-cover-change-btn">Trocar</button>
+                </div>
+              </div>
+              <div id="ee-cover-empty" style="display:${row.cover_image_url ? 'none' : 'block'}">
+                <button type="button" class="adm-btn adm-btn--secondary adm-btn--sm" id="ee-cover-pick-btn">📷 Escolher imagem</button>
+                <span id="ee-cover-status" style="font-size:12px;color:var(--adm-muted);margin-left:8px"></span>
+              </div>
+              <input type="hidden" id="ee-cover" value="${esc(row.cover_image_url ?? '')}" />
+            </div>
+          </div>
+          <div class="adm-field">
+            <label>Galeria (URLs)</label>
+            <textarea id="ee-gallery" class="adm-input" rows="3" placeholder="Uma URL por linha">${esc(arrToTa(row.gallery))}</textarea>
+            <span class="adm-hint">Uma URL por linha.</span>
+          </div>
+        </div>
+      </fieldset>
+
+      <!-- ═══ 7. VISIBILIDADE ════════════════════════════════════════════ -->
+      <fieldset class="exp-section">
+        <legend class="exp-section__title">Visibilidade</legend>
+        <div class="exp-section__body">
+          <div class="exp-section__checks">
+            <label class="exp-check"><input id="ee-active" type="checkbox" ${row.is_active !== false ? 'checked' : ''} /><span><strong>Ativa</strong> — visível no site público</span></label>
+            <label class="exp-check"><input id="ee-featured" type="checkbox" ${row.featured ? 'checked' : ''} /><span><strong>Destaque</strong> — aparece em promoções e home</span></label>
+            <label class="exp-check"><input id="ee-is-new" type="checkbox" ${row.is_new ? 'checked' : ''} /><span><strong>Novidade</strong> — exibe selo "Novo" no card</span></label>
+          </div>
+        </div>
+      </fieldset>
 
       <!-- ══ NOVA SAÍDA ═════════════════════════════════════════════ -->
       <div class="adm-section-hd" style="margin-top:20px">
@@ -1818,20 +2052,35 @@ async function openEditExperienciaModal(id) {
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvando…'; }
 
     // 1. Update experience
+    const _taToArr = v => (v || '').split('\n').map(s => s.trim()).filter(Boolean);
     const expPayload = {
-      title:            document.getElementById('ee-title').value.trim(),
-      slug:             document.getElementById('ee-slug').value.trim(),
-      subtitle:         document.getElementById('ee-subtitle')?.value.trim() || null,
-      description:      document.getElementById('ee-description')?.value.trim() || null,
-      location:         document.getElementById('ee-location')?.value.trim() || null,
-      category:         document.getElementById('ee-category')?.value || null,
-      difficulty:       document.getElementById('ee-difficulty')?.value || null,
-      base_price:       parseFloat(document.getElementById('ee-price')?.value) || 0,
-      duration_hours:   parseFloat(document.getElementById('ee-duration')?.value) || null,
-      max_participants: parseInt(document.getElementById('ee-maxpax')?.value, 10) || null,
-      cover_image_url:  document.getElementById('ee-cover')?.value.trim() || null,
-      is_active:        document.getElementById('ee-active')?.checked ?? true,
-      featured:         document.getElementById('ee-featured')?.checked ?? false,
+      title:               document.getElementById('ee-title').value.trim(),
+      slug:                document.getElementById('ee-slug').value.trim(),
+      subtitle:            document.getElementById('ee-subtitle')?.value.trim() || null,
+      short_description:   document.getElementById('ee-short-desc')?.value.trim() || null,
+      description:         document.getElementById('ee-description')?.value.trim() || null,
+      location:            document.getElementById('ee-location')?.value.trim() || null,
+      region:              document.getElementById('ee-region')?.value.trim() || null,
+      category:            document.getElementById('ee-category')?.value || null,
+      difficulty:          document.getElementById('ee-difficulty')?.value || null,
+      base_price:          parseFloat(document.getElementById('ee-price')?.value) || 0,
+      currency:            document.getElementById('ee-currency')?.value || 'BRL',
+      duration_text:       document.getElementById('ee-duration-text')?.value.trim() || null,
+      duration_hours:      parseFloat(document.getElementById('ee-duration')?.value) || null,
+      max_participants:    parseInt(document.getElementById('ee-maxpax')?.value, 10) || null,
+      min_age:             parseInt(document.getElementById('ee-minage')?.value, 10) || null,
+      distance_km:         parseFloat(document.getElementById('ee-distance')?.value) || null,
+      elevation_gain_m:    parseInt(document.getElementById('ee-elevation')?.value, 10) || null,
+      highlights:          _taToArr(document.getElementById('ee-highlights')?.value),
+      includes:            _taToArr(document.getElementById('ee-includes')?.value),
+      excludes:            _taToArr(document.getElementById('ee-excludes')?.value),
+      what_to_bring:       _taToArr(document.getElementById('ee-bring')?.value),
+      cancellation_policy: document.getElementById('ee-cancel-policy')?.value.trim() || null,
+      cover_image_url:     document.getElementById('ee-cover')?.value.trim() || null,
+      gallery:             _taToArr(document.getElementById('ee-gallery')?.value),
+      is_active:           document.getElementById('ee-active')?.checked ?? true,
+      featured:            document.getElementById('ee-featured')?.checked ?? false,
+      is_new:              document.getElementById('ee-is-new')?.checked ?? false,
     };
 
     if (!expPayload.title || !expPayload.slug) {

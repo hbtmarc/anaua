@@ -17,6 +17,7 @@ import { supabase } from '../supabaseClient.js';
 const CONFIRMED_COLUMNS = new Set([
   'title', 'slug', 'location', 'category', 'difficulty',
   'base_price', 'is_active', 'cover_image_url',
+  'short_description',
 ]);
 
 /**
@@ -27,8 +28,8 @@ const CONFIRMED_COLUMNS = new Set([
  * @see supabase/migrations/experiences_extended_fields.sql
  */
 const EXTENDED_COLUMNS = new Set([
-  'subtitle', 'description', 'duration_hours', 'max_participants',
-  'is_new', 'featured', 'region', 'highlights', 'includes',
+  'subtitle', 'short_description', 'description', 'duration_text', 'duration_hours',
+  'max_participants', 'is_new', 'featured', 'region', 'highlights', 'includes',
   'excludes', 'what_to_bring', 'gallery', 'currency',
   'min_age', 'distance_km', 'elevation_gain_m', 'cancellation_policy',
 ]);
@@ -151,14 +152,16 @@ function normalizeExperience(row) {
     category:         CATEGORY_MAP[rawCategory]   ?? rawCategory   ?? 'day-experience',
     status:           row.is_active ? 'active' : 'draft',
     title:            row.title        ?? '',
-    subtitle:         row.subtitle     ?? row.description?.slice(0, 100) ?? '',
+    subtitle:         row.subtitle     ?? row.short_description?.slice(0, 120) ?? row.description?.slice(0, 120) ?? '',
+    shortDescription: row.short_description ?? row.subtitle ?? '',
     description:      row.description  ?? '',
     coverImage:       (row.cover_image_url && row.cover_image_url.trim() !== '' && row.cover_image_url !== 'null' && row.cover_image_url !== 'undefined')
                         ? row.cover_image_url
                         : 'assets/img/placeholder.svg',
     gallery:          toArray(row.gallery),
     durationHours:    row.duration_hours  ?? null,
-    durationLabel:    row.duration_label  ?? (row.duration_hours ? `${row.duration_hours}h` : '—'),
+    durationText:     row.duration_text   ?? null,
+    durationLabel:    row.duration_text   ?? row.duration_label  ?? (row.duration_hours ? `${row.duration_hours}h` : '—'),
     minAge:           row.min_age          ?? null,
     maxParticipants:  row.max_participants ?? null,
     difficulty:       DIFFICULTY_MAP[rawDifficulty] ?? rawDifficulty ?? null,
