@@ -42,14 +42,49 @@ BEGIN
 END $$;
 
 -- ─── 3. reservations: ensure experience_id and departure_id exist ─────────────
-ALTER TABLE reservations ADD COLUMN IF NOT EXISTS experience_id  uuid REFERENCES experiences(id);
-ALTER TABLE reservations ADD COLUMN IF NOT EXISTS departure_id   uuid REFERENCES departures(id);
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS experience_id    uuid REFERENCES experiences(id);
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS departure_id     uuid REFERENCES departures(id);
 ALTER TABLE reservations ADD COLUMN IF NOT EXISTS boarding_point_id uuid REFERENCES departure_boarding_points(id);
+
+-- Track whether capacity has been restored for a cancelled reservation.
+-- Prevents double-restore when cancel + delete are both applied.
+-- Default FALSE means "not yet restored" (safe for existing cancelled rows).
+ALTER TABLE reservations ADD COLUMN IF NOT EXISTS capacity_restored boolean NOT NULL DEFAULT false;
 
 -- Widen reservation_status check constraint to include all app-used values
 ALTER TABLE reservations DROP CONSTRAINT IF EXISTS reservations_reservation_status_check;
 ALTER TABLE reservations ADD CONSTRAINT reservations_reservation_status_check
   CHECK (reservation_status IN ('pending','pending_payment','reserved','confirmed','cancelled','refunded'));
+
+-- ─── 3b. Trigger: auto-restore departure capacity on cancel (SECURITY DEFINER) ──
+-- Runs as the function owner (superuser), bypassing RLS on departures.
+-- Fires BEFORE UPDATE so we can set NEW.capacity_restored = true in one round-trip.
+CREATE OR REPLACE FUNCTION fn_restore_departure_capacity()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only act when status changes TO 'cancelled' and not already restored
+  IF NEW.reservation_status = 'cancelled'
+     AND OLD.reservation_status <> 'cancelled'
+     AND NOT OLD.capacity_restored
+     AND OLD.departure_id IS NOT NULL THEN
+
+    UPDATE departures
+    SET capacity = capacity + (
+      SELECT COUNT(*) FROM participants WHERE reservation_id = OLD.id
+    )
+    WHERE id = OLD.departure_id;
+
+    -- Mark restored so a subsequent delete does not double-count
+    NEW.capacity_restored = true;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_restore_capacity ON reservations;
+CREATE TRIGGER trg_restore_capacity
+  BEFORE UPDATE ON reservations
+  FOR EACH ROW EXECUTE FUNCTION fn_restore_departure_capacity();
 
 -- ─── 4. app_settings: ensure table with key/value schema ─────────────────────
 -- Uses key text PRIMARY KEY (admin.js upserts by key='company_settings')
@@ -183,5 +218,31 @@ DROP POLICY IF EXISTS "app_settings_read" ON app_settings;
 CREATE POLICY "app_settings_read" ON app_settings
   FOR SELECT USING (true);
 
--- ─── 9. Reload PostgREST schema cache ────────────────────────────────────────
+-- ─── 9. departures: admin write (restore capacity on cancel) ─────────────────
+ALTER TABLE departures ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "departures_public_read" ON departures;
+DROP POLICY IF EXISTS "departures_admin"        ON departures;
+
+-- Everyone can read departures (public experience listing needs this)
+CREATE POLICY "departures_public_read" ON departures
+  FOR SELECT USING (true);
+
+-- Admin / operator: full write access (update capacity, create, delete)
+CREATE POLICY "departures_admin" ON departures
+  FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin','operator')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin','operator')
+    )
+  );
+
+-- ─── 10. Reload PostgREST schema cache ───────────────────────────────────────
 NOTIFY pgrst, 'reload schema';

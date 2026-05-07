@@ -2534,7 +2534,7 @@ async function renderReservas(root, openId) {
   // ── Load reservations with joins ───────────────────────────────────────────
   const joinSelect = [
     'id, customer_name, customer_email, customer_phone',
-    'reservation_status, total_amount, amount_paid, payment_method, notes, created_at',
+    'reservation_status, total_amount, amount_paid, payment_method, notes, created_at, capacity_restored',
     'experience_id, departure_id, boarding_point_id',
     'experiences(id, title)',
     'departures(id, start_at)',
@@ -2905,9 +2905,13 @@ async function renderReservas(root, openId) {
             <select class="adm-input adm-input--sm" id="status-sel-${escHtml(b.id)}">${STATUS_OPTIONS}</select>
             <button class="adm-btn adm-btn--secondary adm-btn--sm" id="btn-save-status" data-id="${escHtml(b.id)}">Salvar</button>
           </div>
-          <button class="adm-btn adm-btn--danger adm-btn--sm" id="btn-cancel-booking" data-id="${escHtml(b.id)}" data-name="${escHtml(b.customer_name ?? '')}">
+          ${b.reservation_status !== 'cancelled' ? `
+          <button class="adm-btn adm-btn--danger adm-btn--sm" id="btn-cancel-booking" data-id="${escHtml(b.id)}" data-pax="${b.participants?.length ?? 0}" data-dep="${escHtml(b.departure_id ?? '')}" data-name="${escHtml(b.customer_name ?? '')}">
             Cancelar reserva
-          </button>
+          </button>` : `
+          <button class="adm-btn adm-btn--danger adm-btn--sm" id="btn-delete-booking" data-id="${escHtml(b.id)}" data-name="${escHtml(b.customer_name ?? '')}">
+            🗑 Excluir reserva permanentemente
+          </button>`}
         </div>
       </div>`;
 
@@ -2928,21 +2932,75 @@ async function renderReservas(root, openId) {
     });
 
     // Cancel booking
-    document.getElementById('btn-cancel-booking').addEventListener('click', async () => {
-      const name = document.getElementById('btn-cancel-booking').dataset.name;
-      if (!confirm(`Cancelar a reserva de "${name}"? Esta ação não pode ser desfeita.`)) return;
-      const { error } = await db.from('reservations').update({ reservation_status: 'cancelled' }).eq('id', b.id);
-      if (error) {
-        toast(`Erro ao cancelar: ${error.message}`, 'error');
-        console.error('[admin-reservas] cancelar reserva:', error);
-      } else {
+    if (document.getElementById('btn-cancel-booking')) {
+      document.getElementById('btn-cancel-booking').addEventListener('click', async () => {
+        const btn  = document.getElementById('btn-cancel-booking');
+        const name = btn.dataset.name;
+        if (!confirm(`Cancelar a reserva de "${name}"? Esta ação não pode ser desfeita.`)) return;
+        // The DB trigger fn_restore_departure_capacity (SECURITY DEFINER) handles
+        // capacity restoration automatically on status → 'cancelled'.
+        const { error } = await db.from('reservations').update({ reservation_status: 'cancelled' }).eq('id', b.id);
+        if (error) {
+          toast(`Erro ao cancelar: ${error.message}`, 'error');
+          console.error('[admin-reservas] cancelar reserva:', error);
+          return;
+        }
         toast('Reserva cancelada.', 'success');
         b.reservation_status = 'cancelled';
+        b.capacity_restored  = true; // trigger already ran
         renderTabs();
         renderTable(filtered());
         closeDrawer();
-      }
-    });
+      });
+    }
+
+    // Delete booking (only visible when already cancelled)
+    if (document.getElementById('btn-delete-booking')) {
+      document.getElementById('btn-delete-booking').addEventListener('click', async () => {
+        const name = document.getElementById('btn-delete-booking').dataset.name;
+        if (!confirm(`Excluir permanentemente a reserva de "${name}"?\n\nTodos os participantes e dados associados também serão removidos. Esta ação NÃO pode ser desfeita.`)) return;
+
+        // Restore capacity BEFORE deleting participants, but only if the
+        // cancel step did not already restore it (capacity_restored flag).
+        // This handles reservations cancelled before the DB trigger existed.
+        if (!b.capacity_restored && b.departure_id) {
+          const { data: parts } = await db.from('participants').select('id').eq('reservation_id', b.id);
+          const paxCount = parts?.length ?? 0;
+          if (paxCount > 0) {
+            const { data: dep } = await db.from('departures').select('capacity').eq('id', b.departure_id).single();
+            if (dep) {
+              const { error: capErr } = await db.from('departures')
+                .update({ capacity: dep.capacity + paxCount })
+                .eq('id', b.departure_id);
+              if (capErr) {
+                console.warn('[admin-reservas] restore capacity on delete:', capErr.message);
+              } else {
+                console.log(`[admin-reservas] Vagas restauradas ao excluir: +${paxCount} → ${dep.capacity + paxCount}`);
+              }
+            }
+          }
+        }
+
+        // Delete participants (FK)
+        const { error: pErr } = await db.from('participants').delete().eq('reservation_id', b.id);
+        if (pErr) console.warn('[admin-reservas] delete participants:', pErr.message);
+        // Delete payments
+        const { error: payErr } = await db.from('payments').delete().eq('reservation_id', b.id);
+        if (payErr) console.warn('[admin-reservas] delete payments:', payErr.message);
+        // Delete reservation
+        const { error: rErr } = await db.from('reservations').delete().eq('id', b.id);
+        if (rErr) {
+          toast(`Erro ao excluir: ${rErr.message}`, 'error');
+          console.error('[admin-reservas] delete reservation:', rErr);
+          return;
+        }
+        toast('Reserva excluída permanentemente.', 'success');
+        allBookings = allBookings.filter(x => x.id !== b.id);
+        renderTabs();
+        renderTable(filtered());
+        closeDrawer();
+      });
+    }
   }
 
   $('res-drawer-close').addEventListener('click', closeDrawer);
