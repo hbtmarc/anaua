@@ -2899,14 +2899,16 @@ async function renderReservas(root, openId) {
       <!-- Actions -->
       <div class="adm-drawer-section adm-drawer-section--actions">
         <div class="adm-drawer-section__header">Ações administrativas</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
-          <label style="font-size:12px;color:var(--adm-muted)" for="status-sel-${escHtml(b.id)}">Alterar status:</label>
-          <select class="adm-input adm-input--sm" id="status-sel-${escHtml(b.id)}" style="width:auto">${STATUS_OPTIONS}</select>
-          <button class="adm-btn adm-btn--secondary adm-btn--sm" id="btn-save-status" data-id="${escHtml(b.id)}">Salvar</button>
+        <div class="adm-drawer-section__body">
+          <div class="adm-status-row">
+            <label for="status-sel-${escHtml(b.id)}">Alterar status:</label>
+            <select class="adm-input adm-input--sm" id="status-sel-${escHtml(b.id)}">${STATUS_OPTIONS}</select>
+            <button class="adm-btn adm-btn--secondary adm-btn--sm" id="btn-save-status" data-id="${escHtml(b.id)}">Salvar</button>
+          </div>
+          <button class="adm-btn adm-btn--danger adm-btn--sm" id="btn-cancel-booking" data-id="${escHtml(b.id)}" data-name="${escHtml(b.customer_name ?? '')}">
+            Cancelar reserva
+          </button>
         </div>
-        <button class="adm-btn adm-btn--danger adm-btn--sm" id="btn-cancel-booking" data-id="${escHtml(b.id)}" data-name="${escHtml(b.customer_name ?? '')}" style="margin-top:12px">
-          Cancelar reserva
-        </button>
       </div>`;
 
     // Save status

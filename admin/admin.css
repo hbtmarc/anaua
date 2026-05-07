@@ -1083,9 +1083,7 @@ body.sidebar-collapsed .adm-shell     { margin-left: 0; }
 
 /* ── Utility additions ───────────────────────────────────────────────────── */
 .text-amber  { color: #d97706; }
-.text-right  { text-align: right; }
 .text-center { text-align: center; }
-.adm-mono    { font-family: ui-monospace, 'Cascadia Code', monospace; }
 .adm-input--sm { padding: 5px 9px; font-size: 12px; }
 .adm-avatar--sm { width: 28px; height: 28px; font-size: 10px; flex-shrink: 0; }
 
@@ -1177,19 +1175,29 @@ body.adm-drawer-open { overflow: hidden; }
 /* ── Drawer sections ─────────────────────────────────────────────────────── */
 .adm-drawer-section {
   background: var(--adm-surface);
-  margin: 12px;
+  margin: 10px 12px;
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius);
   overflow: hidden;
 }
 
+.adm-drawer-section:last-child { margin-bottom: 16px; }
+
 .adm-drawer-section__header {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--adm-muted);
-  padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--adm-muted);
+  padding: 9px 14px;
   border-bottom: 1px solid var(--adm-border);
   background: #fafaf8;
+}
+
+/* Badge inside a section header must not inherit uppercase/letter-spacing */
+.adm-drawer-section__header .badge {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10.5px;
+  flex-shrink: 0;
 }
 
 .adm-drawer-section--actions .adm-drawer-section__header {
@@ -1201,33 +1209,75 @@ body.adm-drawer-open { overflow: hidden; }
   border-color: var(--adm-border);
 }
 
+/* ── Section generic body ────────────────────────────────────────────────── */
+.adm-drawer-section__body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Status-change action row */
+.adm-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 34px;
+}
+.adm-status-row label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--adm-muted);
+  white-space: nowrap;
+  line-height: 1;
+}
+.adm-status-row select {
+  min-width: 170px;
+  max-width: 200px;
+}
+
 /* ── Info grid (label/value pairs) ──────────────────────────────────────── */
 .adm-info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
-  padding: 8px;
+  padding: 4px 0;
 }
 
 .adm-info-cell {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: 8px;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #f0eeea;
 }
+/* Remove bottom border from last row cells */
+.adm-info-grid .adm-info-cell:nth-last-child(-n+2):not(.adm-info-cell--full) { border-bottom: none; }
+.adm-info-grid .adm-info-cell--full:last-child { border-bottom: none; }
+
 .adm-info-cell--full { grid-column: 1 / -1; }
 
 .adm-info-cell__label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--adm-muted);
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--adm-muted);
+  line-height: 1.2;
 }
 .adm-info-cell__val {
   font-size: 13px; color: var(--adm-text); font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-.adm-sub-section { padding: 8px 14px 12px; }
+.adm-sub-section { padding: 8px 14px 14px; }
 .adm-sub-section__label {
   font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--adm-muted); margin-bottom: 4px;
+  letter-spacing: .05em; color: var(--adm-muted); margin-bottom: 6px;
+}
+
+/* Monospace code display (voucher codes, IDs) */
+.adm-mono {
+  font-family: ui-monospace, 'Cascadia Mono', 'Fira Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: .03em;
+  word-break: break-all;
 }
 
 /* ── Modal overlay (wide) ────────────────────────────────────────────────── */
