@@ -5,6 +5,54 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
+-- 0. Garante que a coluna `code` existe na tabela reservations
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.reservations
+  ADD COLUMN IF NOT EXISTS code text UNIQUE;
+
+-- -----------------------------------------------------------------------------
+-- 0b. Habilita Realtime nas tabelas principais (necessário para auto-refresh)
+-- -----------------------------------------------------------------------------
+DO $$
+BEGIN
+  -- reservations
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'reservations'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.reservations;
+  END IF;
+  -- departures
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'departures'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.departures;
+  END IF;
+  -- waitlist_entries
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'waitlist_entries'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.waitlist_entries;
+  END IF;
+  -- payments
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'payments'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.payments;
+  END IF;
+  -- participants
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'participants'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.participants;
+  END IF;
+END$$;
+
+-- -----------------------------------------------------------------------------
 -- 1. FUNÇÃO: reserve_departure (parâmetros nomeados, SECURITY DEFINER)
 -- -----------------------------------------------------------------------------
 

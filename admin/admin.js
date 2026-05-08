@@ -146,17 +146,21 @@ function openDrawer(title, bodyHtml) {
 }
 
 function closeDrawer() {
-  // Move focus OUT before aria-hidden=true to avoid the aria-hidden-on-ancestor warning
   const active = document.activeElement;
   const drawer = $('adm-drawer');
-  if (drawer?.contains(active)) {
-    // Return focus to the element that triggered the drawer, or fall back to body
-    (_lastDrawerTrigger ?? document.body)?.focus();
-  }
+  // Blur FIRST — must happen before aria-hidden='true' or the browser warns
+  // about aria-hidden being set on an ancestor of a focused element.
+  if (drawer?.contains(active)) active?.blur();
   drawer?.classList.remove('is-open');
   drawer?.setAttribute('aria-hidden', 'true');
   $('adm-drawer-overlay').classList.remove('is-open');
+  // Restore focus to whoever triggered the drawer (after a tick, so the modal
+  // can steal it first if it's opening immediately after).
+  const trigger = _lastDrawerTrigger;
   _lastDrawerTrigger = null;
+  if (trigger && !$('adm-modal')?.classList.contains('is-open')) {
+    requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+  }
 }
 
 // Track which element triggered the drawer so we can restore focus on close
@@ -264,6 +268,79 @@ window.addEventListener('hashchange', () => navigate(location.hash));
 window.navigate               = navigate;
 window.adminLogout            = adminLogout;
 window.toast                  = toast;
+
+// ─── Real-time sync bus ───────────────────────────────────────────────────────
+// Maps table names → which modules care about them
+const _TABLE_MODULE_MAP = {
+  reservations:    ['dashboard', 'reservas', 'financeiro', 'participantes'],
+  participants:    ['reservas', 'participantes'],
+  payments:        ['financeiro', 'dashboard'],
+  departures:      ['saidas', 'agenda', 'dashboard'],
+  waitlist_entries:['lista-espera'],
+  experiences:     ['experiencias', 'agenda'],
+};
+
+/** Modules that need a full re-render on next visit */
+const _staleModules = new Set();
+
+/**
+ * Call after any DB mutation with the tables that changed.
+ * • If the current module depends on a changed table → re-renders it immediately.
+ * • All other dependent modules are marked stale so they re-render on next navigate.
+ */
+function _dbMutated(tables = []) {
+  const affected = new Set(tables.flatMap(t => _TABLE_MODULE_MAP[t] ?? []));
+  affected.forEach(mod => {
+    if (mod === currentModule) {
+      // Re-render now (non-blocking)
+      const m = MODULES[mod];
+      if (m) {
+        const main = $('adm-main');
+        if (main) m.render(main);
+      }
+    } else {
+      _staleModules.add(mod);
+    }
+  });
+}
+window._dbMutated = _dbMutated;
+
+// Patch navigate to clear stale flag for the module being visited
+// (navigate always fetches fresh — stale set is only used to badge nav items in future)
+const _origNavigate = window.navigate;
+window.navigate = function(hash) {
+  const mod = (hash.replace('#', '') || 'dashboard').split('/')[0];
+  _staleModules.delete(mod);
+  _origNavigate(hash);
+};
+
+// ─── Supabase Realtime subscription (set up after auth) ───────────────────────
+let _realtimeChannel = null;
+function setupRealtimeSync(db) {
+  if (_realtimeChannel) {
+    db.removeChannel(_realtimeChannel);
+    _realtimeChannel = null;
+  }
+
+  const WATCHED = ['reservations', 'departures', 'waitlist_entries', 'payments', 'participants'];
+
+  _realtimeChannel = db.channel('admin-global');
+
+  WATCHED.forEach(table => {
+    _realtimeChannel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table },
+      payload => {
+        console.log(`[admin-rt] ${table} ${payload.eventType}`);
+        _dbMutated([table]);
+      }
+    );
+  });
+
+  _realtimeChannel.subscribe(status => {
+    console.log('[admin-rt] Realtime status:', status);
+  });
+}
 window.closeDrawer            = closeDrawer;
 window.closeModal             = closeModal;
 window.openNovaExperienciaModal = openNovaExperienciaModal;
@@ -2116,6 +2193,7 @@ async function openEditExperienciaModal(id) {
       closeModal();
       await db.from('departures').delete().eq('experience_id', id);
       await db.from('waitlist_entries').delete().eq('experience_id', id);
+      _dbMutated(['departures', 'waitlist_entries', 'experiences']);
       const { error: delErr } = await db.from('experiences').delete().eq('id', id);
       if (delErr) { toast('Erro ao excluir: ' + delErr.message, 'error'); return; }
       toast('Experiência excluída.', 'success');
@@ -2261,6 +2339,7 @@ async function openEditExperienciaModal(id) {
         notes:              document.getElementById('ee-res-notes')?.value.trim() || null,
       };
       const { data: resData, error: resErr } = await db.from('reservations').insert(resPayload).select('id').single();
+      if (!resErr) _dbMutated(['reservations', 'departures']);
       if (resErr) toast('Reserva não criada: ' + resErr.message, 'error');
       else { newResId = resData?.id; msgs.push('Reserva criada.'); }
     }
@@ -2588,6 +2667,7 @@ window._wlQuickStatus = async function(id, sel) {
 
 async function _wlPatchEntry(id, patch) {
   const { error } = await window.anauaDb.from('waitlist_entries').update(patch).eq('id', id);
+  if (!error) _dbMutated(['waitlist_entries']);
   if (error) throw error;
   const idx = _wlEntries.findIndex(e => e.id === id);
   if (idx !== -1) _wlEntries[idx] = { ..._wlEntries[idx], ...patch };
@@ -3012,27 +3092,40 @@ window.wlConvert = async function(id) {
   document.getElementById('adm-modal-body').innerHTML = `
     <div class="wlc-form">
 
-      <!-- Interesse original -->
-      <div class="adm-section">
-        <div class="adm-section__title">Interesse original</div>
-        <div class="wlc-origin-card">
-          <dl class="wlc-origin-dl">
-            <dt>Experiência</dt>
-            <dd>${escHtml(entry.experiences?.title ?? entry.experience_id ?? '—')}</dd>
-            <dt>Saída desejada</dt>
-            <dd>${prefDate ? fmtDate(prefDate.start_at) : '—'}</dd>
-            <dt>Participantes</dt>
-            <dd>${paxCount} pax</dd>
-            ${entry.message ? `
-            <dt>Mensagem</dt>
-            <dd class="wlc-origin-msg">${escHtml(entry.message)}</dd>` : ''}
-          </dl>
+      <!-- ① Interesse original -->
+      <div class="wlc-card wlc-card--origin">
+        <div class="wlc-card__head">
+          <span class="wlc-step">①</span>
+          <span class="wlc-card__title">Interesse original</span>
+          <span class="adm-badge adm-badge--info wlc-card__badge">somente leitura</span>
+        </div>
+        <div class="wlc-origin-cols">
+          <div class="wlc-origin-col">
+            <span class="wlc-lbl">Experiência</span>
+            <span class="wlc-val">${escHtml(entry.experiences?.title ?? entry.experience_id ?? '—')}</span>
+          </div>
+          <div class="wlc-origin-col">
+            <span class="wlc-lbl">Saída desejada</span>
+            <span class="wlc-val">${prefDate ? fmtDate(prefDate.start_at) : '—'}</span>
+          </div>
+          <div class="wlc-origin-col">
+            <span class="wlc-lbl">Participantes</span>
+            <span class="wlc-val">${paxCount} pax</span>
+          </div>
+          ${entry.message ? `
+          <div class="wlc-origin-col wlc-origin-col--full">
+            <span class="wlc-lbl">Mensagem</span>
+            <span class="wlc-val wlc-val--msg">${escHtml(entry.message)}</span>
+          </div>` : ''}
         </div>
       </div>
 
-      <!-- Nova reserva -->
-      <div class="adm-section">
-        <div class="adm-section__title">Nova reserva</div>
+      <!-- ② Nova reserva -->
+      <div class="wlc-card">
+        <div class="wlc-card__head">
+          <span class="wlc-step">②</span>
+          <span class="wlc-card__title">Nova reserva</span>
+        </div>
         <div class="adm-field">
           <label for="wlc-dep">Saída *</label>
           <select id="wlc-dep" class="adm-input">
@@ -3042,17 +3135,23 @@ window.wlConvert = async function(id) {
           </select>
           <div id="wlc-dep-info" class="wlc-dep-info" style="display:none"></div>
         </div>
-        <div id="wlc-bp-wrap" class="adm-field" style="display:none; margin-top:10px">
-          <label for="wlc-bp">Ponto de embarque</label>
+        <div id="wlc-bp-wrap" class="adm-field wlc-bp-field" style="display:none">
+          <label for="wlc-bp">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Ponto de embarque
+          </label>
           <select id="wlc-bp" class="adm-input">
             <option value="">— Selecione —</option>
           </select>
         </div>
       </div>
 
-      <!-- Responsável -->
-      <div class="adm-section">
-        <div class="adm-section__title">Responsável pela reserva</div>
+      <!-- ③ Responsável -->
+      <div class="wlc-card">
+        <div class="wlc-card__head">
+          <span class="wlc-step">③</span>
+          <span class="wlc-card__title">Responsável pela reserva</span>
+        </div>
         <div class="adm-grid-3">
           <div class="adm-field">
             <label for="wlc-name">Nome completo *</label>
@@ -3069,21 +3168,31 @@ window.wlConvert = async function(id) {
         </div>
       </div>
 
-      <!-- Participantes -->
-      <div class="adm-section">
-        <div class="adm-section__title">Participantes</div>
-        <div class="wlc-pax-controls">
-          <button type="button" id="wlc-rem-pax" class="adm-btn adm-btn--ghost adm-btn--sm">− Remover</button>
+      <!-- ④ Participantes -->
+      <div class="wlc-card">
+        <div class="wlc-card__head">
+          <span class="wlc-step">④</span>
+          <span class="wlc-card__title">Participantes</span>
           <span id="wlc-pax-count" class="wlc-pax-badge">${paxCount}</span>
-          <button type="button" id="wlc-add-pax" class="adm-btn adm-btn--ghost adm-btn--sm">+ Adicionar</button>
+          <div class="wlc-pax-controls">
+            <button type="button" id="wlc-rem-pax" class="adm-btn adm-btn--ghost adm-btn--sm" title="Remover último">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button type="button" id="wlc-add-pax" class="adm-btn adm-btn--ghost adm-btn--sm" title="Adicionar participante">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
         </div>
         <div id="wlc-pax" class="wlc-pax-list">${buildPaxFields(paxCount, entry.name ?? '')}</div>
         <div id="wlc-cap-warn" class="wlc-cap-warn" style="display:none"></div>
       </div>
 
-      <!-- Pagamento -->
-      <div class="adm-section">
-        <div class="adm-section__title">Pagamento</div>
+      <!-- ⑤ Pagamento -->
+      <div class="wlc-card wlc-card--pay">
+        <div class="wlc-card__head">
+          <span class="wlc-step wlc-step--pay">⑤</span>
+          <span class="wlc-card__title">Pagamento</span>
+        </div>
         <div class="wlc-pay-grid">
           <div class="adm-field">
             <label for="wlc-method">Forma de pagamento</label>
@@ -3111,13 +3220,15 @@ window.wlConvert = async function(id) {
         </div>
       </div>
 
-      <!-- Observações -->
-      <div class="adm-section">
-        <div class="adm-section__title">Observações</div>
-        <div class="adm-field">
-          <textarea id="wlc-notes" class="adm-input wlc-notes" rows="2"
-            placeholder="Restrições alimentares, pedidos especiais…">${escHtml(entry.message ?? '')}</textarea>
+      <!-- ⑥ Observações -->
+      <div class="wlc-card wlc-card--last">
+        <div class="wlc-card__head">
+          <span class="wlc-step">⑥</span>
+          <span class="wlc-card__title">Observações</span>
+          <span class="wlc-card__hint">opcional</span>
         </div>
+        <textarea id="wlc-notes" class="adm-input wlc-notes" rows="2"
+          placeholder="Restrições alimentares, pedidos especiais…">${escHtml(entry.message ?? '')}</textarea>
       </div>
 
     </div>`;
@@ -3532,6 +3643,7 @@ window.wlConvert = async function(id) {
     closeModal();
     toast(`✓ Reserva ${rpcData.code ?? ''} criada com sucesso!`, 'success');
     window._wlConvertCleanup?.();
+    _dbMutated(['reservations', 'waitlist_entries', 'departures']);
   });
 };
 
@@ -3584,6 +3696,7 @@ window.wlDeleteEntry = async function(id) {
   try {
     const db = window.anauaDb;
     const { error } = await db.from('waitlist_entries').delete().eq('id', id);
+    if (!error) _dbMutated(['waitlist_entries']);
     if (error) throw error;
     _wlEntries = _wlEntries.filter(e => e.id !== id);
     window._wlRenderList();
@@ -4534,6 +4647,7 @@ async function renderReservas(root, openId) {
     document.getElementById('btn-save-status').addEventListener('click', async () => {
       const newStatus = document.getElementById(`status-sel-${b.id}`).value;
       const { error } = await db.from('reservations').update({ reservation_status: newStatus }).eq('id', b.id);
+      if (!error) _dbMutated(['reservations']);
       if (error) {
         toast(`Erro ao alterar status: ${error.message}`, 'error');
         console.error('[admin-reservas] update status:', error);
@@ -4555,6 +4669,7 @@ async function renderReservas(root, openId) {
         // The DB trigger fn_restore_departure_capacity (SECURITY DEFINER) handles
         // capacity restoration automatically on status → 'cancelled'.
         const { error } = await db.from('reservations').update({ reservation_status: 'cancelled' }).eq('id', b.id);
+        if (!error) _dbMutated(['reservations', 'departures']);
         if (error) {
           toast(`Erro ao cancelar: ${error.message}`, 'error');
           console.error('[admin-reservas] cancelar reserva:', error);
@@ -4604,6 +4719,7 @@ async function renderReservas(root, openId) {
         if (payErr) console.warn('[admin-reservas] delete payments:', payErr.message);
         // Delete reservation
         const { error: rErr } = await db.from('reservations').delete().eq('id', b.id);
+        if (!rErr) _dbMutated(['reservations', 'participants', 'payments', 'departures']);
         if (rErr) {
           toast(`Erro ao excluir: ${rErr.message}`, 'error');
           console.error('[admin-reservas] delete reservation:', rErr);
@@ -4871,6 +4987,7 @@ async function renderParticipantes(root) {
     if (!isAdmin) { toast('Apenas administradores podem excluir participantes.', 'error'); return; }
     if (!confirm(`Excluir "${name}"?\n\nEsta ação é permanente e não pode ser desfeita.`)) return;
     const { error } = await db.from('participants').delete().eq('id', participantId);
+    if (!error) _dbMutated(['participants']);
     if (error) { toast('Erro: ' + error.message, 'error'); return; }
     participants = participants.filter(p => p.id !== participantId);
     renderGroups(participants);
@@ -4972,116 +5089,291 @@ async function renderParticipantes(root) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function renderFinanceiro(root) {
-  let allPayments   = [];
   let allReservations = [];
-  let activeTab     = 'all';
+  let activeTab       = 'all';
+  let searchQ         = '';
 
   const TABS = [
-    { key: 'all',       label: 'Todos'                },
-    { key: 'paid',      label: 'Pagos'                },
+    { key: 'all',       label: 'Todas'                },
+    { key: 'paid',      label: 'Pagas'                },
     { key: 'pending',   label: 'Pendentes'            },
-    { key: 'cancelled', label: 'Cancelados/Créditos'  },
+    { key: 'cancelled', label: 'Canceladas'           },
   ];
 
+  // ── Skeleton ──────────────────────────────────────────────────────────────
   root.innerHTML = `
-    <div class="adm-kpi-row" id="fin-kpi-row">
-      ${kpi('Carregando…','…','pagamentos','green','<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>')}
-    </div>
-    <div class="adm-card">
-      <div class="adm-tabs" id="fin-tabs"></div>
-      <div style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px">
-        <button class="adm-btn adm-btn--secondary adm-btn--sm" id="fin-export">⬇ Exportar CSV</button>
+    <div class="fin-layout">
+      <div class="fin-kpis" id="fin-kpis">
+        ${[0,1,2,3,4].map(() => `<div class="adm-kpi fin-kpi-skeleton"></div>`).join('')}
       </div>
-      <div class="adm-table-wrap">
-        <table class="adm-table">
-          <thead><tr><th>Código</th><th>Responsável</th><th>Experiência</th><th>Método</th><th>Valor</th><th>Status pag.</th><th>Data pag.</th><th>Status reserva</th></tr></thead>
-          <tbody id="fin-tbody"><tr><td colspan="8" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
-        </table>
+      <div class="fin-midrow">
+        <div class="adm-card fin-chart-card" id="fin-chart-card">
+          <div class="adm-card__header"><span class="adm-card__title">Receita mensal</span></div>
+          <div class="fin-chart-body"><p class="text-muted" style="padding:24px">Carregando…</p></div>
+        </div>
+        <div class="adm-card fin-breakdown-card" id="fin-breakdown-card">
+          <div class="adm-card__header"><span class="adm-card__title">Método de pagamento</span></div>
+          <div class="fin-breakdown-body"><p class="text-muted" style="padding:24px">Carregando…</p></div>
+        </div>
+      </div>
+      <div class="adm-card fin-table-card">
+        <div class="adm-card__header">
+          <span class="adm-card__title">Transações</span>
+          <div class="adm-card__actions">
+            <div class="adm-search-box fin-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="fin-search" class="adm-search-box__input" placeholder="Buscar responsável, código…" />
+            </div>
+            <button class="adm-btn adm-btn--ghost adm-btn--sm" id="fin-export">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+        <div class="adm-tabs" id="fin-tabs"></div>
+        <div class="adm-table-wrap">
+          <table class="adm-table fin-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Responsável</th>
+                <th>Experiência</th>
+                <th>Método</th>
+                <th class="text-right">Total</th>
+                <th class="text-right">Pago</th>
+                <th class="text-right">Saldo</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="fin-tbody"><tr><td colspan="9" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>`;
 
+  // ── Fetch ─────────────────────────────────────────────────────────────────
   const db = window.anauaDb;
   if (db) {
-    const [paymentsRes, reservationsRes] = await Promise.all([
-      db.from('payments').select('id, reservation_id, amount, method, status, paid_at, reservations(experience_id, reservation_status)').order('paid_at', { ascending: false }),
-      db.from('reservations').select('id, total_amount, amount_paid, reservation_status').order('created_at', { ascending: false }),
-    ]);
-    if (!paymentsRes.error) {
-      allPayments = paymentsRes.data ?? [];
-      console.log('[admin-db] Pagamentos carregados:', allPayments.length);
-    } else {
-      console.warn('[admin-db] Erro ao carregar pagamentos:', paymentsRes.error.message);
-    }
-    if (!reservationsRes.error) {
-      allReservations = reservationsRes.data ?? [];
-    }
+    const { data, error } = await db
+      .from('reservations')
+      .select('id, code, customer_name, experience_id, experiences(title), total_amount, amount_paid, payment_method, reservation_status, created_at')
+      .order('created_at', { ascending: false });
+    if (!error) allReservations = data ?? [];
+    else console.warn('[fin] Erro:', error.message);
   }
 
-  const totalPaid      = allPayments.filter(p => p.status === 'paid').reduce((s, p) => s + Number(p.amount ?? 0), 0);
-  const totalPending   = allReservations.reduce((s, r) => s + Math.max(0, Number(r.total_amount ?? 0) - Number(r.amount_paid ?? 0)), 0);
-  const totalCancelled = allReservations.filter(r => r.reservation_status === 'cancelled').reduce((s, r) => s + Number(r.amount_paid ?? 0), 0);
+  // ── Derived metrics ───────────────────────────────────────────────────────
+  const active = allReservations.filter(r => !['cancelled','refunded'].includes(r.reservation_status));
+  const cancelled = allReservations.filter(r => ['cancelled','refunded'].includes(r.reservation_status));
 
-  document.getElementById('fin-kpi-row').innerHTML =
-    kpi('Total recebido',      fmt(totalPaid),      'pagamentos confirmados',     'green',  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>') +
-    kpi('A receber',           fmt(totalPending),   'saldo pendente',             'gold',   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>') +
-    kpi('Cancelados/Créditos', fmt(totalCancelled), 'valor pago em canceladas',   'red',    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>') +
-    kpi('Total de pagamentos', allPayments.length,  'registros na tabela',        'purple', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>');
+  const totalReceita   = active.reduce((s, r) => s + Number(r.amount_paid  ?? 0), 0);
+  const totalPendente  = active.reduce((s, r) => s + Math.max(0, Number(r.total_amount ?? 0) - Number(r.amount_paid ?? 0)), 0);
+  const totalEmitido   = active.reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+  const totalCancelado = cancelled.reduce((s, r) => s + Number(r.amount_paid ?? 0), 0);
+  const ticketMedio    = active.length ? totalEmitido / active.length : 0;
+  const taxaCobranca   = totalEmitido > 0 ? Math.round((totalReceita / totalEmitido) * 100) : 0;
 
-  function tabPayments(key) {
-    if (key === 'paid')      return allPayments.filter(p => p.status === 'paid');
-    if (key === 'pending')   return allPayments.filter(p => p.status !== 'paid' && p.status !== 'cancelled');
-    if (key === 'cancelled') return allPayments.filter(p => p.reservations?.reservation_status === 'cancelled');
-    return allPayments;
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const SVG_MONEY   = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`;
+  const SVG_CLOCK   = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+  const SVG_CANCEL  = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  const SVG_TICKET  = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/></svg>`;
+  const SVG_PCT     = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>`;
+
+  document.getElementById('fin-kpis').innerHTML =
+    finKpi('Receita recebida',  fmt(totalReceita),          'valor pago confirmado',  'green',  SVG_MONEY)  +
+    finKpi('A receber',         fmt(totalPendente),          'saldo em aberto',        'gold',   SVG_CLOCK)  +
+    finKpi('Total emitido',     fmt(totalEmitido),           `${active.length} reservas ativas`, 'blue', SVG_TICKET) +
+    finKpi('Cancelamentos',     fmt(totalCancelado),         'valor pago em canceladas','red',   SVG_CANCEL) +
+    finKpi('Taxa de cobrança',  `${taxaCobranca}%`,          `ticket médio ${fmt(ticketMedio)}`, 'purple', SVG_PCT);
+
+  // ── Monthly bar chart ─────────────────────────────────────────────────────
+  const byMonth = {};
+  allReservations
+    .filter(r => !['cancelled','refunded'].includes(r.reservation_status))
+    .forEach(r => {
+      const d = new Date(r.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      byMonth[key] = (byMonth[key] ?? 0) + Number(r.amount_paid ?? 0);
+    });
+
+  const monthKeys = Object.keys(byMonth).sort().slice(-8);
+  const maxVal    = Math.max(1, ...monthKeys.map(k => byMonth[k]));
+  const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  const chartHtml = monthKeys.length === 0
+    ? `<p class="text-muted fin-chart-empty">Nenhuma receita registrada ainda.</p>`
+    : `<div class="fin-bars">
+        ${monthKeys.map(k => {
+          const [y, m] = k.split('-');
+          const pct = Math.max(4, Math.round((byMonth[k] / maxVal) * 100));
+          return `<div class="fin-bar-col">
+            <div class="fin-bar-tip">${fmt(byMonth[k])}</div>
+            <div class="fin-bar-wrap">
+              <div class="fin-bar" style="height:${pct}%"></div>
+            </div>
+            <div class="fin-bar-lbl">${monthNames[parseInt(m,10)-1]}<br><span>${y}</span></div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+  document.getElementById('fin-chart-card').innerHTML =
+    `<div class="adm-card__header">
+       <span class="adm-card__title">Receita mensal</span>
+       <span class="text-muted text-small">(últimos 8 meses)</span>
+     </div>
+     <div class="fin-chart-body">${chartHtml}</div>`;
+
+  // ── Payment method breakdown ──────────────────────────────────────────────
+  const byMethod = {};
+  active.forEach(r => {
+    const m = r.payment_method ?? 'unknown';
+    byMethod[m] = (byMethod[m] ?? 0) + Number(r.amount_paid ?? 0);
+  });
+  const sortedMethods = Object.entries(byMethod).sort((a,b) => b[1]-a[1]);
+  const maxMethod = Math.max(1, ...sortedMethods.map(([,v]) => v));
+
+  const methodColors = {
+    pix: 'var(--adm-forest-3)', credit_card: '#3b82f6',
+    bank_transfer: '#8b5cf6',   cash: '#f59e0b',
+    signal_balance: '#0ea5e9',  other: '#6b7280',
+  };
+
+  const breakdownHtml = sortedMethods.length === 0
+    ? `<p class="text-muted" style="padding:16px 20px">Sem dados de método.</p>`
+    : sortedMethods.map(([method, val]) => {
+        const pct = Math.round((val / maxMethod) * 100);
+        const color = methodColors[method] ?? '#6b7280';
+        return `<div class="fin-method-row">
+          <div class="fin-method-label">${payMethodLabel(method)}</div>
+          <div class="fin-method-bar-wrap">
+            <div class="fin-method-bar" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <div class="fin-method-val">${fmt(val)}</div>
+        </div>`;
+      }).join('');
+
+  document.getElementById('fin-breakdown-card').innerHTML =
+    `<div class="adm-card__header"><span class="adm-card__title">Por método de pagamento</span></div>
+     <div class="fin-breakdown-body">${breakdownHtml}</div>`;
+
+  // ── Tabs & table ──────────────────────────────────────────────────────────
+  function filterRows() {
+    let rows = allReservations;
+    if (activeTab === 'paid')      rows = rows.filter(r => Number(r.amount_paid ?? 0) >= Number(r.total_amount ?? 0) && Number(r.total_amount ?? 0) > 0 && !['cancelled','refunded'].includes(r.reservation_status));
+    else if (activeTab === 'pending')   rows = rows.filter(r => Number(r.amount_paid ?? 0) < Number(r.total_amount ?? 0) && !['cancelled','refunded'].includes(r.reservation_status));
+    else if (activeTab === 'cancelled') rows = rows.filter(r => ['cancelled','refunded'].includes(r.reservation_status));
+
+    if (searchQ) {
+      const q = searchQ.toLowerCase();
+      rows = rows.filter(r =>
+        (r.customer_name ?? '').toLowerCase().includes(q) ||
+        (r.code ?? '').toLowerCase().includes(q) ||
+        (r.experiences?.title ?? r.experience_id ?? '').toLowerCase().includes(q)
+      );
+    }
+    return rows;
+  }
+
+  function tabCount(key) {
+    let rows = allReservations;
+    if (key === 'paid')      return rows.filter(r => Number(r.amount_paid ?? 0) >= Number(r.total_amount ?? 0) && Number(r.total_amount ?? 0) > 0 && !['cancelled','refunded'].includes(r.reservation_status)).length;
+    if (key === 'pending')   return rows.filter(r => Number(r.amount_paid ?? 0) < Number(r.total_amount ?? 0) && !['cancelled','refunded'].includes(r.reservation_status)).length;
+    if (key === 'cancelled') return rows.filter(r => ['cancelled','refunded'].includes(r.reservation_status)).length;
+    return rows.length;
   }
 
   function renderTabs() {
     document.getElementById('fin-tabs').innerHTML = TABS.map(t => `
       <button class="adm-tab ${activeTab === t.key ? 'is-active' : ''}" data-ftab="${t.key}">
-        ${t.label} <span class="adm-count">${tabPayments(t.key).length}</span>
+        ${t.label} <span class="adm-count">${tabCount(t.key)}</span>
       </button>`).join('');
     document.getElementById('fin-tabs').querySelectorAll('[data-ftab]').forEach(btn => {
-      btn.addEventListener('click', () => { activeTab = btn.dataset.ftab; renderTabs(); renderFTable(tabPayments(activeTab)); });
+      btn.addEventListener('click', () => { activeTab = btn.dataset.ftab; renderTabs(); renderFTable(); });
     });
   }
 
-  function renderFTable(data) {
-    $('fin-tbody').innerHTML = data.length ? data.map(p => {
-      const r = p.reservations ?? {};
+  function payStatus(r) {
+    if (['cancelled','refunded'].includes(r.reservation_status)) return 'cancelled';
+    const paid = Number(r.amount_paid ?? 0);
+    const total = Number(r.total_amount ?? 0);
+    if (total === 0) return 'pending';
+    if (paid >= total) return 'paid';
+    if (paid > 0) return 'partial';
+    return 'pending';
+  }
+
+  function renderFTable() {
+    const data = filterRows();
+    $('fin-tbody').innerHTML = data.length ? data.map(r => {
+      const total   = Number(r.total_amount ?? 0);
+      const paid    = Number(r.amount_paid  ?? 0);
+      const saldo   = Math.max(0, total - paid);
+      const ps      = payStatus(r);
+      const expTitle = r.experiences?.title ?? r.experience_id ?? '—';
       return `<tr>
-        <td class="text-small text-muted no-wrap">${escHtml(p.reservation_id ?? '—')}</td>
+        <td><span class="fin-code">${escHtml(r.code ?? r.id.slice(0,8))}</span></td>
         <td>
-          <div class="text-bold text-muted">—</div>
+          <div class="fin-name">${escHtml(r.customer_name ?? '—')}</div>
         </td>
-        <td class="text-small">${escHtml(r.experience_id ?? '—')}</td>
-        <td class="text-small">${payMethodLabel(p.payment_method ?? p.method)}</td>
-        <td class="text-bold no-wrap">${fmt(p.amount ?? 0)}</td>
-        <td>${badge(p.status ?? 'pending_payment')}</td>
-        <td class="text-small text-muted no-wrap">${p.paid_at ? fmtDateShort(p.paid_at) : '—'}</td>
-        <td>${badge(r.reservation_status ?? 'pending_payment')}</td>
+        <td class="text-small text-muted">${escHtml(expTitle)}</td>
+        <td class="text-small">${payMethodLabel(r.payment_method)}</td>
+        <td class="text-right text-bold no-wrap">${fmt(total)}</td>
+        <td class="text-right no-wrap text-green">${fmt(paid)}</td>
+        <td class="text-right no-wrap ${saldo > 0 ? 'text-gold' : 'text-muted'}">${saldo > 0 ? fmt(saldo) : '—'}</td>
+        <td>${badge(ps)}</td>
+        <td class="text-small text-muted no-wrap">${r.created_at ? fmtDateShort(r.created_at) : '—'}</td>
       </tr>`;
-    }).join('') : `<tr><td colspan="8" class="adm-table__empty text-muted">Nenhuma transação.</td></tr>`;
+    }).join('') : `<tr><td colspan="9" class="adm-table__empty text-muted">Nenhuma transação encontrada.</td></tr>`;
   }
 
   renderTabs();
-  renderFTable(tabPayments(activeTab));
+  renderFTable();
 
+  // ── Search ────────────────────────────────────────────────────────────────
+  let _searchTimer;
+  document.getElementById('fin-search').addEventListener('input', e => {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => {
+      searchQ = e.target.value.trim();
+      renderTabs();
+      renderFTable();
+    }, 200);
+  });
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
   $('fin-export').addEventListener('click', () => {
-    const cols = ['Código','Experiência','Método','Valor','Status pag.','Data pag.','Status reserva'];
-    const rows = tabPayments(activeTab).map(p => {
-      const r = p.reservations ?? {};
-      return [p.reservation_id, r.experience_id ?? '', p.method ?? p.payment_method ?? '', p.amount ?? 0, p.status ?? '', p.paid_at ?? '', r.reservation_status ?? '']
-        .map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    const cols = ['Código','Responsável','Experiência','Método','Total','Pago','Saldo','Status pag.','Status reserva','Data'];
+    const rows = filterRows().map(r => {
+      const total = Number(r.total_amount ?? 0);
+      const paid  = Number(r.amount_paid  ?? 0);
+      return [
+        r.code ?? r.id, r.customer_name ?? '', r.experiences?.title ?? r.experience_id ?? '',
+        r.payment_method ?? '', total, paid, Math.max(0, total - paid),
+        payStatus(r), r.reservation_status ?? '', r.created_at ?? '',
+      ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(',');
     });
-    const csv = [cols.join(','), ...rows].join('\n');
+    const csv  = [cols.join(','), ...rows].join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url; a.download = `anaua-financeiro-${new Date().toISOString().slice(0,10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
     toast('CSV exportado com sucesso!', 'success');
   });
 }
 
+function finKpi(label, value, sub, color, iconSvg) {
+  return `<div class="adm-kpi fin-kpi">
+    <div class="adm-kpi__icon adm-kpi__icon--${color}">${iconSvg}</div>
+    <div class="fin-kpi__body">
+      <div class="adm-kpi__label">${label}</div>
+      <div class="adm-kpi__value">${value}</div>
+      <div class="adm-kpi__sub">${sub}</div>
+    </div>
+  </div>`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: CONFIGURAÇÕES
@@ -6338,6 +6630,7 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     if (bpErr) {
       if (!isEdit && departureId) {
         await window.anauaDb?.from('departures').delete().eq('id', departureId);
+        _dbMutated(['departures']);
         toast(`Pontos de embarque falharam — saída revertida. ${bpErr.message}`, 'error');
       } else {
         toast('Saída salva, mas pontos de embarque falharam: ' + bpErr.message, 'error');
@@ -6869,6 +7162,9 @@ async function renderUsuarios(root) {
     if (avatarEl)   avatarEl.textContent   = displayName[0].toUpperCase();
 
     document.body.style.visibility = 'visible';
+
+    // Inicia sincronização realtime
+    setupRealtimeSync(db);
 
     // Navega apenas após auth confirmada — evita race condition com RLS
     navigate(location.hash || '#dashboard');

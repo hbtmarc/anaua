@@ -32,8 +32,12 @@ export const STATUS_LABEL = {
   reserved:        'Reservado',
   confirmed:       'Confirmado',
   cancelled:       'Cancelado',
+  refunded:        'Reembolsado',
   no_show:         'Não compareceu',
   completed:       'Concluído',
+  // payment statuses
+  paid:            'Pago',
+  partial:         'Parcial',
 };
 
 /** Badge CSS class suffix per status. */
@@ -44,8 +48,12 @@ export const STATUS_CLASS = {
   reserved:        'badge--reserved',
   confirmed:       'badge--confirmed',
   cancelled:       'badge--cancelled',
+  refunded:        'badge--cancelled',
   no_show:         'badge--noshow',
   completed:       'badge--completed',
+  // payment statuses
+  paid:            'badge--confirmed',
+  partial:         'badge--reserved',
 };
 
 // ─── Participant profiles ──────────────────────────────────────────────────────
