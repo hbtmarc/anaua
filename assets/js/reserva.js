@@ -192,7 +192,7 @@ function renderStep1() {
     return;
   }
   $('exit-cards').innerHTML = exits.map(dep => {
-    const soldOut = dep.status !== 'scheduled';
+    const soldOut = dep.status !== 'scheduled' || (dep.capacity ?? 1) <= 0;
     const sel     = draft.exitId === dep.id;
     const dateStr = dep.start_at?.split('T')[0] ?? '';
     return `
@@ -1073,6 +1073,50 @@ $('next-8').addEventListener('click', async () => {
       return;
     }
 
+    // ── Pré-voo: reserva atômica via RPC (bloqueia se esgotado) ─────────────
+    let rpcReservationId = null;
+    if (draft.exitId) {
+      const { data: { user: preUser } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+      const paxForRpc = (booking.participants ?? []).map(p => ({
+        full_name:       p.fullName  ?? p.full_name  ?? p.name ?? '',
+        profile_type:    p.profile   ?? p.profileType ?? p.profile_type ?? 'adult',
+        birthdate:       p.birthdate ?? null,
+        document_number: p.docNumber ?? p.document_number ?? null,
+      }));
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc('reserve_departure', {
+        p_departure_id:   draft.exitId,
+        p_experience_id:  draft.experienceId,
+        p_user_id:        preUser?.id ?? null,
+        p_customer_name:  booking.payer?.fullName ?? '',
+        p_customer_email: booking.payer?.email ?? '',
+        p_customer_phone: booking.payer?.phone ?? '',
+        p_payment_method: booking.paymentMethod ?? null,
+        p_total_amount:   booking.totalAmount ?? 0,
+        p_amount_paid:    booking.paidAmount ?? 0,
+        p_notes:          draft.observations ?? null,
+        p_participants:   JSON.stringify(paxForRpc),
+      });
+
+      if (!rpcErr) {
+        if (!rpcResult?.ok) {
+          // RPC rejeitou (capacidade esgotada) — bloqueia antes de avançar
+          setProcessing(false);
+          showError(rpcResult?.error ?? 'Não foi possível reservar: saída esgotada ou sem vagas disponíveis.');
+          return;
+        }
+        rpcReservationId = rpcResult.reservation_id;
+        console.log('[reserva] Reserva criada via RPC ✓ id:', rpcReservationId);
+      } else if (rpcErr.code !== '42883') {
+        // Erro inesperado (não é "função não existe") — bloqueia
+        setProcessing(false);
+        showError('Erro ao verificar disponibilidade. Tente novamente.');
+        console.error('[reserva] RPC reserve_departure falhou:', rpcErr);
+        return;
+      }
+      // code 42883 = function not found → fallback para inserção manual abaixo
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     setProcessing(false);
     goTo(9);
     renderVoucher(booking, paymentResult, split);
@@ -1088,26 +1132,49 @@ $('next-8').addEventListener('click', async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { ok: resOk, id: resId, error: resErr } = await insertReservation({
-        userId:            user?.id ?? null,
-        experienceId:      draft.experienceId,
-        exitId:            draft.exitId ?? null,
-        boardingPointId:   draft.boardingPointId ?? null,
-        payer:             booking.payer,
-        totalAmount:       booking.totalAmount,
-        amountPaid:        booking.paidAmount ?? 0,
-        reservationStatus: booking.status,
-        paymentMethod:     booking.paymentMethod ?? null,
-        notes:             draft.observations ?? null,
-      });
+      const { ok: resOk, id: resId, error: resErr } = rpcReservationId
+        ? { ok: true, id: rpcReservationId, error: null }   // RPC já criou a reserva
+        : await insertReservation({
+            userId:            user?.id ?? null,
+            experienceId:      draft.experienceId,
+            exitId:            draft.exitId ?? null,
+            boardingPointId:   draft.boardingPointId ?? null,
+            payer:             booking.payer,
+            totalAmount:       booking.totalAmount,
+            amountPaid:        booking.paidAmount ?? 0,
+            reservationStatus: booking.status,
+            paymentMethod:     booking.paymentMethod ?? null,
+            notes:             draft.observations ?? null,
+          });
 
       if (resOk && resId) {
-        const { ok: partOk, count: partCount, error: partErr } = await insertParticipants(resId, booking.participants ?? []);
-        if (!partOk) {
-          console.error('[reserva] insertParticipants falhou — resId:', resId, '| erro:', partErr);
-          showToast('Reserva criada, mas participantes não foram salvos. contate o suporte com o código da reserva.', 'warning', 10000);
-        } else {
-          console.log('[reserva] Participantes salvos no Supabase ✓', partCount);
+        // Participantes e capacidade — só necessário no fallback manual (RPC já faz isso atomicamente)
+        if (!rpcReservationId) {
+          const { ok: partOk, count: partCount, error: partErr } = await insertParticipants(resId, booking.participants ?? []);
+          if (!partOk) {
+            console.error('[reserva] insertParticipants falhou — resId:', resId, '| erro:', partErr);
+            showToast('Reserva criada, mas participantes não foram salvos. contate o suporte com o código da reserva.', 'warning', 10000);
+          } else {
+            console.log('[reserva] Participantes salvos no Supabase ✓', partCount);
+          }
+
+          // Decrementa vagas disponíveis na saída escolhida e marca como esgotada se necessário
+          const totalPax = (draft.profileQtys ?? []).reduce((s, p) => s + p.qty, 0);
+          if (totalPax > 0 && draft.exitId) {
+            const dep = (exp?.departures ?? []).find(d => d.id === draft.exitId);
+            const newCap = Math.max(0, (dep?.capacity ?? 0) - totalPax);
+            const capUpdate = { capacity: newCap };
+            if (newCap <= 0) capUpdate.status = 'sold_out';
+            const { error: capErr } = await supabase
+              .from('departures')
+              .update(capUpdate)
+              .eq('id', draft.exitId);
+            if (capErr) {
+              console.warn('[reserva] Falha ao decrementar vagas:', capErr.message);
+            } else {
+              console.log('[reserva] Vagas atualizadas ✓ novo capacity:', newCap, newCap <= 0 ? '— marcada como esgotada' : '');
+            }
+          }
         }
 
         // Sync: update customer_profiles + emergency_contacts with latest confirmed booking data
@@ -1132,21 +1199,6 @@ $('next-8').addEventListener('click', async () => {
           }
         }
 
-        // Decrementa vagas disponíveis na saída escolhida
-        const totalPax = (draft.profileQtys ?? []).reduce((s, p) => s + p.qty, 0);
-        if (totalPax > 0 && draft.exitId) {
-          const dep = (exp?.departures ?? []).find(d => d.id === draft.exitId);
-          const newCap = Math.max(0, (dep?.capacity ?? 0) - totalPax);
-          const { error: capErr } = await supabase
-            .from('departures')
-            .update({ capacity: newCap })
-            .eq('id', draft.exitId);
-          if (capErr) {
-            console.warn('[reserva] Falha ao decrementar vagas:', capErr.message);
-          } else {
-            console.log('[reserva] Vagas atualizadas ✓ novo capacity:', newCap);
-          }
-        }
         if (booking.paymentMethod) {
           await insertPaymentRecord({
             reservationId: resId,

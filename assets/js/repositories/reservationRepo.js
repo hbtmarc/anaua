@@ -109,12 +109,14 @@ export async function insertParticipants(reservationId, participants) {
   // Insert all available columns. birthdate is nullable — omit if absent.
   const rows = participants.map(p => {
     const row = {
-      reservation_id: reservationId,
-      full_name:      p.fullName ?? p.name ?? null,
-      profile_type:   p.profile  ?? p.profile_type ?? null,
+      reservation_id:  reservationId,
+      full_name:       p.fullName ?? p.full_name ?? p.name ?? null,
+      profile_type:    p.profile  ?? p.profileType ?? p.profile_type ?? null,
     };
     const bd = p.birthdate ?? p.birth_date ?? null;
     if (bd) row.birthdate = bd;
+    const doc = p.docNumber ?? p.document_number ?? null;
+    if (doc) row.document_number = doc;
     return row;
   });
 

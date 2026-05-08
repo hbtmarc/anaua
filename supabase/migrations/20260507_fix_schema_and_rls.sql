@@ -4,12 +4,14 @@
 -- Run in Supabase SQL Editor (once).
 -- =============================================================================
 
--- ─── 1. participants: ensure full_name column ─────────────────────────────────
+-- ─── 1. participants: ensure full_name, birthdate, document_number columns ─────
 -- The JS was inserting into 'name' but Supabase schema uses 'full_name'.
 -- We add full_name if missing; also keep 'name' as alias if code still uses it.
-ALTER TABLE participants ADD COLUMN IF NOT EXISTS full_name text;
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS full_name       text;
 -- birthdate was in the JS but column did not exist in DB — add it safely
-ALTER TABLE participants ADD COLUMN IF NOT EXISTS birthdate date;
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS birthdate       date;
+-- document_number stores CPF (digits only) — nullable to preserve old records
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS document_number text;
 
 -- If 'name' column exists, migrate data then drop it
 DO $$
@@ -291,5 +293,137 @@ CREATE POLICY "experiences_admin" ON experiences
     )
   );
 
--- ─── 11. Reload PostgREST schema cache ───────────────────────────────────────
+-- ─── 11. departures: fix status constraint to allow sold_out/completed ───────
+-- The UI uses 'sold_out' and 'completed' but the original schema may only allow
+-- 'scheduled' and 'cancelled'. This widens it idempotently.
+ALTER TABLE departures DROP CONSTRAINT IF EXISTS departures_status_check;
+ALTER TABLE departures ADD CONSTRAINT departures_status_check
+  CHECK (status IN ('scheduled', 'sold_out', 'cancelled', 'completed'));
+
+-- Ensure the column exists with a safe default
+ALTER TABLE departures ALTER COLUMN status SET DEFAULT 'scheduled';
+
+-- ─── 12. RPC: reserve_departure — atomic reservation with capacity lock ───────
+-- Locks the departure row, validates capacity, creates reservation + participants
+-- and updates status to 'sold_out' when capacity reaches zero.
+-- Runs as SECURITY DEFINER so it bypasses RLS on departures.
+CREATE OR REPLACE FUNCTION reserve_departure(
+  p_departure_id     uuid,
+  p_experience_id    uuid,
+  p_user_id          uuid,
+  p_customer_name    text,
+  p_customer_email   text,
+  p_customer_phone   text,
+  p_payment_method   text,
+  p_total_amount     numeric,
+  p_amount_paid      numeric,
+  p_notes            text,
+  p_participants     jsonb   -- array of {full_name, profile_type, birthdate}
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_departure        departures%ROWTYPE;
+  v_occupied_seats   int;
+  v_pax_count        int;
+  v_new_capacity     int;
+  v_reservation_id   uuid;
+  v_participant      jsonb;
+BEGIN
+  -- Lock the departure row to prevent race conditions
+  SELECT * INTO v_departure
+  FROM departures
+  WHERE id = p_departure_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Saída não encontrada.');
+  END IF;
+
+  IF v_departure.status IN ('cancelled', 'completed') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Saída não está mais disponível.');
+  END IF;
+
+  IF v_departure.status = 'sold_out' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Saída esgotada.');
+  END IF;
+
+  -- Count occupied seats from non-cancelled reservations
+  SELECT COALESCE(SUM(p_count.cnt), 0) INTO v_occupied_seats
+  FROM (
+    SELECT COUNT(*) AS cnt
+    FROM participants pt
+    JOIN reservations r ON r.id = pt.reservation_id
+    WHERE r.departure_id = p_departure_id
+      AND r.reservation_status NOT IN ('cancelled', 'refunded')
+  ) p_count;
+
+  v_pax_count := jsonb_array_length(p_participants);
+
+  IF v_pax_count = 0 THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Informe pelo menos um participante.');
+  END IF;
+
+  -- Check capacity
+  IF (v_departure.capacity - v_occupied_seats) < v_pax_count THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', format(
+        'Vagas insuficientes. Disponível: %s. Solicitado: %s.',
+        GREATEST(v_departure.capacity - v_occupied_seats, 0),
+        v_pax_count
+      )
+    );
+  END IF;
+
+  -- Create reservation
+  INSERT INTO reservations (
+    departure_id, experience_id, user_id,
+    customer_name, customer_email, customer_phone,
+    payment_method, reservation_status,
+    total_amount, amount_paid, notes
+  ) VALUES (
+    p_departure_id, p_experience_id, p_user_id,
+    p_customer_name, p_customer_email, p_customer_phone,
+    p_payment_method, 'reserved',
+    p_total_amount, p_amount_paid, p_notes
+  )
+  RETURNING id INTO v_reservation_id;
+
+  -- Insert participants
+  FOR v_participant IN SELECT * FROM jsonb_array_elements(p_participants) LOOP
+    INSERT INTO participants (reservation_id, full_name, profile_type, birthdate, document_number)
+    VALUES (
+      v_reservation_id,
+      NULLIF(v_participant->>'full_name', ''),
+      COALESCE(NULLIF(v_participant->>'profile_type', ''), 'adult'),
+      CASE WHEN (v_participant->>'birthdate') = '' OR (v_participant->>'birthdate') IS NULL
+           THEN NULL
+           ELSE (v_participant->>'birthdate')::date END,
+      NULLIF(v_participant->>'document_number', '')
+    );
+  END LOOP;
+
+  -- Decrement capacity and auto-mark sold_out when full
+  v_new_capacity := v_departure.capacity - v_pax_count;
+  UPDATE departures
+  SET
+    capacity = GREATEST(v_new_capacity, 0),
+    status   = CASE WHEN v_new_capacity <= 0 THEN 'sold_out' ELSE status END
+  WHERE id = p_departure_id;
+
+  RETURN jsonb_build_object(
+    'ok',             true,
+    'reservation_id', v_reservation_id,
+    'new_capacity',   GREATEST(v_new_capacity, 0),
+    'sold_out',       v_new_capacity <= 0
+  );
+END;
+$$;
+
+-- Grant execute to authenticated users (RLS on related tables still applies for reads)
+GRANT EXECUTE ON FUNCTION reserve_departure TO authenticated;
+
+-- ─── 13. Reload PostgREST schema cache ───────────────────────────────────────
 NOTIFY pgrst, 'reload schema';

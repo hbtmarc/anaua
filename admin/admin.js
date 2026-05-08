@@ -56,6 +56,13 @@ function fmtDateShort(iso) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')));
 }
 
+/** Formata CPF: digits → 000.000.000-00 */
+function fmtCpfAdmin(v) {
+  const d = String(v ?? '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+  return v ?? '—';
+}
+
 function initials(name) {
   const p = (name ?? '').trim().split(' ').filter(Boolean);
   if (!p.length) return '?';
@@ -2999,7 +3006,7 @@ async function renderReservas(root, openId) {
     $('res-drawer-body').innerHTML = `<div style="padding:40px;text-align:center;color:var(--adm-muted)">Carregando…<br/><br/><div class="adm-spinner"></div></div>`;
 
     const [{ data: parts, error: pErr }, { data: pmts, error: pmtErr }] = await Promise.all([
-      db.from('participants').select('id, full_name, profile_type, birthdate').eq('reservation_id', id).order('id'),
+      db.from('participants').select('id, full_name, profile_type, birthdate, document_number').eq('reservation_id', id).order('id'),
       db.from('payments').select('id, amount, method, status, paid_at').eq('reservation_id', id).order('paid_at', { ascending: false }),
     ]);
 
@@ -3127,10 +3134,11 @@ async function renderReservas(root, openId) {
         </div>
         ${(parts ?? []).length ? `
         <table class="adm-table adm-table--compact" style="margin-top:8px">
-          <thead><tr><th>Nome</th><th>Perfil</th><th>Nascimento</th></tr></thead>
+          <thead><tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Nascimento</th></tr></thead>
           <tbody>
             ${parts.map(p => `<tr>
               <td style="font-weight:500;font-size:12px">${escHtml(p.full_name ?? '—')}</td>
+              <td style="font-size:11px;color:var(--adm-muted);font-family:monospace">${p.document_number ? fmtCpfAdmin(p.document_number) : '—'}</td>
               <td style="font-size:12px">${escHtml(p.profile_type ?? '—')}</td>
               <td style="font-size:11px;color:var(--adm-muted)">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
             </tr>`).join('')}
@@ -3406,65 +3414,119 @@ async function renderReservas(root, openId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function renderParticipantes(root) {
-  let participants = [];
-  let search = '';
+  const db = window.anauaDb;
+  const PROFILE_LABEL = { adult: 'Adulto', child: 'Criança', senior: 'Idoso', pcd: 'PCD' };
 
   root.innerHTML = `
-    <div class="adm-card">
-      <div class="adm-filter-bar">
-        <input type="search" class="adm-input" id="part-search" placeholder="Buscar por nome ou documento…" />
-        <span class="adm-filter-count" id="part-count"></span>
-      </div>
-      <div class="adm-table-wrap">
-        <table class="adm-table">
-          <thead><tr><th>Nome</th><th>Documento</th><th>Perfil</th><th>Nascimento</th><th>Reserva</th><th>Status</th></tr></thead>
-          <tbody id="part-tbody"><tr><td colspan="6" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
-        </table>
-      </div>
-    </div>`;
+    <div class="adm-filter-bar" style="margin-bottom:16px">
+      <input type="search" class="adm-input" id="part-search"
+        placeholder="Buscar por nome ou CPF…" style="max-width:360px" />
+      <span class="adm-filter-count" id="part-count"></span>
+    </div>
+    <div id="part-body"><div style="padding:40px;text-align:center;color:var(--adm-muted)">Carregando…</div></div>`;
 
-  const db = window.anauaDb;
-  if (db) {
-    const { data, error } = await db
-      .from('participants')
-      .select('id, full_name, profile_type, birthdate, reservation_id, reservations(reservation_status)')
-      .order('id');
-    if (!error) {
-      participants = data ?? [];
-      console.log('[admin-db] Participantes carregados:', participants.length);
-    } else {
-      console.warn('[admin-db] Erro ao carregar participantes:', error.message);
-      $('part-tbody').innerHTML = `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Não foi possível carregar os participantes.</td></tr>`;
+  if (!db) return;
+
+  // Try rich join; on failure retry without nested joins
+  let participants = [];
+  let expMap = {};  // experienceId → title
+  let depMap = {};  // departureId → { start_at, experience_id }
+
+  const { data, error } = await db
+    .from('participants')
+    .select('id, full_name, document_number, profile_type, birthdate, reservation_id, reservations(id, reservation_status, customer_name, departure_id, experience_id, experiences(id, title), departures(id, start_at))')
+    .order('full_name');
+
+  if (error) {
+    console.warn('[admin-parts] join query falhou, tentando query simples:', error.message);
+    // Fallback: fetch flat and join manually
+    const [{ data: pFlat, error: pFlatErr }, { data: resFlat }] = await Promise.all([
+      db.from('participants').select('id, full_name, document_number, profile_type, birthdate, reservation_id').order('full_name'),
+      db.from('reservations').select('id, reservation_status, customer_name, departure_id, experience_id').order('created_at', { ascending: false }),
+    ]);
+    if (pFlatErr) {
+      $('part-body').innerHTML = `<div style="padding:40px;text-align:center;color:var(--adm-danger)">Erro ao carregar: ${escHtml(pFlatErr.message)}<br><small>Verifique se a migration fix_schema_and_rls.sql foi executada no Supabase.</small></div>`;
       return;
     }
+    const resById = Object.fromEntries((resFlat ?? []).map(r => [r.id, r]));
+    participants = (pFlat ?? []).map(p => ({ ...p, reservations: resById[p.reservation_id] ?? null }));
+  } else {
+    participants = data ?? [];
   }
 
-  function filtered() {
-    const q = search.toLowerCase();
-    return !q ? participants : participants.filter(p =>
-      (p.full_name ?? '').toLowerCase().includes(q)
+  // Build experience → departure → participants grouping
+  function buildGroups(list) {
+    const byExp = {};  // expId → { title, deps: { depId → { start_at, parts[] } } }
+    list.forEach(p => {
+      const res  = p.reservations;
+      const expId    = res?.experience_id  ?? res?.experiences?.id ?? '_unknown';
+      const expTitle = res?.experiences?.title ?? expMap[expId] ?? '(Experiência desconhecida)';
+      const depId    = res?.departure_id ?? '_unknown';
+      const startAt  = res?.departures?.start_at ?? depMap[depId]?.start_at ?? null;
+
+      if (!byExp[expId]) byExp[expId] = { title: expTitle, deps: {} };
+      if (!byExp[expId].deps[depId]) byExp[expId].deps[depId] = { start_at: startAt, parts: [] };
+      byExp[expId].deps[depId].parts.push(p);
+    });
+    return byExp;
+  }
+
+  function renderGroups(list) {
+    $('part-count').textContent = `${list.length} participante(s)`;
+    if (!list.length) {
+      $('part-body').innerHTML = `<div class="adm-empty"><div class="adm-empty__icon">👥</div><div class="adm-empty__title">Nenhum participante encontrado</div></div>`;
+      return;
+    }
+    const groups = buildGroups(list);
+    const html = Object.entries(groups).map(([expId, exp]) => {
+      const depSections = Object.entries(exp.deps)
+        .sort(([, a], [, b]) => (a.start_at ?? '').localeCompare(b.start_at ?? ''))
+        .map(([depId, dep]) => {
+          const depLabel = dep.start_at
+            ? fmtDate(dep.start_at.split('T')[0])
+            : 'Saída não informada';
+          const rows = dep.parts.map(p => `
+            <tr>
+              <td style="font-weight:500;font-size:12px">${escHtml(p.full_name ?? '—')}</td>
+              <td style="font-size:11px;font-family:monospace;color:var(--adm-muted)">${p.document_number ? fmtCpfAdmin(p.document_number) : '—'}</td>
+              <td style="font-size:12px">${escHtml(PROFILE_LABEL[p.profile_type] ?? p.profile_type ?? '—')}</td>
+              <td style="font-size:11px;color:var(--adm-muted)">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
+              <td style="font-size:11px;color:var(--adm-muted)">${badge(p.reservations?.reservation_status ?? 'pending_payment')}</td>
+            </tr>`).join('');
+          return `
+            <div style="margin-bottom:16px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <span style="font-size:12px;font-weight:600;color:var(--adm-text-2)">📅 ${escHtml(depLabel)}</span>
+                <span class="adm-count">${dep.parts.length} pax</span>
+              </div>
+              <table class="adm-table adm-table--compact">
+                <thead><tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Nascimento</th><th>Status</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>`;
+        }).join('');
+      return `
+        <div class="adm-card" style="margin-bottom:20px">
+          <div style="padding:14px 18px 10px;border-bottom:1px solid var(--adm-border,#e5e7eb);display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:15px;font-weight:700">${escHtml(exp.title)}</span>
+            <span class="adm-count">${Object.values(exp.deps).reduce((s,d) => s + d.parts.length, 0)} participante(s)</span>
+          </div>
+          <div style="padding:14px 18px">${depSections}</div>
+        </div>`;
+    }).join('');
+    $('part-body').innerHTML = html;
+  }
+
+  renderGroups(participants);
+
+  $('part-search')?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    const filtered = !q ? participants : participants.filter(p =>
+      (p.full_name ?? '').toLowerCase().includes(q) ||
+      (p.document_number ?? '').includes(q.replace(/\D/g,''))
     );
-  }
-
-  function renderTable(data) {
-    $('part-count').textContent = `${data.length} participante(s)`;
-    $('part-tbody').innerHTML = data.length ? data.map(p => `<tr>
-      <td>
-        <div style="display:flex;align-items:center;gap:7px">
-          <div class="adm-avatar">${initials(p.full_name)}</div>
-          <div class="text-bold">${escHtml(p.full_name ?? '—')}</div>
-        </div>
-      </td>
-      <td class="text-small text-muted">—</td>
-      <td class="text-small">${escHtml(p.profile_type ?? '—')}</td>
-      <td class="text-small text-muted">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
-      <td class="text-small text-muted">${escHtml(p.reservation_id ?? '—')}</td>
-      <td>${badge(p.reservations?.reservation_status ?? 'pending_payment')}</td>
-    </tr>`).join('') : `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhum participante.</td></tr>`;
-  }
-
-  renderTable(filtered());
-  $('part-search').addEventListener('input', e => { search = e.target.value; renderTable(filtered()); });
+    renderGroups(filtered);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3964,7 +4026,22 @@ async function openExitDrawer(exitId) {
   const stLabel = st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta';
 
   // Load boarding points eagerly
-  const { data: bps } = await listAllBoardingPointsByDeparture(exit.id);
+  const [{ data: bps }, { count: occupiedSeats }] = await Promise.all([
+    listAllBoardingPointsByDeparture(exit.id),
+    (async () => {
+      const db = window.anauaDb;
+      if (!db) return { count: null };
+      // Count participants across non-cancelled reservations for this departure
+      const { data: resRows } = await db
+        .from('reservations')
+        .select('id')
+        .eq('departure_id', exit.id)
+        .not('reservation_status', 'in', '(cancelled,refunded)');
+      if (!resRows?.length) return { count: 0 };
+      const ids = resRows.map(r => r.id);
+      return db.from('participants').select('id', { count: 'exact', head: true }).in('reservation_id', ids);
+    })(),
+  ]);
   const bpsHtml = bps?.length
     ? bps.map(bp => {
         const pickupStr = bp.pickupAt
@@ -3987,7 +4064,7 @@ async function openExitDrawer(exitId) {
         ${exit.title ? `<dt>Título</dt><dd>${escHtml(exit.title)}</dd>` : ''}
         <dt>Data/Hora início</dt><dd>${fmtDate(exit.start_at)}</dd>
         ${exit.end_at ? `<dt>Data/Hora fim</dt><dd>${fmtDate(exit.end_at)}</dd>` : ''}
-        <dt>Capacidade</dt><dd>${exit.capacity} vagas</dd>
+        <dt>Capacidade</dt><dd>${exit.capacity} vagas${occupiedSeats != null ? ` · <strong>${occupiedSeats}</strong> ocupadas · <strong>${Math.max(0, exit.capacity - occupiedSeats)}</strong> disponíveis` : ''}</dd>
         ${exit.price != null ? `<dt>Preço</dt><dd>${fmt(exit.price)}</dd>` : ''}
         <dt>Status</dt><dd><span class="badge badge--${st}">${stLabel}</span></dd>
       </div>
@@ -4045,6 +4122,7 @@ async function openExitDrawer(exitId) {
       if (r) r.exit.status = newStatus;
       toast(`Saída ${label} com sucesso!`, 'success');
       closeDrawer();
+      setTimeout(() => openExitDrawer(exit.id), 150);
     });
   });
 }

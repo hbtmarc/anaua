@@ -473,7 +473,7 @@ function initExitSelection(exp) {
   });
 
   // Auto-select first available
-  const firstAvailable = (exp.departures ?? []).find(d => d.status === 'scheduled');
+  const firstAvailable = (exp.departures ?? []).find(d => d.status === 'scheduled' && (d.capacity ?? 1) > 0);
   if (firstAvailable) selectExit(firstAvailable.id);
 }
 
@@ -503,7 +503,7 @@ function renderBookingBox(exp, bpMap = {}) {
   const box = document.getElementById('booking-box');
   if (!box) return;
 
-  const activeDeps = (exp.departures ?? []).filter(d => d.status === 'scheduled');
+  const activeDeps = (exp.departures ?? []).filter(d => d.status === 'scheduled' && (d.capacity ?? 1) > 0);
   const hasAnyDeparture = (exp.departures ?? []).length > 0;
   const isSoldOut  = activeDeps.length === 0;
 
