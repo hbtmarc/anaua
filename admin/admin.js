@@ -10,7 +10,7 @@
 
 import { formatBRL, formatDate } from '../assets/js/data.js';
 import { STATUS_LABEL, STATUS_CLASS, STATUS_TRANSITIONS } from '../assets/js/types/booking.types.js';
-import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus, createExperienceBundle, getExperienceById } from '../assets/js/repositories/experienceRepo.js';
+import { createExperience, updateExperience, createDeparture, updateDeparture, setDepartureStatus, deleteDeparture, createExperienceBundle, getExperienceById } from '../assets/js/repositories/experienceRepo.js';
 import {
   listActiveBoardingPoints, listAllBoardingPoints,
   createBoardingPoint, updateBoardingPoint, deleteBoardingPoint,
@@ -167,8 +167,11 @@ function openModal(title, bodyHtml, footerHtml = '') {
 }
 
 function closeModal() {
-  $('adm-modal').classList.remove('is-open');
-  $('adm-modal').setAttribute('aria-hidden', 'true');
+  const modal = $('adm-modal');
+  // Move focus out before setting aria-hidden to avoid accessibility warning
+  if (modal?.contains(document.activeElement)) document.activeElement.blur();
+  modal?.classList.remove('is-open');
+  modal?.setAttribute('aria-hidden', 'true');
   $('adm-modal-overlay').classList.remove('is-open');
 }
 
@@ -620,6 +623,14 @@ function dtpSetValue(fieldId, isoVal) {
   if (clr) clr.style.display = isoVal ? '' : 'none';
   if (btn) btn.classList.toggle('is-set', !!isoVal);
 }
+  /** Add `mins` minutes to a datetime-local string (YYYY-MM-DDTHH:mm) */
+  function _addBpMinutes(isoStr, mins) {
+    if (!isoStr) return isoStr;
+    const d = new Date(isoStr);
+    d.setMinutes(d.getMinutes() + mins);
+    return d.toISOString().slice(0, 16);
+  }
+
 
 /** Format "YYYY-MM-DDTHH:MM…" → "DD/MM/AAAA, HH:MM" */
 function formatDateTimeBR(v) {
@@ -1219,7 +1230,12 @@ function openNovaExperienciaModal() {
               if (ev.target.checked) {
                 const sv  = document.getElementById('ne-dep-start')?.value;
                 const pid = 'ne-bpcat-' + bp.id + '-pickup';
-                if (sv && !document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+                if (sv && !document.getElementById(pid)?.value) {
+                  const _allChecked = [...document.querySelectorAll('#ne-dep-bp-catalog-list input[type="checkbox"]:checked')];
+                  const _catIdx     = _allChecked.findIndex(c => c.dataset.bpId === String(bp.id));
+                  const _bpIdx      = _catIdx >= 0 ? _catIdx : _allChecked.length;
+                  dtpSetValue(pid, _addBpMinutes(sv, _bpIdx * 15));
+                }
               }
             });
           });
@@ -1236,15 +1252,18 @@ function openNovaExperienciaModal() {
     dtpAutoCalcEnd('ne-dep-start', 'ne-dep-end', 'ne-duration');
     const sv = document.getElementById('ne-dep-start')?.value;
     if (!sv) return;
+    let _neBpIdx = 0;
     // Pre-fill checked catalog BPs
     document.querySelectorAll('#ne-dep-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
       const pid = 'ne-bpcat-' + cb.dataset.bpId + '-pickup';
-      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, _addBpMinutes(sv, _neBpIdx * 15));
+      _neBpIdx++;
     });
     // Pre-fill custom BPs
     document.querySelectorAll('[id^="ne-dep-custom-bp-"]').forEach(r => {
       const pid = 'ne-custom-bp-pickup-' + r.id.replace('ne-dep-custom-bp-', '');
-      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, _addBpMinutes(sv, _neBpIdx * 15));
+      _neBpIdx++;
     });
   });
   document.getElementById('ne-dep-end')?.addEventListener('change', () => {
@@ -1982,7 +2001,12 @@ async function openEditExperienciaModal(id) {
               if (ev.target.checked) {
                 const sv  = document.getElementById('ee-dep-start')?.value;
                 const pid = 'ee-bpcat-' + bp.id + '-pickup';
-                if (sv && !document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+                if (sv && !document.getElementById(pid)?.value) {
+                  const _allChecked = [...document.querySelectorAll('#ee-dep-bp-catalog-list input[type="checkbox"]:checked')];
+                  const _catIdx     = _allChecked.findIndex(c => c.dataset.bpId === String(bp.id));
+                  const _bpIdx      = _catIdx >= 0 ? _catIdx : _allChecked.length;
+                  dtpSetValue(pid, _addBpMinutes(sv, _bpIdx * 15));
+                }
               }
             });
           });
@@ -1999,13 +2023,16 @@ async function openEditExperienciaModal(id) {
     dtpAutoCalcEnd('ee-dep-start', 'ee-dep-end', 'ee-duration');
     const sv = document.getElementById('ee-dep-start')?.value;
     if (!sv) return;
+    let _eeBpIdx = 0;
     document.querySelectorAll('#ee-dep-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
       const pid = 'ee-bpcat-' + cb.dataset.bpId + '-pickup';
-      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, _addBpMinutes(sv, _eeBpIdx * 15));
+      _eeBpIdx++;
     });
     document.querySelectorAll('[id^="ee-dep-custom-bp-"]').forEach(r => {
       const pid = 'ee-custom-bp-pickup-' + r.id.replace('ee-dep-custom-bp-', '');
-      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, _addBpMinutes(sv, _eeBpIdx * 15));
+      _eeBpIdx++;
     });
   });
   document.getElementById('ee-dep-end')?.addEventListener('change', () => {
@@ -2318,6 +2345,8 @@ const WL_SVG_CAL  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 const WL_SVG_PIN  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
 const WL_SVG_CHK  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
 const WL_SVG_TRASH= `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+const WL_SVG_DEL  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+const WL_SVG_MSG  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;width:11px;height:11px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
 const WL_SVG_HIST = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 
 // ── Main render ───────────────────────────────────────────────────────────────
@@ -2328,18 +2357,24 @@ async function renderListaEspera(root) {
   if (!db) { root.innerHTML = `<div class="adm-empty"><p style="color:var(--adm-danger)">Supabase não disponível.</p></div>`; return; }
 
   let entries, error;
+  // Use explicit FK hint (fk_wl_departure) to disambiguate multiple FK refs to departures
   ({ data: entries, error } = await db.from('waitlist_entries')
     .select(`id, created_at, name, email, phone, participants_count, message, status, source, notes,
              experience_id, experiences(id, title),
-             departure_id, departures(id, date, price, status),
+             departure_id, departures!fk_wl_departure(id, start_at, price, status),
              pickup_point_id, pickup_point_label, pickup_time,
              preferred_departure_id, offered_departure_id, converted_reservation_id,
              contacted_at, offered_at, converted_at, discarded_at, discard_reason,
              last_contact_channel, last_contact_message`)
     .order('created_at', { ascending: false }));
 
-  if (error && (error.code === 'PGRST204' || error.code?.startsWith('42') || error.message?.includes('column'))) {
-    console.warn('[waitlist] Migração ainda não aplicada, usando colunas base.', error.message);
+  // Fallback for: migration not applied (42xxx), ambiguous FK (PGRST201), missing column, etc.
+  if (error && (
+    error.code === 'PGRST201' || error.code === 'PGRST204' ||
+    error.code?.startsWith('42') || error.message?.includes('column') ||
+    error.message?.includes('relationship') || error.message?.includes('embed')
+  )) {
+    console.warn('[waitlist] Fallback: usando colunas base. Motivo:', error.code, error.message);
     ({ data: entries, error } = await db.from('waitlist_entries')
       .select('id, created_at, name, email, phone, participants_count, message, status, experience_id, experiences(id, title)')
       .order('created_at', { ascending: false }));
@@ -2428,46 +2463,57 @@ window._wlRenderList = function _wlRenderList() {
   }
 
   list.innerHTML = items.map(e => {
-    const s      = WL_STATUS[e.status] ?? { label: e.status, cls: 'wl-s-pending' };
-    const expTit = e.experiences?.title ?? '—';
-    const pax    = e.participants_count ?? 1;
-    const phone  = e.phone ?? '';
-    const isDone = e.status === 'converted' || e.status === 'discarded';
-    const depDate = e.departures?.date ? fmtDate(e.departures.date) : null;
-    const lastCh  = e.last_contact_channel ? (WL_CH_ICON[e.last_contact_channel] ?? '•') : '';
+    const s       = WL_STATUS[e.status] ?? { label: e.status, cls: 'wl-s-pending' };
+    const expTit  = e.experiences?.title ?? '—';
+    const pax     = e.participants_count ?? 1;
+    const phone   = e.phone ?? '';
+    const isDone  = e.status === 'converted' || e.status === 'discarded';
+    const depDate = e.departures?.start_at ? fmtDate(e.departures.start_at) : null;
+    const src     = e.source ? (WL_SOURCE_LABEL[e.source] ?? e.source) : null;
 
-    return `
-      <div class="wl-card ${isDone?'wl-card--done':''}" data-id="${e.id}" role="button" tabindex="0"
-           onclick="wlOpenDetail('${e.id}')" onkeydown="if(event.key==='Enter')wlOpenDetail('${e.id}')">
-        <div class="wl-card__aside">
-          <div class="wl-card__date">${fmtDateShort(e.created_at)}</div>
-          <div class="wl-card__pax" title="${pax} participante(s)">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>${pax}
-          </div>
-          ${lastCh ? `<div class="wl-card__ch" title="Último contato">${lastCh}</div>` : ''}
+    const statusOpts = Object.entries(WL_STATUS)
+      .map(([k,v]) => `<option value="${k}"${e.status===k?' selected':''}>${v.label}</option>`).join('');
+
+    const waDigits = _wlPhoneDigits(phone);
+    const waChip = phone
+      ? `<a class="wl-chip wl-chip--wa" href="https://wa.me/55${waDigits}" target="_blank" onclick="event.stopPropagation()">${WL_SVG_WA}${escHtml(phone)}</a>`
+      : '';
+    const emailChip = e.email
+      ? `<a class="wl-chip wl-chip--email" href="mailto:${escHtml(e.email)}" onclick="event.stopPropagation()">${WL_SVG_EMAIL}${escHtml(e.email)}</a>`
+      : '';
+
+    return `<div class="wl-card ${isDone?'wl-card--done':''}" data-id="${e.id}">
+
+      <div class="wl-card__main">
+        <button class="wl-card__name-btn" onclick="wlOpenDetail('${e.id}')">${escHtml(e.name ?? '—')}</button>
+
+        <div class="wl-card__meta" onclick="wlOpenDetail('${e.id}')">
+          <span class="wl-chip wl-chip--exp">${escHtml(expTit)}</span>
+          ${depDate ? `<span class="wl-chip wl-chip--dep">${WL_SVG_CAL}${depDate}</span>` : ''}
+          <span class="wl-chip wl-chip--pax"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>${pax} pax</span>
+          ${src ? `<span class="wl-chip wl-chip--src">${escHtml(src)}</span>` : ''}
         </div>
-        <div class="wl-card__body">
-          <div class="wl-card__top">
-            <span class="wl-card__name">${escHtml(e.name ?? '—')}</span>
-            <span class="wl-badge ${s.cls}">${s.label}</span>
-            ${e.status === 'converted' ? `<span class="wl-ref">✓ Reserva</span>` : ''}
-          </div>
-          <div class="wl-card__exp">
-            ${escHtml(expTit)}${depDate ? ` · <span class="wl-card__depdate">${depDate}</span>` : ''}
-          </div>
-          <div class="wl-card__contact">
-            ${phone ? `<span class="wl-contact-chip">📱 ${escHtml(phone)}</span>` : ''}
-            ${e.email ? `<span class="wl-contact-chip">✉️ ${escHtml(e.email)}</span>` : ''}
-          </div>
-          ${e.message ? `<div class="wl-card__msg">"${escHtml(e.message.substring(0,120))}${e.message.length>120?'…':''}"</div>` : ''}
+
+        <span class="wl-card__date">${fmtDateShort(e.created_at)}</span>
+
+        <div class="wl-card__contact" onclick="event.stopPropagation()">
+          ${waChip}${emailChip}
         </div>
+
         <div class="wl-card__actions" onclick="event.stopPropagation()">
-          ${phone ? `<button class="wl-act-btn wl-act-btn--whatsapp" title="WhatsApp" onclick="wlWhatsApp('${e.id}')">${WL_SVG_WA}</button>` : ''}
-          ${e.email ? `<button class="wl-act-btn wl-act-btn--email" title="E-mail" onclick="wlEmail('${e.id}')">${WL_SVG_EMAIL}</button>` : ''}
+          <select class="wl-status-sel ${s.cls}" title="Alterar status" onchange="_wlQuickStatus('${e.id}',this)">${statusOpts}</select>
           ${!isDone ? `<button class="wl-act-btn wl-act-btn--convert" title="Converter em reserva" onclick="wlConvert('${e.id}')">${WL_SVG_CHK}</button>` : ''}
           ${!isDone ? `<button class="wl-act-btn wl-act-btn--discard" title="Descartar" onclick="wlDiscard('${e.id}')">${WL_SVG_TRASH}</button>` : ''}
+          <button class="wl-act-btn wl-act-btn--delete" title="Excluir permanentemente" onclick="wlDeleteEntry('${e.id}')">${WL_SVG_DEL}</button>
         </div>
-      </div>`;
+      </div>
+
+      ${e.message ? `<div class="wl-card__msg-row" onclick="wlOpenDetail('${e.id}')">${WL_SVG_MSG}<span class="wl-card__msg-text">${escHtml(e.message.substring(0,200))}${e.message.length>200?'\u2026':''}</span></div>` : ''}
+
+      ${e.status==='converted' ? `<div class="wl-card__done wl-card__done--converted" onclick="wlOpenDetail('${e.id}')">${WL_SVG_CHK} Convertido em reserva${e.converted_at?' · '+fmtDate(e.converted_at):''}</div>` : ''}
+      ${e.status==='discarded'&&e.discard_reason ? `<div class="wl-card__done wl-card__done--discarded" onclick="wlOpenDetail('${e.id}')">${WL_SVG_TRASH} ${escHtml(e.discard_reason.substring(0,100))}</div>` : ''}
+
+    </div>`;
   }).join('');
 }
 
@@ -2478,7 +2524,7 @@ function _wlPhoneDigits(p) { return (p ?? '').replace(/\D/g, ''); }
 function _wlBuildProposal(entry, dep = null) {
   const exp     = entry.experiences?.title ?? 'nossa experiência';
   const nome    = (entry.name ?? '').split(' ')[0] || 'você';
-  const dtDep   = dep ? fmtDate(dep.date) : (entry.departures?.date ? fmtDate(entry.departures.date) : 'a definir');
+  const dtDep   = dep ? fmtDate(dep.start_at) : (entry.departures?.start_at ? fmtDate(entry.departures.start_at) : 'a definir');
   const prc     = dep?.price ? `R$ ${Number(dep.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '';
   const bp      = entry.pickup_point_label ?? '';
   const bpLine  = bp ? `\n📍 Embarque: ${bp}${entry.pickup_time ? ' às ' + entry.pickup_time : ''}` : '';
@@ -2501,6 +2547,28 @@ function _wlEmailBody(entry) {
   const nome = (entry.name ?? '').split(' ')[0] || 'você';
   return `Olá ${nome},\n\nVi que você se inscreveu na lista de espera para "${exp}".\nTemos saídas disponíveis — adoraríamos te ter conosco!\n\nResponda este e-mail ou nos chame no WhatsApp para garantir sua vaga.\n\nAbçs,\nAnauá Ecoturismo`;
 }
+
+// Quick status change directly from card dropdown
+window._wlQuickStatus = async function(id, sel) {
+  const newStatus = sel.value;
+  const entry = _wlGetEntry(id);
+  if (!entry || entry.status === newStatus) return;
+  const s = WL_STATUS[newStatus] ?? { label: newStatus, cls: '' };
+  sel.className = `wl-status-sel ${s.cls}`;
+  try {
+    const patch = { status: newStatus };
+    if (newStatus === 'contacted' && !entry.contacted_at) patch.contacted_at = new Date().toISOString();
+    if (newStatus === 'offered'   && !entry.offered_at)   patch.offered_at   = new Date().toISOString();
+    if (newStatus === 'discarded' && !entry.discarded_at) patch.discarded_at = new Date().toISOString();
+    await _wlPatchEntry(id, patch);
+    await _wlLogAction(id, newStatus, 'manual', `Status alterado para: ${s.label}`);
+    toast(`Status → ${s.label}`, 'success');
+  } catch (err) {
+    toast('Erro: ' + err.message, 'error');
+    sel.value = entry.status;
+    sel.className = `wl-status-sel ${WL_STATUS[entry.status]?.cls ?? ''}`;
+  }
+};
 
 async function _wlPatchEntry(id, patch) {
   const { error } = await window.anauaDb.from('waitlist_entries').update(patch).eq('id', id);
@@ -2545,7 +2613,7 @@ window.wlOpenDetail = async function(id) {
   const phone   = entry.phone ?? '';
   const pax     = entry.participants_count ?? 1;
   const expTit  = entry.experiences?.title ?? '—';
-  const depDate = entry.departures?.date ? fmtDate(entry.departures.date) : null;
+  const depDate = entry.departures?.start_at ? fmtDate(entry.departures.start_at) : null;
   const depPrc  = entry.departures?.price ? `R$ ${Number(entry.departures.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : null;
   const proposal = _wlBuildProposal(entry);
 
@@ -2616,6 +2684,7 @@ window.wlOpenDetail = async function(id) {
       <button class="wl-detail-action-btn wl-detail-action-btn--offerexp" onclick="wlOfferOtherExp('${id}')">${WL_SVG_PIN} Outra experiência</button>
       <button class="wl-detail-action-btn wl-detail-action-btn--convert" onclick="closeDrawer();wlConvert('${id}')">${WL_SVG_CHK} Converter em reserva</button>
       <button class="wl-detail-action-btn wl-detail-action-btn--discard" onclick="wlDiscard('${id}')">${WL_SVG_TRASH} Descartar</button>` : ''}
+      <button class="wl-detail-action-btn wl-detail-action-btn--delete" onclick="closeDrawer();wlDeleteEntry('${id}')">${WL_SVG_DEL} Excluir</button>
     </div>
   </div>`;
 
@@ -2735,10 +2804,10 @@ window.wlOfferDeparture = async function(id) {
 
   const minDate = new Date(); minDate.setDate(minDate.getDate() - 1);
   const { data: deps = [] } = await window.anauaDb.from('departures')
-    .select('id, date, price, capacity, status, experience_id, experiences(id,title)')
+    .select('id, start_at, price, capacity, status, experience_id, experiences(id,title)')
     .in('status', ['scheduled', 'sold_out'])
-    .gte('date', minDate.toISOString())
-    .order('date', { ascending: true }).limit(30);
+    .gte('start_at', minDate.toISOString())
+    .order('start_at', { ascending: true }).limit(30);
 
   const same  = (deps ?? []).filter(d => d.experience_id === entry.experience_id);
   const other = (deps ?? []).filter(d => d.experience_id !== entry.experience_id);
@@ -2746,7 +2815,7 @@ window.wlOfferDeparture = async function(id) {
   function depCard(d) {
     const expN  = d.experiences?.title ?? '—';
     const full  = d.status === 'sold_out';
-    const dt    = fmtDate(d.date);
+    const dt    = fmtDate(d.start_at);
     const prc   = d.price ? `R$ ${Number(d.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '—';
     const nom   = (entry.name ?? '').split(' ')[0] || 'você';
     const msg   = _wlBuildProposal(entry, d);
@@ -2841,9 +2910,9 @@ window.wlConvert = async function(id) {
 
   const minDate = new Date(); minDate.setDate(minDate.getDate() - 1);
   const { data: deps = [] } = await window.anauaDb.from('departures')
-    .select('id, date, price, capacity, status, experience_id, experiences(id,title)')
-    .eq('status', 'scheduled').gte('date', minDate.toISOString())
-    .order('date', { ascending: true }).limit(40);
+    .select('id, start_at, price, capacity, status, experience_id, experiences(id,title)')
+    .eq('status', 'scheduled').gte('start_at', minDate.toISOString())
+    .order('start_at', { ascending: true }).limit(40);
 
   if (!deps || deps.length === 0) {
     document.getElementById('adm-modal-body').innerHTML = `<div class="wl-action-modal"><p style="color:var(--adm-text-muted)">Nenhuma saída disponível para conversão no momento.</p></div>`;
@@ -2855,7 +2924,7 @@ window.wlConvert = async function(id) {
   const other = deps.filter(d => d.experience_id !== entry.experience_id);
 
   function depOpt(d) {
-    const dt  = fmtDate(d.date);
+    const dt  = fmtDate(d.start_at);
     const exp = d.experiences?.title ?? '—';
     const prc = d.price ? ` · R$ ${Number(d.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '';
     return `<option value="${d.id}" data-price="${d.price??0}" data-exp="${d.experience_id}">${escHtml(exp)} — ${dt} (${d.capacity} vagas${prc})</option>`;
@@ -3043,6 +3112,22 @@ window.wlDiscard = function(id) {
       toast('Erro: ' + err.message, 'error');
     }
   });
+};
+
+window.wlDeleteEntry = async function(id) {
+  const entry = _wlGetEntry(id);
+  const nome = entry?.name ?? 'este contato';
+  if (!confirm(`Excluir permanentemente "${nome}" da lista de espera?\nEsta ação não pode ser desfeita.`)) return;
+  try {
+    const db = window.anauaDb;
+    const { error } = await db.from('waitlist_entries').delete().eq('id', id);
+    if (error) throw error;
+    _wlEntries = _wlEntries.filter(e => e.id !== id);
+    window._wlRenderList();
+    toast('Entrada excluída.', 'info');
+  } catch (err) {
+    toast('Erro ao excluir: ' + err.message, 'error');
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3384,7 +3469,7 @@ async function renderSaidas(root) {
     }[status] ?? { cls: 'draft', label: status };
   }
 
-  // ─── Row renderer ─────────────────────────────────────────────────────────
+  // ─── Row renderer ────────────────────────────────────────────────────────────────────────────
   function buildRow({ exp, exit }) {
     const { cls, label } = statusInfo(exit.status);
     const depTitle  = exit.title || exp.title;
@@ -3392,16 +3477,19 @@ async function renderSaidas(root) {
     const available = Math.max(0, (exit.capacity ?? 0) - occupied);
     const capPct    = exit.capacity > 0 ? Math.min(100, Math.round(occupied / exit.capacity * 100)) : 0;
     const fullness  = capPct >= 100 ? 'full' : capPct >= 75 ? 'high' : capPct >= 50 ? 'mid' : 'low';
-    const dt = exit.start_at ? new Date(exit.start_at) : null;
-    const dayStr   = dt ? dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '') : '—';
-    const yearStr  = dt ? dt.getFullYear() : '';
-    const timeStr  = dt ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-    const isPast   = dt && dt < new Date();
+    const dt        = exit.start_at ? new Date(exit.start_at) : null;
+    const dayNum    = dt ? dt.toLocaleDateString('pt-BR', { day: '2-digit' }) : '—';
+    const monthStr  = dt ? dt.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase() : '';
+    const yearStr   = dt ? dt.getFullYear() : '';
+    const timeStr   = dt ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    const isPast    = dt && dt < new Date();
+    const hasCustomTitle = exit.title && exit.title !== exp.title;
 
     return `
       <div class="saida-row saida-row--${cls}${isPast && exit.status === 'scheduled' ? ' saida-row--past' : ''}" data-exit="${exit.id}">
         <div class="saida-row__date-col">
-          <span class="saida-row__day-month">${escHtml(dayStr)}</span>
+          <span class="saida-row__day">${dayNum}</span>
+          <span class="saida-row__month">${monthStr}</span>
           <span class="saida-row__year">${yearStr}</span>
           ${timeStr ? `<span class="saida-row__time">${timeStr}</span>` : ''}
         </div>
@@ -3410,27 +3498,22 @@ async function renderSaidas(root) {
             <span class="saida-row__title">${escHtml(depTitle)}</span>
             <span class="badge badge--${cls}">${label}</span>
           </div>
-          <div class="saida-row__exp text-muted">${escHtml(exp.title)}</div>
+          ${hasCustomTitle ? `<div class="saida-row__exp">${escHtml(exp.title)}</div>` : ''}
           <div class="saida-row__occ">
-            <div class="saida-occ-bar" title="${occupied} ocupadas de ${exit.capacity}">
+            <div class="saida-occ-bar" title="${occupied} de ${exit.capacity ?? 0}">
               <div class="saida-occ-bar__fill saida-occ-bar--${fullness}" style="width:${capPct}%"></div>
             </div>
-            <span class="saida-occ-label saida-occ-label--${fullness}">
-              ${occupied} ocup. · <strong>${available} disp.</strong> / ${exit.capacity}
-            </span>
+            <span class="saida-occ-label saida-occ-label--${fullness}">${occupied} ocup. · <strong>${available} disp.</strong> / ${exit.capacity ?? 0}</span>
           </div>
         </div>
         <div class="saida-row__side">
-          <div class="saida-row__price">${exit.price != null ? fmt(exit.price) : '<span class="text-muted">—</span>'}</div>
-          <button class="adm-btn adm-btn--ghost adm-btn--sm saida-row__open" data-exit="${exit.id}">
-            Detalhes
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
+          <span class="saida-row__price">${exit.price != null ? fmt(exit.price) : '<span class="text-muted">—</span>'}</span>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm saida-row__open" data-exit="${exit.id}">Detalhes <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
         </div>
       </div>`;
   }
 
-  function renderList(data) {
+    function renderList(data) {
     const wrap = $('saidas-list-wrap');
     $('saidas-count').textContent = `${data.length} saída${data.length !== 1 ? 's' : ''}`;
     if (!data.length) {
@@ -4228,6 +4311,7 @@ async function renderReservas(root, openId) {
 async function renderParticipantes(root) {
   const db = window.anauaDb;
   const PROFILE_LABEL = { adult: 'Adulto', child: 'Criança', senior: 'Idoso', pcd: 'PCD' };
+  const RES_STATUSES  = Object.keys(STATUS_TRANSITIONS);
 
   root.innerHTML = `
     <div class="adm-filter-bar" style="margin-bottom:16px">
@@ -4239,14 +4323,20 @@ async function renderParticipantes(root) {
 
   if (!db) return;
 
+  // Detect current user role (for admin-only delete)
+  let isAdmin = false;
+  try {
+    const { data: { user } } = await db.auth.getUser();
+    if (user) {
+      const { data: prof } = await db.from('profiles').select('role').eq('id', user.id).single();
+      isAdmin = prof?.role === 'admin';
+    }
+  } catch (_) {}
+
   // ── Three-tier query strategy ────────────────────────────────────────────────
-  // Tier 1: rich join with all extended columns (requires migration to have run)
-  // Tier 2: flat query with extended columns + manual join on reservations
-  // Tier 3: absolute minimum (id + reservation_id) — still shows grouping structure
   let participants = [];
 
   async function tryLoadParticipants() {
-    // Tier 1
     const { data: t1, error: e1 } = await db
       .from('participants')
       .select('id, full_name, document_number, profile_type, birthdate, reservation_id, reservations(id, reservation_status, customer_name, departure_id, experience_id, experiences(id, title), departures(id, start_at))')
@@ -4255,38 +4345,31 @@ async function renderParticipantes(root) {
 
     console.warn('[admin-parts] Tier-1 falhou:', e1.message);
 
-    // Tier 2: flat with extended columns
     const [{ data: pFlat, error: e2 }, { data: resFlat }] = await Promise.all([
       db.from('participants').select('id, full_name, document_number, profile_type, birthdate, reservation_id').order('full_name'),
       db.from('reservations').select('id, reservation_status, customer_name, departure_id, experience_id').order('created_at', { ascending: false }),
     ]);
     if (!e2) {
-      console.warn('[admin-parts] Tier-2 ok (sem joins aninhados)');
       const resById = Object.fromEntries((resFlat ?? []).map(r => [r.id, r]));
       return (pFlat ?? []).map(p => ({ ...p, reservations: resById[p.reservation_id] ?? null }));
     }
 
     console.warn('[admin-parts] Tier-2 falhou:', e2.message);
 
-    // Tier 3: absolute minimum — migration not yet run, no extended columns exist
     const [{ data: pMin, error: e3 }, { data: resMin }] = await Promise.all([
       db.from('participants').select('id, reservation_id').order('id'),
       db.from('reservations').select('id, reservation_status, customer_name, departure_id, experience_id').order('created_at', { ascending: false }),
     ]);
     if (e3) {
-      // Total failure — table may not exist at all
       $('part-body').innerHTML = `<div style="padding:40px;text-align:center;color:var(--adm-danger)">
         <strong>Tabela de participantes inacessível.</strong><br>
         Execute a migration <code>fix_schema_and_rls.sql</code> no Supabase SQL Editor e recarregue.
         <br><small style="color:var(--adm-muted)">${escHtml(e3.message)}</small></div>`;
-      return null; // signal total failure
+      return null;
     }
-    console.warn('[admin-parts] Tier-3 ok (colunas estendidas ausentes — execute a migration)');
-    // Show a banner so admin knows migration is pending
     $('part-body').insertAdjacentHTML('afterbegin',
       `<div style="padding:10px 14px;margin-bottom:12px;background:#fff3cd;border:1px solid #ffd000;border-radius:6px;font-size:12px">
-        ⚠️ <strong>Migration pendente:</strong> colunas estendidas (nome, CPF, perfil, nascimento) ainda não existem.
-        Execute <code>fix_schema_and_rls.sql</code> no Supabase para ver todos os dados.
+        ⚠️ <strong>Migration pendente:</strong> execute <code>fix_schema_and_rls.sql</code> no Supabase para ver todos os dados.
       </div>`);
     const resById = Object.fromEntries((resMin ?? []).map(r => [r.id, r]));
     return (pMin ?? []).map(p => ({ id: p.id, reservation_id: p.reservation_id,
@@ -4295,19 +4378,51 @@ async function renderParticipantes(root) {
   }
 
   const loaded = await tryLoadParticipants();
-  if (loaded === null) return; // total failure already rendered
+  if (loaded === null) return;
   participants = loaded;
 
-  // Build experience → departure → participants grouping
+  // ── Status update handler (window-accessible for inline onchange) ────────────
+  window._partSetStatus = async function(reservationId, sel) {
+    const newStatus = sel.value;
+    const prev = sel.dataset.prev;
+    if (newStatus === prev) return;
+    const { error } = await db.from('reservations')
+      .update({ reservation_status: newStatus }).eq('id', reservationId);
+    if (error) {
+      toast('Erro ao atualizar status: ' + error.message, 'error');
+      sel.value = prev;
+      return;
+    }
+    sel.dataset.prev = newStatus;
+    sel.className = `part-status-sel badge ${STATUS_CLASS[newStatus] ?? 'badge--draft'}`;
+    // Update local cache
+    participants.forEach(p => {
+      if (p.reservation_id === reservationId && p.reservations)
+        p.reservations.reservation_status = newStatus;
+    });
+    toast(`Status → ${STATUS_LABEL[newStatus] ?? newStatus}`, 'success');
+  };
+
+  // ── Delete participant handler (admin-only) ──────────────────────────────────
+  window._partDelete = async function(participantId, name) {
+    if (!isAdmin) { toast('Apenas administradores podem excluir participantes.', 'error'); return; }
+    if (!confirm(`Excluir "${name}"?\n\nEsta ação é permanente e não pode ser desfeita.`)) return;
+    const { error } = await db.from('participants').delete().eq('id', participantId);
+    if (error) { toast('Erro: ' + error.message, 'error'); return; }
+    participants = participants.filter(p => p.id !== participantId);
+    renderGroups(participants);
+    toast(`"${name}" removido.`, 'success');
+  };
+
+  // ── Grouping ──────────────────────────────────────────────────────────────────
   function buildGroups(list) {
-    const byExp = {};  // expId → { title, deps: { depId → { start_at, parts[] } } }
+    const byExp = {};
     list.forEach(p => {
-      const res  = p.reservations;
-      const expId    = res?.experience_id  ?? res?.experiences?.id ?? '_unknown';
+      const res      = p.reservations;
+      const expId    = res?.experience_id ?? res?.experiences?.id ?? '_unknown';
       const expTitle = res?.experiences?.title ?? expMap[expId] ?? '(Experiência desconhecida)';
       const depId    = res?.departure_id ?? '_unknown';
       const startAt  = res?.departures?.start_at ?? depMap[depId]?.start_at ?? null;
-
       if (!byExp[expId]) byExp[expId] = { title: expTitle, deps: {} };
       if (!byExp[expId].deps[depId]) byExp[expId].deps[depId] = { start_at: startAt, parts: [] };
       byExp[expId].deps[depId].parts.push(p);
@@ -4322,21 +4437,38 @@ async function renderParticipantes(root) {
       return;
     }
     const groups = buildGroups(list);
+    const extraTh = isAdmin ? `<th style="width:36px"></th>` : '';
     const html = Object.entries(groups).map(([expId, exp]) => {
       const depSections = Object.entries(exp.deps)
         .sort(([, a], [, b]) => (a.start_at ?? '').localeCompare(b.start_at ?? ''))
         .map(([depId, dep]) => {
-          const depLabel = dep.start_at
-            ? fmtDate(dep.start_at.split('T')[0])
-            : 'Saída não informada';
-          const rows = dep.parts.map(p => `
-            <tr>
-              <td style="font-weight:500;font-size:12px">${escHtml(p.full_name ?? '—')}</td>
-              <td style="font-size:11px;font-family:monospace;color:var(--adm-muted)">${p.document_number ? fmtCpfAdmin(p.document_number) : '—'}</td>
-              <td style="font-size:12px">${escHtml(PROFILE_LABEL[p.profile_type] ?? p.profile_type ?? '—')}</td>
-              <td style="font-size:11px;color:var(--adm-muted)">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
-              <td style="font-size:11px;color:var(--adm-muted)">${badge(p.reservations?.reservation_status ?? 'pending_payment')}</td>
-            </tr>`).join('');
+          const depLabel = dep.start_at ? fmtDate(dep.start_at.split('T')[0]) : 'Saída não informada';
+          const rows = dep.parts.map(p => {
+            const resStatus = p.reservations?.reservation_status ?? 'pending_payment';
+            const resId     = p.reservations?.id ?? p.reservation_id ?? '';
+            const statusSel = resId ? `
+              <select class="part-status-sel badge ${STATUS_CLASS[resStatus]??'badge--draft'}"
+                data-prev="${resStatus}"
+                onchange="_partSetStatus('${resId}',this)">
+                ${RES_STATUSES.map(s => `<option value="${s}"${resStatus===s?' selected':''}>${STATUS_LABEL[s]??s}</option>`).join('')}
+              </select>` : badge(resStatus);
+
+            const delBtn = isAdmin ? `
+              <button class="part-del-btn" title="Excluir participante"
+                onclick="_partDelete('${p.id}',${JSON.stringify(p.full_name??'—')})">
+                ${WL_SVG_TRASH}
+              </button>` : '';
+
+            return `
+              <tr>
+                <td style="font-weight:500;font-size:12px">${escHtml(p.full_name ?? '—')}</td>
+                <td style="font-size:11px;font-family:monospace;color:var(--adm-muted)">${p.document_number ? fmtCpfAdmin(p.document_number) : '—'}</td>
+                <td style="font-size:12px">${escHtml(PROFILE_LABEL[p.profile_type] ?? p.profile_type ?? '—')}</td>
+                <td style="font-size:11px;color:var(--adm-muted)">${p.birthdate ? fmtDate(p.birthdate) : '—'}</td>
+                <td style="font-size:11px">${statusSel}</td>
+                ${isAdmin ? `<td style="text-align:center">${delBtn}</td>` : ''}
+              </tr>`;
+          }).join('');
           return `
             <div style="margin-bottom:16px">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -4344,7 +4476,7 @@ async function renderParticipantes(root) {
                 <span class="adm-count">${dep.parts.length} pax</span>
               </div>
               <table class="adm-table adm-table--compact">
-                <thead><tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Nascimento</th><th>Status</th></tr></thead>
+                <thead><tr><th>Nome</th><th>CPF</th><th>Perfil</th><th>Nascimento</th><th>Status reserva</th>${extraTh}</tr></thead>
                 <tbody>${rows}</tbody>
               </table>
             </div>`;
@@ -4372,7 +4504,6 @@ async function renderParticipantes(root) {
     renderGroups(filtered);
   });
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: FINANCEIRO
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5169,10 +5300,20 @@ async function openExitDrawer(exitId) {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
         Marcar como esgotada
       </button>` : ''}
+    ${!['cancelled', 'completed'].includes(exit.status) ? `
+      <button class="adm-btn adm-btn--secondary" id="exit-extend-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Estender saída
+      </button>` : ''}
     ${canCancel ? `
       <button class="adm-btn adm-btn--danger exit-cancel-btn" data-set-status="cancelled">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         Cancelar saída
+      </button>` : ''}
+    ${exit.status === 'cancelled' ? `
+      <button class="adm-btn adm-btn--danger" id="exit-delete-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        Excluir saída permanentemente
       </button>` : ''}`;
 
   // ─── Date display ──────────────────────────────────────────────────────────
@@ -5296,6 +5437,72 @@ async function openExitDrawer(exitId) {
     });
   });
 
+  document.getElementById('exit-extend-btn')?.addEventListener('click', () => {
+    const currentCap = exit.capacity ?? 0;
+    const occupied   = activeRes.length;
+    openModal(
+      'Estender saída',
+      `<p style="margin-bottom:12px">A saída <strong>${escHtml(exp.title)}</strong> tem
+        <strong>${currentCap} vagas</strong> (${occupied} ocupadas).</p>
+       <p style="margin-bottom:16px;color:var(--adm-text-muted);font-size:13px">
+         Quantas vagas deseja adicionar a este mesmo grupo?
+       </p>
+       <div style="display:flex;align-items:center;gap:10px">
+         <input id="extend-extra-vagas" type="number" min="1" max="999" value="1"
+           class="adm-input" style="width:100px;font-size:18px;font-weight:700;text-align:center" />
+         <span style="font-size:13px;color:var(--adm-text-muted)">
+           → nova capacidade: <strong id="extend-new-cap">${currentCap + 1}</strong> vagas
+         </span>
+       </div>`,
+      `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Cancelar</button>
+       <button class="adm-btn adm-btn--primary" id="extend-confirm-btn">Estender saída</button>`
+    );
+
+    // Live preview new capacity
+    const extraEl = document.getElementById('extend-extra-vagas');
+    const newCapEl = document.getElementById('extend-new-cap');
+    extraEl?.addEventListener('input', () => {
+      const extra = Math.max(1, parseInt(extraEl.value) || 1);
+      if (newCapEl) newCapEl.textContent = currentCap + extra;
+    });
+
+    document.getElementById('extend-confirm-btn')?.addEventListener('click', async () => {
+      const extra   = Math.max(1, parseInt(extraEl?.value) || 1);
+      const newCap  = currentCap + extra;
+      const { error } = await updateDeparture(exit.id, { capacity: newCap, status: 'scheduled' });
+      if (error) { toast('Erro: ' + error.message, 'error'); return; }
+      exit.capacity = newCap;
+      exit.status   = 'scheduled';
+      const r = findExit(exit.id);
+      if (r) { r.exit.capacity = newCap; r.exit.status = 'scheduled'; }
+      toast(`Saída estendida: +${extra} vaga${extra !== 1 ? 's' : ''} (total ${newCap})`, 'success');
+      closeModal();
+      closeDrawer();
+      setTimeout(() => openExitDrawer(exit.id), 150);
+    });
+  });
+
+  document.getElementById('exit-delete-btn')?.addEventListener('click', async () => {
+    const hasRes = activeRes.length > 0;
+    const confirmed = await showConfirmModal(
+      'Excluir saída permanentemente',
+      `<p>Tem certeza que deseja <strong>excluir permanentemente</strong> a saída
+        <strong>${escHtml(exp.title)}</strong> de <strong>${escHtml(dtDisplay)}</strong>?</p>
+       ${hasRes ? `<p style="color:var(--adm-danger);margin-top:8px">⚠️ Esta saída possui <strong>${activeRes.length}</strong> reserva(s) ativa(s) vinculada(s). Exclua-as antes de remover a saída.</p>` : ''}
+       <p style="margin-top:10px;font-size:12px;color:var(--adm-muted)">Esta ação não pode ser desfeita.</p>`,
+      'Excluir permanentemente', 'danger'
+    );
+    if (!confirmed) return;
+    if (hasRes) { toast('Remova as reservas ativas antes de excluir.', 'error'); return; }
+    const { error } = await deleteDeparture(exit.id);
+    if (error) { toast('Erro ao excluir: ' + error.message, 'error'); return; }
+    // Remove from local cache
+    _exitsCache = _exitsCache.filter(d => d.exit.id !== exit.id);
+    toast('Saída excluída com sucesso.', 'success');
+    closeDrawer();
+    renderSaidas($('adm-main'));
+  });
+
   document.querySelectorAll('[data-set-status]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const newStatus = btn.dataset.setStatus;
@@ -5335,7 +5542,7 @@ async function openExitDrawer(exitId) {
  * @param {(updatedPayload?: object) => void} onAfterSave - Called after successful save
  */
 async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
-  const isEdit = exit !== null;
+  const isEdit = !!(exit?.id);
 
   const expOptions = experiences.map(e =>
     `<option value="${e.id}" ${exit?.experience_id === e.id ? 'selected' : ''}>${escHtml(e.title)}</option>`
@@ -5404,8 +5611,10 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
       <p style="font-size:12px;color:var(--adm-text-muted);margin-bottom:10px">
         Pelo menos um ponto ativo é obrigatório para criar a saída.
       </p>
-      <div id="ef-bp-list" style="display:flex;flex-direction:column;gap:10px"></div>
-      <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ef-add-bp-btn" style="margin-top:8px">+ Adicionar ponto de embarque</button>
+      <div id="ef-bp-catalog-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div class="adm-section-hd" style="margin-top:14px;font-size:11px;text-transform:uppercase;letter-spacing:.05em">Pontos personalizados</div>
+      <div id="ef-custom-bp-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" id="ef-add-custom-bp-btn" style="margin-top:8px">+ Adicionar ponto personalizado</button>
 
       <!-- ══ FOOTER ═══════════════════════════════════════════════════════ -->
       <div style="display:flex;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--adm-border)">
@@ -5470,7 +5679,13 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
         if (ev.target.checked) {
           const sv  = document.getElementById('ef-start')?.value;
           const pid = 'ef-bpcat-pickup-' + bp.id;
-          if (sv && !document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+          if (sv && !document.getElementById(pid)?.value) {
+            const _allChecked = [...document.querySelectorAll('#ef-bp-catalog-list input[type="checkbox"]:checked')];
+            const _custRows   = document.querySelectorAll('[id^="ef-custom-bp-"]').length;
+            const _catIdx     = _allChecked.findIndex(c => c.dataset.bpid === String(bp.id));
+            const _bpIdx      = _catIdx >= 0 ? _catIdx : _allChecked.length;
+            dtpSetValue(pid, _addBpMinutes(sv, _bpIdx * 15));
+          }
         }
       });
     });
@@ -5517,7 +5732,13 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
 
   // Pre-load any existing custom (non-catalog) BPs on edit
   _existingBPs.filter(e => !e.boardingPointId).forEach(addCustomBpRow);
-  document.getElementById('ef-add-custom-bp-btn')?.addEventListener('click', () => addCustomBpRow());
+  document.getElementById('ef-add-custom-bp-btn')?.addEventListener('click', () => {
+    const sv = document.getElementById('ef-start')?.value;
+    const _catChecked = document.querySelectorAll('#ef-bp-catalog-list input[type="checkbox"]:checked').length;
+    const _custExist  = document.querySelectorAll('[id^="ef-custom-bp-"]').length;
+    const _nextIdx    = _catChecked + _custExist;
+    addCustomBpRow(sv ? { pickupAt: _addBpMinutes(sv, _nextIdx * 15) } : null);
+  });
 
   // ── Auto-fill from experience on select ─────────────────────────────────
   async function autofillFromExp(expId) {
@@ -5561,13 +5782,16 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     // Pre-fill unchecked → checked BPs and custom rows with same departure datetime
     const sv = document.getElementById('ef-start')?.value;
     if (!sv) return;
+    let _efBpIdx = 0;
     document.querySelectorAll('#ef-bp-catalog-list input[type="checkbox"]:checked').forEach(cb => {
       const pid = 'ef-bpcat-pickup-' + cb.dataset.bpid;
-      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, _addBpMinutes(sv, _efBpIdx * 15));
+      _efBpIdx++;
     });
     document.querySelectorAll('[id^="ef-custom-bp-"]').forEach(r => {
       const pid = 'ef-cust-pickup-' + r.id.replace('ef-custom-bp-', '');
-      if (!document.getElementById(pid)?.value) dtpSetValue(pid, sv);
+      if (!document.getElementById(pid)?.value) dtpSetValue(pid, _addBpMinutes(sv, _efBpIdx * 15));
+      _efBpIdx++;
     });
   });
 

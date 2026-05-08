@@ -155,6 +155,16 @@
 
   <!-- Supabase JS v2 via CDN — deve vir antes do módulo admin.js -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Desregistra service workers de outros projetos que podem interceptar módulos JS -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        if (regs.length > 0) {
+          Promise.all(regs.map(r => r.unregister())).then(() => location.reload());
+        }
+      });
+    }
+  </script>
   <script type="module" src="admin.js"></script>
 </body>
 </html>

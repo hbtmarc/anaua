@@ -429,6 +429,19 @@ export async function setDepartureStatus(id, status) {
   return { data, error: null };
 }
 
+export async function deleteDeparture(id) {
+  const { error } = await supabase
+    .from('departures')
+    .delete()
+    .eq('id', id);
+  if (error) {
+    console.error('[anaua] Erro ao excluir saída:', error.message);
+    return { error };
+  }
+  console.log('[anaua] Saída excluída ✓', id);
+  return { error: null };
+}
+
 /**
  * Cria experiência + saída + reserva + participantes em uma única transação via RPC.
  * Se o RPC não existir (erro 42883), faz criação sequencial com rollback parcial.
