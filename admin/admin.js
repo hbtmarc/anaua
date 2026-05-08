@@ -4208,7 +4208,7 @@ async function openExitDrawer(exitId) {
     (async () => {
       if (!db) return { data: [], error: null };
       return db.from('reservations')
-        .select('id, customer_name, customer_phone, customer_email, reservation_status, total_amount, amount_paid, payment_method, boarding_point_id, participants(id)')
+        .select('id, customer_name, customer_phone, customer_email, reservation_status, total_amount, amount_paid, payment_method, boarding_point_id, participants(id, full_name, document_number)')
         .eq('departure_id', exit.id)
         .order('created_at', { ascending: true });
     })(),
@@ -4246,7 +4246,7 @@ async function openExitDrawer(exitId) {
       }).join('')
     : '<p class="text-muted text-small">Nenhum ponto de embarque cadastrado.</p>';
 
-  // ─── Reservations HTML ────────────────────────────────────────────────────
+  // ─── Reservations / Boarding list data ───────────────────────────────────
   const RES_STATUS = {
     pending:         { cls: 'badge--pending',   label: 'Pendente' },
     pending_payment: { cls: 'badge--pending',   label: 'Ag. Pagamento' },
@@ -4258,14 +4258,187 @@ async function openExitDrawer(exitId) {
   const PAY_STATUS = (r) => {
     const paid = r.amount_paid ?? 0;
     const total = r.total_amount ?? 0;
-    if (paid <= 0)          return { cls: 'badge--pending', label: 'Não pago' };
-    if (paid >= total)      return { cls: 'badge--paid',    label: 'Pago' };
+    if (paid <= 0)     return { cls: 'badge--pending', label: 'Não pago' };
+    if (paid >= total) return { cls: 'badge--paid',    label: 'Pago' };
     return { cls: 'badge--pending', label: 'Parcial' };
   };
 
-  const activeRes = reservations.filter(r => !['cancelled','refunded'].includes(r.reservation_status));
+  const activeRes    = reservations.filter(r => !['cancelled','refunded'].includes(r.reservation_status));
   const cancelledRes = reservations.filter(r => ['cancelled','refunded'].includes(r.reservation_status));
 
+  // ─── Boarding list builder ────────────────────────────────────────────────
+  // bpMap: departure_boarding_points.id → normalized bp object
+  // Group active reservations by their chosen departure_boarding_points.id
+  const BL_NO_POINT = '__sem_ponto__';
+
+  // Build an ordered list of groups: one per bp (preserving order), plus
+  // a trailing "no point" bucket if needed.
+  const bpGroupMap = new Map(); // bpId → { bp, reservations[] }
+  (bps ?? []).forEach(bp => bpGroupMap.set(bp.id, { bp, reservations: [] }));
+  bpGroupMap.set(BL_NO_POINT, { bp: null, reservations: [] });
+
+  activeRes.forEach(r => {
+    const key = r.boarding_point_id ?? BL_NO_POINT;
+    if (!bpGroupMap.has(key)) bpGroupMap.set(key, { bp: null, reservations: [] });
+    bpGroupMap.get(key).reservations.push(r);
+  });
+
+  // fmtCpf already exists (fmtCpfAdmin) — fallback inline to avoid dependency
+  function _fmtCpf(v) {
+    if (!v) return null;
+    const d = String(v).replace(/\D/g, '');
+    if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    return v;
+  }
+
+  // Flatten all active participants list for global counter
+  let globalPaxIdx = 0;
+
+  function buildBoardingGroup(key, { bp, reservations: groupRes }, isFirst) {
+    const pickupStr = bp?.pickupAt
+      ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const bpName    = bp ? bp.displayName  : 'Ponto de embarque não definido';
+    const bpAddr    = bp ? bp.displayAddress : null;
+    const groupId   = `blg-${key.replace(/[^a-z0-9]/gi, '_')}`;
+
+    const paxRows = groupRes.flatMap(r =>
+      (r.participants ?? []).map(p => ({ p, r }))
+    );
+
+    const itemsHtml = paxRows.length
+      ? paxRows.map(({ p, r }) => {
+          globalPaxIdx++;
+          const idx     = globalPaxIdx;
+          const name    = p.full_name ?? r.customer_name ?? '—';
+          const cpf     = _fmtCpf(p.document_number) ?? null;
+          const phone   = r.customer_phone ?? null;
+          const resCode = r.id?.slice(0, 8).toUpperCase();
+          const rs      = RES_STATUS[r.reservation_status] ?? { cls: 'badge--draft', label: r.reservation_status };
+          const pay     = PAY_STATUS(r);
+          return `
+            <div class="bl-pax-row">
+              <span class="bl-pax-row__idx">${idx}</span>
+              <div class="bl-pax-row__body">
+                <span class="bl-pax-row__name">${escHtml(name)}</span>
+                <div class="bl-pax-row__meta">
+                  ${cpf   ? `<span class="bl-pax-row__detail">CPF: ${escHtml(cpf)}</span>` : '<span class="bl-pax-row__detail bl-pax-row__detail--missing">CPF não informado</span>'}
+                  ${phone ? `<span class="bl-pax-row__detail">Tel: ${escHtml(phone)}</span>` : ''}
+                  <span class="bl-pax-row__res">#${resCode}</span>
+                  <span class="badge ${rs.cls}" style="font-size:10px">${rs.label}</span>
+                  <span class="badge ${pay.cls}" style="font-size:10px">${pay.label}</span>
+                </div>
+              </div>
+              <label class="bl-pax-row__check" title="Marcado como embarcado">
+                <input type="checkbox" class="bl-pax-checkin" data-pax="${p.id}" aria-label="Embarcou" />
+              </label>
+            </div>`;
+        }).join('')
+      : `<div class="bl-empty-group">Nenhum participante neste ponto.</div>`;
+
+    const copyBtnId = `bl-copy-group-${key.replace(/[^a-z0-9]/gi, '_')}`;
+    return `
+      <div class="bl-group" id="${groupId}" data-key="${escHtml(key)}">
+        <div class="bl-group__header">
+          <div class="bl-group__info">
+            <div class="bl-group__name">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              ${escHtml(bpName)}
+              <span class="bl-group__pax-count">${paxRows.length} pax</span>
+            </div>
+            ${pickupStr ? `<div class="bl-group__time">🕐 Embarque: <strong>${pickupStr}</strong></div>` : ''}
+            ${bpAddr    ? `<div class="bl-group__addr">${escHtml(bpAddr)}</div>` : ''}
+          </div>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm bl-copy-group-btn" id="${copyBtnId}" title="Copiar lista deste ponto">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copiar grupo
+          </button>
+        </div>
+        <div class="bl-pax-list">${itemsHtml}</div>
+      </div>`;
+  }
+
+  // Build all groups HTML (reset global counter first)
+  globalPaxIdx = 0;
+  const boardingGroupsHtml = [...bpGroupMap.entries()]
+    .map(([key, grp], i) => {
+      // Skip BL_NO_POINT bucket if empty
+      if (key === BL_NO_POINT && grp.reservations.length === 0) return '';
+      return buildBoardingGroup(key, grp, i === 0);
+    }).join('');
+
+  const totalActivePax = activeRes.reduce((s, r) => s + (r.participants?.length ?? 0), 0);
+
+  const boardingListHtml = activeRes.length === 0
+    ? `<div class="bl-empty">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        <span>Nenhuma reserva ativa nesta saída.</span>
+       </div>`
+    : boardingGroupsHtml;
+
+  // ─── Markdown generator ───────────────────────────────────────────────────
+  function buildMarkdown(filterKey) {
+    const dtMd = exit.start_at
+      ? new Date(exit.start_at).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '—';
+    const statusLabelMd = STATUS[exit.status]?.label ?? exit.status;
+
+    const groups = [...bpGroupMap.entries()].filter(([key, grp]) => {
+      if (filterKey && key !== filterKey) return false;
+      if (key === BL_NO_POINT && grp.reservations.length === 0) return false;
+      return true;
+    });
+
+    let idx = 0;
+    const groupLines = groups.map(([key, { bp, reservations: groupRes }]) => {
+      const bpName    = bp ? bp.displayName  : 'Ponto de embarque não definido';
+      const bpAddr    = bp ? bp.displayAddress : null;
+      const pickupStr = bp?.pickupAt
+        ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : null;
+
+      const paxRows = groupRes.flatMap(r => (r.participants ?? []).map(p => ({ p, r })));
+      const paxLines = paxRows.map(({ p, r }) => {
+        idx++;
+        const name    = p.full_name ?? r.customer_name ?? '—';
+        const cpf     = _fmtCpf(p.document_number) ?? 'não informado';
+        const phone   = r.customer_phone ?? 'não informado';
+        const resCode = r.id?.slice(0, 8).toUpperCase();
+        return `- [ ] ${idx}. ${name} — CPF: ${cpf} — Tel: ${phone} — Reserva: #${resCode}`;
+      }).join('\n') || '_(nenhum participante)_';
+
+      const header = filterKey
+        ? `## ${bpName}${pickupStr ? ` — ${pickupStr}` : ''}`
+        : `## ${bpName}${pickupStr ? ` — ${pickupStr}` : ''}`;
+      const addrLine = bpAddr ? `Endereço: ${bpAddr}` : '';
+
+      return [header, addrLine, paxLines].filter(Boolean).join('\n');
+    }).join('\n\n');
+
+    // Pending/incomplete
+    const pendencias = activeRes
+      .filter(r => (r.participants ?? []).some(p => !p.full_name || !p.document_number))
+      .flatMap(r => (r.participants ?? [])
+        .filter(p => !p.full_name || !p.document_number)
+        .map(p => `- #${r.id?.slice(0,8).toUpperCase()} ${r.customer_name ?? '?'}: dados incompletos (${!p.full_name ? 'nome' : ''}${!p.full_name && !p.document_number ? ', ' : ''}${!p.document_number ? 'CPF' : ''})`)
+      );
+
+    const header = filterKey ? '' : [
+      `# Lista de embarque — ${exp.title}`,
+      `Data: ${dtMd}`,
+      `Status: ${statusLabelMd}`,
+      `Ocupação: ${totalActivePax}/${exit.capacity ?? '?'}`,
+      '',
+    ].join('\n');
+
+    const footer = pendencias.length
+      ? `\n\nPendências:\n${pendencias.join('\n')}`
+      : '';
+
+    return (header + groupLines + footer).trim();
+  }
+
+  // ─── Reservations mini-cards (existing section kept compact) ─────────────
   function resCard(r) {
     const rs  = RES_STATUS[r.reservation_status] ?? { cls: 'badge--draft', label: r.reservation_status };
     const pay = PAY_STATUS(r);
@@ -4291,13 +4464,12 @@ async function openExitDrawer(exitId) {
 
   const resHtml = !reservations.length
     ? `<p class="text-muted text-small" style="padding:8px 0">Nenhuma reserva nesta saída.</p>`
-    : `
-      ${activeRes.length ? activeRes.map(resCard).join('') : ''}
-      ${cancelledRes.length ? `
-        <details class="exit-res-cancelled-details">
-          <summary class="text-muted text-small">${cancelledRes.length} reserva(s) cancelada(s)</summary>
-          <div style="margin-top:8px">${cancelledRes.map(resCard).join('')}</div>
-        </details>` : ''}`;
+    : `${activeRes.length ? activeRes.map(resCard).join('') : ''}
+       ${cancelledRes.length ? `
+         <details class="exit-res-cancelled-details">
+           <summary class="text-muted text-small">${cancelledRes.length} reserva(s) cancelada(s)</summary>
+           <div style="margin-top:8px">${cancelledRes.map(resCard).join('')}</div>
+         </details>` : ''}`;
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   const canReopen   = exit.status !== 'scheduled';
@@ -4378,6 +4550,25 @@ async function openExitDrawer(exitId) {
     </div>
 
     <div class="adm-section">
+      <div class="adm-section__title">
+        Lista de embarque
+        <span class="badge badge--draft">${totalActivePax} pax</span>
+      </div>
+      <div class="bl-toolbar">
+        <div class="bl-summary">
+          <span>${totalActivePax} participantes · ${available} vagas disponíveis</span>
+        </div>
+        <button class="adm-btn adm-btn--secondary adm-btn--sm" id="bl-copy-all-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          Copiar lista completa
+        </button>
+      </div>
+      <div class="bl-groups" id="bl-groups-container">
+        ${boardingListHtml}
+      </div>
+    </div>
+
+    <div class="adm-section">
       <div class="adm-section__title">Ações</div>
       <div class="exit-actions">${actionsHtml}</div>
     </div>
@@ -4385,6 +4576,37 @@ async function openExitDrawer(exitId) {
 
   // Re-open drawer with full content
   openDrawer(drawerTitle, html);
+
+  // ─── Copy helpers ──────────────────────────────────────────────────────────
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      toast('Lista copiada para a área de transferência.', 'success');
+    } catch {
+      toast('Não foi possível copiar. Tente copiar manualmente.', 'error');
+    }
+  }
+
+  document.getElementById('bl-copy-all-btn')?.addEventListener('click', () => {
+    copyText(buildMarkdown(null));
+  });
+
+  document.querySelectorAll('.bl-copy-group-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.closest('.bl-group')?.dataset.key;
+      copyText(buildMarkdown(key));
+    });
+  });
 
   // ─── Event listeners ───────────────────────────────────────────────────────
   document.getElementById('exit-edit-btn')?.addEventListener('click', async () => {
