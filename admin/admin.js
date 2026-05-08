@@ -175,6 +175,20 @@ function closeModal() {
 $('adm-modal-close').addEventListener('click', closeModal);
 $('adm-modal-overlay').addEventListener('click', closeModal);
 
+/** Returns a Promise<boolean> — resolves true if user confirms, false otherwise */
+function showConfirmModal(title, bodyHtml, confirmLabel = 'Confirmar', variant = 'danger') {
+  return new Promise(resolve => {
+    const btnCls = variant === 'danger' ? 'adm-btn--danger' : 'adm-btn--primary';
+    openModal(title, bodyHtml, `
+      <button class="adm-btn adm-btn--ghost" id="confirm-modal-cancel">Cancelar</button>
+      <button class="adm-btn ${btnCls}" id="confirm-modal-ok">${escHtml(confirmLabel)}</button>
+    `);
+    const cleanup = (result) => { closeModal(); resolve(result); };
+    document.getElementById('confirm-modal-cancel')?.addEventListener('click', () => cleanup(false));
+    document.getElementById('confirm-modal-ok')?.addEventListener('click',     () => cleanup(true));
+  });
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const MODULES = {
@@ -2595,81 +2609,170 @@ window.tryDeleteBp = function tryDeleteBp(id, name) {
 
 async function renderSaidas(root) {
   root.innerHTML = `
-    <div class="adm-card">
-      <div class="adm-filter-bar">
-        <input type="search" class="adm-input" id="saidas-filter" placeholder="Filtrar por experiência, título ou data…" />
-        <select id="saidas-status">
-          <option value="">Todos os status</option>
-          <option value="scheduled">Aberta</option>
-          <option value="sold_out">Esgotada</option>
-          <option value="cancelled">Cancelada</option>
-        </select>
-        <button class="adm-btn adm-btn--primary" id="saidas-new-btn">➕ Nova Saída</button>
-        <span class="adm-filter-count" id="saidas-count"></span>
+    <div class="saidas-toolbar">
+      <div class="saidas-filters">
+        <div class="saidas-filter-group">
+          <div class="saidas-search-wrap">
+            <svg class="saidas-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" class="adm-input adm-input--sm saidas-search-input" id="saidas-filter" placeholder="Filtrar por experiência, título ou data…" />
+          </div>
+          <select class="adm-input adm-input--sm" id="saidas-status">
+            <option value="">Todos os status</option>
+            <option value="scheduled">Aberta</option>
+            <option value="sold_out">Esgotada</option>
+            <option value="cancelled">Cancelada</option>
+            <option value="completed">Concluída</option>
+          </select>
+        </div>
+        <div class="saidas-filter-actions">
+          <span class="adm-filter-count" id="saidas-count"></span>
+          <button class="adm-btn adm-btn--primary adm-btn--sm" id="saidas-new-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nova Saída
+          </button>
+        </div>
       </div>
-      <div class="adm-table-wrap">
-        <table class="adm-table">
-          <thead><tr><th>Data</th><th>Título / Experiência</th><th>Capacidade</th><th>Preço</th><th>Status</th><th></th></tr></thead>
-          <tbody id="saidas-tbody"><tr><td colspan="6" class="adm-table__empty text-muted">Carregando…</td></tr></tbody>
-        </table>
+    </div>
+
+    <div id="saidas-list-wrap">
+      <div class="saidas-skeleton">
+        <div class="saidas-skeleton__row"></div>
+        <div class="saidas-skeleton__row"></div>
+        <div class="saidas-skeleton__row"></div>
       </div>
     </div>`;
 
   const db = window.anauaDb;
   let allExits = [];
   let experiences = [];
+  // occupancy map: departure_id → participant count
+  const occMap = {};
 
   if (db) {
     const [exitsRes, expsRes] = await Promise.all([
       db.from('departures')
-        .select('id, experience_id, title, start_at, capacity, price, status, experiences(title)')
+        .select('id, experience_id, title, start_at, end_at, capacity, price, status, experiences(id, title)')
         .order('start_at', { ascending: false }),
-      db.from('experiences').select('id, title').eq('is_active', true).order('title'),
+      db.from('experiences').select('id, title, max_participants').eq('is_active', true).order('title'),
     ]);
 
     if (exitsRes.error) {
-      console.warn('[hardening-2.1] Erro ao carregar saídas:', exitsRes.error.message);
-      $('saidas-tbody').innerHTML = `<tr><td colspan="6" class="adm-table__empty" style="color:var(--adm-danger)">Não foi possível carregar as saídas.</td></tr>`;
+      console.warn('[saidas] Erro ao carregar saídas:', exitsRes.error.message);
+      $('saidas-list-wrap').innerHTML = `
+        <div class="saidas-empty">
+          <div class="saidas-empty__icon">⚠️</div>
+          <div class="saidas-empty__title">Não foi possível carregar as saídas</div>
+          <div class="saidas-empty__sub">Verifique sua conexão ou recarregue a página.</div>
+        </div>`;
       return;
     }
 
     allExits = (exitsRes.data ?? []).map(d => ({
-      exp:  { title: d.experiences?.title ?? d.experience_id ?? '—', id: d.experience_id },
-      exit: { id: d.id, start_at: d.start_at, status: d.status ?? 'scheduled', capacity: d.capacity ?? 0, title: d.title ?? '', price: d.price ?? null },
+      exp:  { title: d.experiences?.title ?? '—', id: d.experience_id },
+      exit: { id: d.id, start_at: d.start_at, end_at: d.end_at, status: d.status ?? 'scheduled',
+              capacity: d.capacity ?? 0, title: d.title ?? '', price: d.price ?? null },
     }));
     _exitsCache = allExits;
     experiences = expsRes.data ?? [];
-    console.log('[hardening-2.1] Saídas carregadas ✓', allExits.length);
+
+    // Batch-load occupancy: count participants per departure across non-cancelled reservations
+    if (allExits.length) {
+      const { data: resRows } = await db
+        .from('reservations')
+        .select('id, departure_id')
+        .not('reservation_status', 'in', '(cancelled,refunded)');
+      if (resRows?.length) {
+        const resIds = resRows.map(r => r.id);
+        const depByRes = Object.fromEntries(resRows.map(r => [r.id, r.departure_id]));
+        const { data: paxRows } = await db
+          .from('participants')
+          .select('id, reservation_id')
+          .in('reservation_id', resIds);
+        (paxRows ?? []).forEach(p => {
+          const depId = depByRes[p.reservation_id];
+          if (depId) occMap[depId] = (occMap[depId] ?? 0) + 1;
+        });
+      }
+    }
   }
 
-  function renderRows(data) {
-    const tbody = $('saidas-tbody');
-    $('saidas-count').textContent = `${data.length} saída(s)`;
-    tbody.innerHTML = data.map(({ exp, exit }) => {
-      const st = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'soldout' : 'active';
-      const stLabel = st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta';
-      const depTitle = exit.title ?? exp.title;
-      return `<tr>
-        <td class="no-wrap">${fmtDate(exit.start_at)}</td>
-        <td>
-          <div class="text-bold">${escHtml(depTitle)}</div>
-          <div class="text-small text-muted">${escHtml(exp.title)}</div>
-        </td>
-        <td>${exit.capacity} vagas</td>
-        <td class="no-wrap">${exit.price != null ? fmt(exit.price) : '<span class="text-muted">—</span>'}</td>
-        <td><span class="badge badge--${st}">${stLabel}</span></td>
-        <td style="white-space:nowrap">
-          <button class="adm-btn adm-btn--ghost adm-btn--sm" data-exit="${exit.id}">Detalhes</button>
-          <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="duplicateDeparture('${exit.id}')">Duplicar</button>
-        </td>
-      </tr>`;
-    }).join('') || `<tr><td colspan="6" class="adm-table__empty text-muted">Nenhuma saída encontrada.</td></tr>`;
-    tbody.querySelectorAll('[data-exit]').forEach(btn => btn.addEventListener('click', () => openExitDrawer(btn.dataset.exit)));
+  // ─── Status helpers ───────────────────────────────────────────────────────
+  function statusInfo(status) {
+    return {
+      scheduled: { cls: 'active',    label: 'Aberta' },
+      sold_out:  { cls: 'soldout',   label: 'Esgotada' },
+      cancelled: { cls: 'cancelled', label: 'Cancelada' },
+      completed: { cls: 'completed', label: 'Concluída' },
+    }[status] ?? { cls: 'draft', label: status };
+  }
+
+  // ─── Row renderer ─────────────────────────────────────────────────────────
+  function buildRow({ exp, exit }) {
+    const { cls, label } = statusInfo(exit.status);
+    const depTitle  = exit.title || exp.title;
+    const occupied  = occMap[exit.id] ?? 0;
+    const available = Math.max(0, (exit.capacity ?? 0) - occupied);
+    const capPct    = exit.capacity > 0 ? Math.min(100, Math.round(occupied / exit.capacity * 100)) : 0;
+    const fullness  = capPct >= 100 ? 'full' : capPct >= 75 ? 'high' : capPct >= 50 ? 'mid' : 'low';
+    const dt = exit.start_at ? new Date(exit.start_at) : null;
+    const dayStr   = dt ? dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '') : '—';
+    const yearStr  = dt ? dt.getFullYear() : '';
+    const timeStr  = dt ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    const isPast   = dt && dt < new Date();
+
+    return `
+      <div class="saida-row saida-row--${cls}${isPast && exit.status === 'scheduled' ? ' saida-row--past' : ''}" data-exit="${exit.id}">
+        <div class="saida-row__date-col">
+          <span class="saida-row__day-month">${escHtml(dayStr)}</span>
+          <span class="saida-row__year">${yearStr}</span>
+          ${timeStr ? `<span class="saida-row__time">${timeStr}</span>` : ''}
+        </div>
+        <div class="saida-row__body">
+          <div class="saida-row__top">
+            <span class="saida-row__title">${escHtml(depTitle)}</span>
+            <span class="badge badge--${cls}">${label}</span>
+          </div>
+          <div class="saida-row__exp text-muted">${escHtml(exp.title)}</div>
+          <div class="saida-row__occ">
+            <div class="saida-occ-bar" title="${occupied} ocupadas de ${exit.capacity}">
+              <div class="saida-occ-bar__fill saida-occ-bar--${fullness}" style="width:${capPct}%"></div>
+            </div>
+            <span class="saida-occ-label saida-occ-label--${fullness}">
+              ${occupied} ocup. · <strong>${available} disp.</strong> / ${exit.capacity}
+            </span>
+          </div>
+        </div>
+        <div class="saida-row__side">
+          <div class="saida-row__price">${exit.price != null ? fmt(exit.price) : '<span class="text-muted">—</span>'}</div>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm saida-row__open" data-exit="${exit.id}">
+            Detalhes
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function renderList(data) {
+    const wrap = $('saidas-list-wrap');
+    $('saidas-count').textContent = `${data.length} saída${data.length !== 1 ? 's' : ''}`;
+    if (!data.length) {
+      wrap.innerHTML = `
+        <div class="saidas-empty">
+          <div class="saidas-empty__icon">🗓️</div>
+          <div class="saidas-empty__title">Nenhuma saída encontrada</div>
+          <div class="saidas-empty__sub">Tente ajustar os filtros ou cadastre uma nova saída.</div>
+        </div>`;
+      return;
+    }
+    wrap.innerHTML = `<div class="saidas-list">${data.map(buildRow).join('')}</div>`;
+    wrap.querySelectorAll('[data-exit]').forEach(el =>
+      el.addEventListener('click', () => openExitDrawer(el.dataset.exit))
+    );
   }
 
   function filtered() {
-    const q = $('saidas-filter').value.toLowerCase();
-    const s = $('saidas-status').value;
+    const q = ($('saidas-filter')?.value ?? '').toLowerCase();
+    const s = $('saidas-status')?.value ?? '';
     return allExits.filter(({ exp, exit }) => {
       const matchQ = !q || exp.title.toLowerCase().includes(q)
         || (exit.title ?? '').toLowerCase().includes(q)
@@ -2679,8 +2782,8 @@ async function renderSaidas(root) {
     });
   }
 
-  $('saidas-filter').addEventListener('input',  () => renderRows(filtered()));
-  $('saidas-status').addEventListener('change', () => renderRows(filtered()));
+  $('saidas-filter').addEventListener('input',  () => renderList(filtered()));
+  $('saidas-status').addEventListener('change', () => renderList(filtered()));
 
   $('saidas-new-btn').addEventListener('click', async () => {
     if (!experiences.length) {
@@ -2690,7 +2793,22 @@ async function renderSaidas(root) {
     openExitFormDrawer(null, null, experiences, () => renderSaidas(root));
   });
 
-  renderRows(allExits);
+  if (!allExits.length && db) {
+    $('saidas-list-wrap').innerHTML = `
+      <div class="saidas-empty">
+        <div class="saidas-empty__icon">🗓️</div>
+        <div class="saidas-empty__title">Nenhuma saída cadastrada</div>
+        <div class="saidas-empty__sub">Crie a primeira saída para começar a vender pelo site.</div>
+        <button class="adm-btn adm-btn--primary" id="saidas-empty-new-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Criar primeira saída
+        </button>
+      </div>`;
+    $('saidas-empty-new-btn')?.addEventListener('click', () => $('saidas-new-btn').click());
+    return;
+  }
+
+  renderList(allExits);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4070,86 +4188,206 @@ async function openExitDrawer(exitId) {
   if (!ref) { toast('Saída não encontrada no cache. Recarregue a lista.', 'error'); return; }
   const { exp, exit } = ref;
 
-  const st = exit.status === 'cancelled' ? 'cancelled' : exit.status === 'sold_out' ? 'soldout' : 'active';
-  const stLabel = st === 'soldout' ? 'Esgotada' : st === 'cancelled' ? 'Cancelada' : 'Aberta';
+  // ─── Status metadata ───────────────────────────────────────────────────────
+  const STATUS = {
+    scheduled: { cls: 'active',    label: 'Aberta' },
+    sold_out:  { cls: 'soldout',   label: 'Esgotada' },
+    cancelled: { cls: 'cancelled', label: 'Cancelada' },
+    completed: { cls: 'completed', label: 'Concluída' },
+  };
+  const { cls: st, label: stLabel } = STATUS[exit.status] ?? { cls: 'draft', label: exit.status };
 
-  // Load boarding points eagerly
-  const [{ data: bps }, { count: occupiedSeats }] = await Promise.all([
+  // Show drawer with skeleton while loading
+  const db = window.anauaDb;
+  const drawerTitle = `${exp.title} — ${exit.start_at ? new Date(exit.start_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric' }).replace('.','') : ''}`;
+  openDrawer(drawerTitle, `<div class="exit-drawer-loading">Carregando…</div>`);
+
+  // ─── Parallel data load ────────────────────────────────────────────────────
+  const [{ data: bps }, reservationsResult] = await Promise.all([
     listAllBoardingPointsByDeparture(exit.id),
     (async () => {
-      const db = window.anauaDb;
-      if (!db) return { count: null };
-      // Count participants across non-cancelled reservations for this departure
-      const { data: resRows } = await db
-        .from('reservations')
-        .select('id')
+      if (!db) return { data: [], error: null };
+      return db.from('reservations')
+        .select('id, customer_name, customer_phone, customer_email, reservation_status, total_amount, amount_paid, payment_method, boarding_point_id, participants(id)')
         .eq('departure_id', exit.id)
-        .not('reservation_status', 'in', '(cancelled,refunded)');
-      if (!resRows?.length) return { count: 0 };
-      const ids = resRows.map(r => r.id);
-      return db.from('participants').select('id', { count: 'exact', head: true }).in('reservation_id', ids);
+        .order('created_at', { ascending: true });
     })(),
   ]);
+
+  const reservations = reservationsResult.data ?? [];
+  const occupied = reservations
+    .filter(r => !['cancelled','refunded'].includes(r.reservation_status))
+    .reduce((s, r) => s + (r.participants?.length ?? 0), 0);
+  const available = Math.max(0, (exit.capacity ?? 0) - occupied);
+  const capPct    = exit.capacity > 0 ? Math.min(100, Math.round(occupied / exit.capacity * 100)) : 0;
+  const fullness  = capPct >= 100 ? 'full' : capPct >= 75 ? 'high' : capPct >= 50 ? 'mid' : 'low';
+
+  // ─── Boarding points HTML ──────────────────────────────────────────────────
+  const bpMap = {};
+  (bps ?? []).forEach(bp => { bpMap[bp.id] = bp; });
+
   const bpsHtml = bps?.length
     ? bps.map(bp => {
         const pickupStr = bp.pickupAt
           ? new Date(bp.pickupAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-          : '—';
-        const activeTag = bp.isActive ? '' : ' <span style="font-size:10px;background:#999;color:#fff;border-radius:3px;padding:0 4px">inativo</span>';
-        return `<div style="border-left:3px solid var(--adm-primary,#2d6a4f);padding:6px 10px;margin-bottom:6px;line-height:1.5">
-          <strong>${escHtml(bp.displayName)}</strong>${activeTag}<br>
-          <span style="font-size:12px;color:var(--adm-text-muted)">🕐 Embarque: ${pickupStr}${bp.displayAddress ? ' · ' + escHtml(bp.displayAddress) : ''}</span>
-          ${bp.notes ? `<br><span style="font-size:11px;color:var(--adm-text-muted)">${escHtml(bp.notes)}</span>` : ''}
-        </div>`;
+          : null;
+        const inactiveTag = bp.isActive ? '' : `<span class="exit-bp__inactive-tag">inativo</span>`;
+        return `
+          <div class="exit-bp-card${bp.isActive ? '' : ' exit-bp-card--inactive'}">
+            <div class="exit-bp-card__header">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span class="exit-bp-card__name">${escHtml(bp.displayName)}</span>
+              ${inactiveTag}
+              ${pickupStr ? `<span class="exit-bp-card__time">🕐 ${pickupStr}</span>` : ''}
+            </div>
+            ${bp.displayAddress ? `<div class="exit-bp-card__addr">${escHtml(bp.displayAddress)}</div>` : ''}
+            ${bp.notes ? `<div class="exit-bp-card__notes">${escHtml(bp.notes)}</div>` : ''}
+          </div>`;
       }).join('')
-    : '<p class="text-muted text-small">Nenhum ponto cadastrado.</p>';
+    : '<p class="text-muted text-small">Nenhum ponto de embarque cadastrado.</p>';
 
+  // ─── Reservations HTML ────────────────────────────────────────────────────
+  const RES_STATUS = {
+    pending:         { cls: 'badge--pending',   label: 'Pendente' },
+    pending_payment: { cls: 'badge--pending',   label: 'Ag. Pagamento' },
+    reserved:        { cls: 'badge--reserved',  label: 'Reservado' },
+    confirmed:       { cls: 'badge--confirmed', label: 'Confirmado' },
+    cancelled:       { cls: 'badge--cancelled', label: 'Cancelado' },
+    refunded:        { cls: 'badge--cancelled', label: 'Estornado' },
+  };
+  const PAY_STATUS = (r) => {
+    const paid = r.amount_paid ?? 0;
+    const total = r.total_amount ?? 0;
+    if (paid <= 0)          return { cls: 'badge--pending', label: 'Não pago' };
+    if (paid >= total)      return { cls: 'badge--paid',    label: 'Pago' };
+    return { cls: 'badge--pending', label: 'Parcial' };
+  };
+
+  const activeRes = reservations.filter(r => !['cancelled','refunded'].includes(r.reservation_status));
+  const cancelledRes = reservations.filter(r => ['cancelled','refunded'].includes(r.reservation_status));
+
+  function resCard(r) {
+    const rs  = RES_STATUS[r.reservation_status] ?? { cls: 'badge--draft', label: r.reservation_status };
+    const pay = PAY_STATUS(r);
+    const pax = r.participants?.length ?? '?';
+    const short = r.id?.slice(0, 8).toUpperCase();
+    return `
+      <div class="exit-res-card">
+        <div class="exit-res-card__top">
+          <span class="exit-res-card__name">${escHtml(r.customer_name ?? '—')}</span>
+          <span class="exit-res-card__code text-muted">#${short}</span>
+        </div>
+        <div class="exit-res-card__meta">
+          <span class="badge ${rs.cls}">${rs.label}</span>
+          <span class="badge ${pay.cls}">${pay.label}</span>
+          <span class="exit-res-card__pax">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            ${pax} pax
+          </span>
+          ${r.customer_phone ? `<span class="exit-res-card__contact">${escHtml(r.customer_phone)}</span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  const resHtml = !reservations.length
+    ? `<p class="text-muted text-small" style="padding:8px 0">Nenhuma reserva nesta saída.</p>`
+    : `
+      ${activeRes.length ? activeRes.map(resCard).join('') : ''}
+      ${cancelledRes.length ? `
+        <details class="exit-res-cancelled-details">
+          <summary class="text-muted text-small">${cancelledRes.length} reserva(s) cancelada(s)</summary>
+          <div style="margin-top:8px">${cancelledRes.map(resCard).join('')}</div>
+        </details>` : ''}`;
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+  const canReopen   = exit.status !== 'scheduled';
+  const canSoldOut  = exit.status === 'scheduled';
+  const canCancel   = exit.status !== 'cancelled';
+
+  const actionsHtml = `
+    <button class="adm-btn adm-btn--secondary" id="exit-edit-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      Editar saída
+    </button>
+    ${canReopen ? `
+      <button class="adm-btn adm-btn--secondary" data-set-status="scheduled">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        Reabrir saída
+      </button>` : ''}
+    ${canSoldOut ? `
+      <button class="adm-btn adm-btn--secondary" data-set-status="sold_out">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        Marcar como esgotada
+      </button>` : ''}
+    ${canCancel ? `
+      <button class="adm-btn adm-btn--danger exit-cancel-btn" data-set-status="cancelled">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        Cancelar saída
+      </button>` : ''}`;
+
+  // ─── Date display ──────────────────────────────────────────────────────────
+  const dtDisplay = exit.start_at
+    ? new Date(exit.start_at).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',  hour: '2-digit', minute: '2-digit' })
+    : '—';
+
+  // ─── Final HTML ────────────────────────────────────────────────────────────
   const html = `
-    <div class="adm-section">
-      <div class="adm-section__title">Saída</div>
-      <div class="adm-dl">
-        <dt>Experiência</dt><dd class="text-bold">${escHtml(exp.title)}</dd>
-        ${exit.title ? `<dt>Título</dt><dd>${escHtml(exit.title)}</dd>` : ''}
-        <dt>Data/Hora início</dt><dd>${fmtDate(exit.start_at)}</dd>
-        ${exit.end_at ? `<dt>Data/Hora fim</dt><dd>${fmtDate(exit.end_at)}</dd>` : ''}
-        <dt>Capacidade</dt><dd>${exit.capacity} vagas${occupiedSeats != null ? ` · <strong>${occupiedSeats}</strong> ocupadas · <strong>${Math.max(0, exit.capacity - occupiedSeats)}</strong> disponíveis` : ''}</dd>
-        ${exit.price != null ? `<dt>Preço</dt><dd>${fmt(exit.price)}</dd>` : ''}
-        <dt>Status</dt><dd><span class="badge badge--${st}">${stLabel}</span></dd>
+    <div class="exit-drawer-header">
+      <div class="exit-drawer-header__exp">${escHtml(exp.title)}</div>
+      <div class="exit-drawer-header__date">${escHtml(dtDisplay)}</div>
+      ${exit.title ? `<div class="exit-drawer-header__title">"${escHtml(exit.title)}"</div>` : ''}
+      <span class="badge badge--${st} exit-drawer-header__badge">${stLabel}</span>
+    </div>
+
+    <div class="exit-stats">
+      <div class="exit-stat">
+        <div class="exit-stat__val">${exit.capacity ?? '—'}</div>
+        <div class="exit-stat__lbl">Total</div>
       </div>
+      <div class="exit-stat exit-stat--occ">
+        <div class="exit-stat__val">${occupied}</div>
+        <div class="exit-stat__lbl">Ocupadas</div>
+      </div>
+      <div class="exit-stat exit-stat--avail exit-stat--${fullness}">
+        <div class="exit-stat__val">${available}</div>
+        <div class="exit-stat__lbl">Disponíveis</div>
+      </div>
+      <div class="exit-stat exit-stat--price">
+        <div class="exit-stat__val">${exit.price != null ? fmt(exit.price) : '—'}</div>
+        <div class="exit-stat__lbl">Valor/pax</div>
+      </div>
+    </div>
+    <div class="exit-occ-bar-wrap">
+      <div class="saida-occ-bar saida-occ-bar--lg" title="${capPct}% ocupado">
+        <div class="saida-occ-bar__fill saida-occ-bar--${fullness}" style="width:${capPct}%"></div>
+      </div>
+      <span class="text-muted" style="font-size:11px">${capPct}% ocupado</span>
     </div>
 
     <div class="adm-section">
       <div class="adm-section__title">Pontos de embarque (${bps?.length ?? 0})</div>
-      ${bpsHtml}
+      <div class="exit-bp-list">${bpsHtml}</div>
+    </div>
+
+    <div class="adm-section">
+      <div class="adm-section__title">
+        Reservas nesta saída
+        <span class="badge badge--draft">${activeRes.length}</span>
+      </div>
+      <div class="exit-res-list">${resHtml}</div>
     </div>
 
     <div class="adm-section">
       <div class="adm-section__title">Ações</div>
-      <div style="display:flex;flex-direction:column;gap:var(--sp-3)">
-        <button class="adm-btn adm-btn--secondary" id="exit-edit-btn">✏️ Editar saída</button>
-        ${exit.status !== 'scheduled'
-          ? `<button class="adm-btn adm-btn--secondary" data-set-status="scheduled">✅ Reabrir saída</button>`
-          : ''}
-        ${exit.status !== 'sold_out'
-          ? `<button class="adm-btn adm-btn--secondary" data-set-status="sold_out">🔒 Marcar como esgotada</button>`
-          : ''}
-        ${exit.status !== 'cancelled'
-          ? `<button class="adm-btn adm-btn--danger" data-set-status="cancelled">🚫 Cancelar saída</button>`
-          : ''}
-      </div>
-    </div>
-
-    <div class="adm-section">
-      <div class="adm-section__title">Reservas nesta saída</div>
-      <div class="text-muted text-small">Visualização por saída disponível em breve.</div>
+      <div class="exit-actions">${actionsHtml}</div>
     </div>
   `;
 
-  openDrawer(`${exp.title} — ${fmtDate(exit.start_at)}`, html);
+  // Re-open drawer with full content
+  openDrawer(drawerTitle, html);
 
-  // Edit button
+  // ─── Event listeners ───────────────────────────────────────────────────────
   document.getElementById('exit-edit-btn')?.addEventListener('click', async () => {
-    const db = window.anauaDb;
     const { data: exps } = db ? await db.from('experiences').select('id, title').eq('is_active', true).order('title') : { data: [] };
     closeDrawer();
     openExitFormDrawer(exit, exp, exps ?? [], (updatedPayload) => {
@@ -4158,17 +4396,28 @@ async function openExitDrawer(exitId) {
     });
   });
 
-  // Status change buttons
   document.querySelectorAll('[data-set-status]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const newStatus = btn.dataset.setStatus;
-      const label = { scheduled: 'reaberta', sold_out: 'marcada como esgotada', cancelled: 'cancelada' }[newStatus];
+      const isCancelAction = newStatus === 'cancelled';
+      const labels = { scheduled: 'reaberta', sold_out: 'marcada como esgotada', cancelled: 'cancelada' };
+
+      if (isCancelAction) {
+        const confirmed = await showConfirmModal(
+          'Cancelar saída',
+          `<p>Tem certeza que deseja <strong>cancelar</strong> a saída de <strong>${escHtml(exp.title)}</strong> em <strong>${escHtml(dtDisplay)}</strong>?</p>
+           ${activeRes.length ? `<p style="color:var(--adm-danger);margin-top:8px">⚠️ Esta saída tem <strong>${activeRes.length}</strong> reserva(s) ativa(s).</p>` : ''}`,
+          'Cancelar saída', 'danger'
+        );
+        if (!confirmed) return;
+      }
+
       const { error } = await setDepartureStatus(exit.id, newStatus);
       if (error) { toast('Erro: ' + error.message, 'error'); return; }
       exit.status = newStatus;
       const r = findExit(exit.id);
       if (r) r.exit.status = newStatus;
-      toast(`Saída ${label} com sucesso!`, 'success');
+      toast(`Saída ${labels[newStatus]} com sucesso!`, 'success');
       closeDrawer();
       setTimeout(() => openExitDrawer(exit.id), 150);
     });
