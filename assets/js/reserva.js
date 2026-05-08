@@ -1084,17 +1084,18 @@ $('next-8').addEventListener('click', async () => {
         document_number: p.docNumber ?? p.document_number ?? null,
       }));
       const { data: rpcResult, error: rpcErr } = await supabase.rpc('reserve_departure', {
-        p_departure_id:   draft.exitId,
-        p_experience_id:  draft.experienceId,
-        p_user_id:        preUser?.id ?? null,
-        p_customer_name:  booking.payer?.fullName ?? '',
-        p_customer_email: booking.payer?.email ?? '',
-        p_customer_phone: booking.payer?.phone ?? '',
-        p_payment_method: booking.paymentMethod ?? null,
-        p_total_amount:   booking.totalAmount ?? 0,
-        p_amount_paid:    booking.paidAmount ?? 0,
-        p_notes:          draft.observations ?? null,
-        p_participants:   JSON.stringify(paxForRpc),
+        p_departure_id:      draft.exitId,
+        p_experience_id:     draft.experienceId,
+        p_user_id:           preUser?.id ?? null,
+        p_customer_name:     booking.payer?.fullName ?? '',
+        p_customer_email:    booking.payer?.email ?? '',
+        p_customer_phone:    booking.payer?.phone ?? '',
+        p_boarding_point_id: draft.boardingPointId ?? null,
+        p_payment_method:    booking.paymentMethod ?? null,
+        p_total_amount:      booking.totalAmount ?? 0,
+        p_amount_paid:       booking.paidAmount ?? 0,
+        p_notes:             draft.observations ?? null,
+        p_participants:      paxForRpc,
       });
 
       if (!rpcErr) {

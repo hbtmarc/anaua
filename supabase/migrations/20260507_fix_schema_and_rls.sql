@@ -12,6 +12,8 @@ ALTER TABLE participants ADD COLUMN IF NOT EXISTS full_name       text;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS birthdate       date;
 -- document_number stores CPF (digits only) — nullable to preserve old records
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS document_number text;
+-- profile_type distinguishes adult/child/senior for pricing — nullable for old records
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS profile_type    text;
 
 -- If 'name' column exists, migrate data then drop it
 DO $$
@@ -307,6 +309,10 @@ ALTER TABLE departures ALTER COLUMN status SET DEFAULT 'scheduled';
 -- Locks the departure row, validates capacity, creates reservation + participants
 -- and updates status to 'sold_out' when capacity reaches zero.
 -- Runs as SECURITY DEFINER so it bypasses RLS on departures.
+
+-- Drop old overload (different signature — no p_boarding_point_id, no defaults)
+DROP FUNCTION IF EXISTS reserve_departure(uuid,uuid,uuid,text,text,text,text,numeric,numeric,text,jsonb);
+
 CREATE OR REPLACE FUNCTION reserve_departure(
   p_departure_id     uuid,
   p_experience_id    uuid,
@@ -314,11 +320,12 @@ CREATE OR REPLACE FUNCTION reserve_departure(
   p_customer_name    text,
   p_customer_email   text,
   p_customer_phone   text,
-  p_payment_method   text,
-  p_total_amount     numeric,
-  p_amount_paid      numeric,
-  p_notes            text,
-  p_participants     jsonb   -- array of {full_name, profile_type, birthdate}
+  p_boarding_point_id uuid DEFAULT NULL,
+  p_payment_method   text DEFAULT NULL,
+  p_total_amount     numeric DEFAULT 0,
+  p_amount_paid      numeric DEFAULT 0,
+  p_notes            text DEFAULT NULL,
+  p_participants     jsonb DEFAULT '[]'::jsonb  -- array of {full_name, profile_type, birthdate, document_number}
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -382,12 +389,12 @@ BEGIN
     departure_id, experience_id, user_id,
     customer_name, customer_email, customer_phone,
     payment_method, reservation_status,
-    total_amount, amount_paid, notes
+    total_amount, amount_paid, notes, boarding_point_id
   ) VALUES (
     p_departure_id, p_experience_id, p_user_id,
     p_customer_name, p_customer_email, p_customer_phone,
     p_payment_method, 'reserved',
-    p_total_amount, p_amount_paid, p_notes
+    p_total_amount, p_amount_paid, p_notes, p_boarding_point_id
   )
   RETURNING id INTO v_reservation_id;
 
