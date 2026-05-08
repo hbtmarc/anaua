@@ -5395,12 +5395,7 @@ function finKpi(label, value, sub, color, iconSvg) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function renderConfiguracoes(root) {
-  root.innerHTML = `
-    <div style="max-width:680px">
-      <div class="adm-card" style="padding:var(--adm-sp-6);text-align:center">
-        <p class="text-muted">Carregando configurações…</p>
-      </div>
-    </div>`;
+  root.innerHTML = `<div class="adm-loading"><div class="adm-spinner"></div><span>Carregando configurações…</span></div>`;
 
   const db = window.anauaDb;
   if (!db) {
