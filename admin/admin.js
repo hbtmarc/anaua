@@ -366,6 +366,7 @@ async function renderDashboard(root) {
 
   // Shell imediato com KPI placeholders e tabelas vazias
   root.innerHTML = `
+    <div class="adm-page-layout">
     <div class="adm-kpi-row" id="dash-kpi-row">
       ${kpi('A Receber', '…', 'carregando…', 'green', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>')}
       ${kpi('Reservas ativas', '…', 'confirmadas + reservadas', 'blue', '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>')}
@@ -376,13 +377,14 @@ async function renderDashboard(root) {
     </div>
     <div class="adm-grid-2">
       <div class="adm-card" id="dash-reservas-card">
-        <div class="adm-card__header">Reservas recentes <div class="adm-card__actions"><a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a></div></div>
+        <div class="adm-card__header"><span class="adm-card__title">Reservas recentes</span><div class="adm-card__actions"><a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a></div></div>
         <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
       </div>
       <div class="adm-card" id="dash-saidas-card">
-        <div class="adm-card__header">Próximas saídas <div class="adm-card__actions"><a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a></div></div>
+        <div class="adm-card__header"><span class="adm-card__title">Próximas saídas</span><div class="adm-card__actions"><a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a></div></div>
         <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
       </div>
+    </div>
     </div>`;
 
   if (!db) {
@@ -424,7 +426,7 @@ async function renderDashboard(root) {
 
   // Reservas recentes
   document.getElementById('dash-reservas-card').innerHTML = `
-    <div class="adm-card__header">Reservas recentes <div class="adm-card__actions"><a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a></div></div>
+    <div class="adm-card__header"><span class="adm-card__title">Reservas recentes</span><div class="adm-card__actions"><a href="#reservas" class="adm-btn adm-btn--ghost adm-btn--sm">Ver todas</a></div></div>
     <div class="adm-table-wrap">
       <table class="adm-table">
         <thead><tr><th>Código</th><th>Responsável</th><th>Status</th><th>Total</th></tr></thead>
@@ -442,7 +444,7 @@ async function renderDashboard(root) {
 
   // Próximas saídas
   document.getElementById('dash-saidas-card').innerHTML = `
-    <div class="adm-card__header">Próximas saídas <div class="adm-card__actions"><a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a></div></div>
+    <div class="adm-card__header"><span class="adm-card__title">Próximas saídas</span><div class="adm-card__actions"><a href="#agenda" class="adm-btn adm-btn--ghost adm-btn--sm">Agenda</a></div></div>
     <div class="adm-table-wrap">
       <table class="adm-table">
         <thead><tr><th>Data</th><th>Experiência</th><th>Ocupação</th><th>Vagas</th></tr></thead>
@@ -466,10 +468,12 @@ async function renderDashboard(root) {
 
 function kpi(label, value, sub, color, iconSvg) {
   return `<div class="adm-kpi">
-    <div class="adm-kpi__icon adm-kpi__icon--${color}" style="float:right;margin:-4px -2px 0 0">${iconSvg}</div>
-    <div class="adm-kpi__label">${label}</div>
-    <div class="adm-kpi__value">${value}</div>
-    <div class="adm-kpi__sub">${sub}</div>
+    <div class="adm-kpi__icon adm-kpi__icon--${color}">${iconSvg}</div>
+    <div class="adm-kpi__body">
+      <div class="adm-kpi__label">${label}</div>
+      <div class="adm-kpi__value">${value}</div>
+      <div class="adm-kpi__sub">${sub}</div>
+    </div>
   </div>`;
 }
 
@@ -565,7 +569,7 @@ async function renderAgenda(root) {
     root.innerHTML = `
       <div class="adm-card">
         <div class="adm-card__header">
-          Todas as saídas
+          <span class="adm-card__title">Todas as saídas</span>
           <div style="display:flex;gap:8px">
             <button class="adm-btn adm-btn--secondary adm-btn--sm" id="tog-cal">Calendário</button>
             <button class="adm-btn adm-btn--primary adm-btn--sm" id="tog-list">Lista</button>
@@ -603,7 +607,7 @@ async function renderAgenda(root) {
 async function renderExperiencias(root) {
   root.innerHTML = `
     <div class="adm-card">
-      <div class="adm-card__header">Experiências cadastradas</div>
+      <div class="adm-card__header"><span class="adm-card__title">Experiências cadastradas</span></div>
       <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
     </div>`;
 
@@ -648,7 +652,9 @@ async function renderExperiencias(root) {
 
   root.innerHTML = `
     <div class="adm-card">
-      <div class="adm-card__header">Experiências cadastradas <span class="adm-count">${exps.length}</span></div>
+      <div class="adm-card__header">
+        <span class="adm-card__title">Experiências cadastradas <span class="adm-count">${exps.length}</span></span>
+      </div>
       <div class="adm-table-wrap">
         <table class="adm-table">
           <thead><tr><th>Título</th><th>Categoria</th><th>Dificuldade</th><th>Preço base</th><th>Status</th><th></th></tr></thead>
@@ -3793,6 +3799,10 @@ async function renderBoardingPoints(root) {
 
   root.innerHTML = `
     <div class="adm-card">
+      <div class="adm-card__header">
+        <span class="adm-card__title">Pontos de Embarque</span>
+      </div>
+      <div class="adm-table-wrap">
       <table class="adm-table">
         <thead>
           <tr>
@@ -3806,6 +3816,7 @@ async function renderBoardingPoints(root) {
         </thead>
         <tbody id="bp-table-body"></tbody>
       </table>
+      </div>
     </div>`;
 
   const tbody = document.getElementById('bp-table-body');
@@ -3948,6 +3959,7 @@ window.tryDeleteBp = function tryDeleteBp(id, name) {
 
 async function renderSaidas(root) {
   root.innerHTML = `
+    <div class="adm-page-layout">
     <div class="saidas-toolbar">
       <div class="saidas-filters">
         <div class="saidas-filter-group">
@@ -3979,6 +3991,7 @@ async function renderSaidas(root) {
         <div class="saidas-skeleton__row"></div>
         <div class="saidas-skeleton__row"></div>
       </div>
+    </div>
     </div>`;
 
   const db = window.anauaDb;
@@ -4893,12 +4906,14 @@ async function renderParticipantes(root) {
   const RES_STATUSES  = Object.keys(STATUS_TRANSITIONS);
 
   root.innerHTML = `
-    <div class="adm-filter-bar" style="margin-bottom:16px">
+    <div class="adm-page-layout">
+    <div class="adm-filter-bar adm-filter-bar--card">
       <input type="search" class="adm-input" id="part-search"
         placeholder="Buscar por nome ou CPF…" style="max-width:360px" />
       <span class="adm-filter-count" id="part-count"></span>
     </div>
-    <div id="part-body"><div style="padding:40px;text-align:center;color:var(--adm-muted)">Carregando…</div></div>`;
+    <div id="part-body"><div style="padding:40px;text-align:center;color:var(--adm-muted)">Carregando…</div></div>
+    </div>`;
 
   if (!db) return;
 
@@ -5367,7 +5382,7 @@ async function renderFinanceiro(root) {
 function finKpi(label, value, sub, color, iconSvg) {
   return `<div class="adm-kpi fin-kpi">
     <div class="adm-kpi__icon adm-kpi__icon--${color}">${iconSvg}</div>
-    <div class="fin-kpi__body">
+    <div class="adm-kpi__body">
       <div class="adm-kpi__label">${label}</div>
       <div class="adm-kpi__value">${value}</div>
       <div class="adm-kpi__sub">${sub}</div>
@@ -6748,13 +6763,12 @@ async function renderUsuarios(root) {
   // ── Shell ──────────────────────────────────────────────────────────────────
   root.innerHTML = `
     <div class="adm-card">
-      <div class="adm-card__header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px">
-          Usuários
-          <span class="text-small text-muted" id="adm-user-count"></span>
+      <div class="adm-card__header">
+          <span class="adm-card__title">Usuários <span class="text-small text-muted" id="adm-user-count"></span></span>
+          <div class="adm-card__actions">
+            <button class="adm-btn adm-btn--primary adm-btn--sm" id="adm-user-invite-btn">+ Convidar usuário</button>
+          </div>
         </div>
-        <button class="adm-btn adm-btn--primary adm-btn--sm" id="adm-user-invite-btn">+ Convidar usuário</button>
-      </div>
       <div class="adm-filter-bar" style="padding:var(--adm-sp-3) var(--adm-sp-4)">
         <input type="search" class="adm-input" id="adm-user-search" placeholder="Buscar por nome ou e-mail…" style="flex:1;min-width:180px" />
         <select class="adm-input" id="adm-user-role-filter" style="width:auto">
