@@ -461,6 +461,17 @@ export async function createExperienceBundle(bundle) {
 
   if (!rpcErr) {
     console.log('[bundle] Criado via RPC ✓', rpcData);
+    // Guarantee extended fields are persisted — the RPC may only handle base columns.
+    // We do a follow-up UPDATE with the full payload so nothing is lost.
+    if (rpcData?.experience_id && bundle.experience) {
+      const extPayload = buildExperiencePayload(bundle.experience);
+      const { error: extErr } = await supabase
+        .from('experiences')
+        .update(extPayload)
+        .eq('id', rpcData.experience_id);
+      if (extErr) console.warn('[bundle] Follow-up update de campos estendidos falhou (não crítico):', extErr.message);
+      else console.log('[bundle] Campos estendidos atualizados pós-RPC ✓');
+    }
     return { data: rpcData, error: null };
   }
 

@@ -2944,3 +2944,24 @@ label.exp-check input[type="checkbox"] {
   .fin-method-row { grid-template-columns: 100px 1fr 70px; }
   .fin-search { min-width: 140px; }
 }
+
+/* ── Gallery upload widget ──────────────────────────────────────────────── */
+.gallery-upload-widget { display: flex; flex-direction: column; gap: 10px; }
+.gallery-thumbs {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.gallery-thumb {
+  position: relative; width: 80px; height: 80px; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--adm-border);
+}
+.gallery-thumb img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.gallery-thumb__remove {
+  position: absolute; top: 2px; right: 2px;
+  background: rgba(0,0,0,0.6); color: #fff; border: none;
+  border-radius: 50%; width: 20px; height: 20px;
+  font-size: 11px; cursor: pointer; line-height: 20px; text-align: center; padding: 0;
+}
+.gallery-thumb__remove:hover { background: var(--adm-danger, #d32f2f); }
+.gallery-upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

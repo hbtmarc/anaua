@@ -193,6 +193,7 @@ function renderContent(exp, bpMap = {}) {
         ${diffLabel ? `<span class="badge badge--level-${exp.difficulty}">${diffLabel}</span>` : ''}
         ${catLabel  ? `<span class="badge" style="background:var(--color-offwhite);color:var(--color-muted);border:1px solid var(--color-stone)">${catLabel}</span>` : ''}
         ${exp.isNew ? '<span class="badge badge--new">Novo</span>' : ''}
+        ${exp.isFeatured ? '<span class="badge badge--featured">⭐ Destaque</span>' : ''}
         ${!hasFutureDep && exp.departures.length > 0 ? '<span class="badge badge--sold-out">Esgotado</span>' : ''}
       </div>
       <h1 class="detail-header__title">${exp.title}</h1>

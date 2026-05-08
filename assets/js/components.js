@@ -247,11 +247,13 @@ export function renderExperienceCard(exp) {
   const levelBadge = difficultyLabel ? `<span class="badge badge--level-${exp.difficulty}">${difficultyLabel}</span>` : '';
   const categoryLabel = CATEGORIES.find(c => c.id === exp.category)?.label ?? exp.category ?? '';
 
+  const isFeatured = exp.isFeatured ?? exp.featured ?? false;
+
   // Links públicos sempre usam o slug; fallback para id apenas se slug não existir
   const expLink = exp.slug ?? exp.id;
 
   return `
-    <article class="card ${isSoldOut ? 'card--sold-out' : ''}">
+    <article class="card ${isSoldOut ? 'card--sold-out' : ''} ${isFeatured ? 'card--featured' : ''}">
       <a href="experiencia.html?id=${expLink}" class="card__thumb" tabindex="-1" aria-hidden="true">
         <img
           src="${getExperienceCoverUrl(exp.coverImage ?? exp.cover_image_url)}"
@@ -261,6 +263,7 @@ export function renderExperienceCard(exp) {
         />
         <div class="card__thumb-badges">
           ${levelBadge}
+          ${isFeatured ? '<span class="badge badge--featured">⭐ Destaque</span>' : ''}
           ${exp.isNew ? '<span class="badge badge--new">Novo</span>' : ''}
           ${isSoldOut ? '<span class="badge badge--sold-out">Esgotado</span>' : ''}
         </div>

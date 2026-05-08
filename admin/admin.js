@@ -128,6 +128,41 @@ function toast(msg, type = 'info') {
   setTimeout(() => { el.classList.add('is-leaving'); setTimeout(() => el.remove(), 250); }, 3000);
 }
 
+// ─── Gallery upload helper (usado em Nova e Editar experiência) ───────────────
+async function _uploadGalleryImages(files, thumbsId, dataId, statusId) {
+  const db = window.anauaDb;
+  if (!db) { toast('Supabase não disponível.', 'error'); return; }
+  const thumbsEl = document.getElementById(thumbsId);
+  const dataEl   = document.getElementById(dataId);
+  const statusEl = document.getElementById(statusId);
+  const existing = JSON.parse(dataEl?.value || '[]');
+  let uploaded = [...existing];
+  if (statusEl) statusEl.textContent = `Enviando ${files.length} imagem(ns)…`;
+  for (const file of files) {
+    const ext  = file.name.split('.').pop();
+    const path = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:false, contentType:file.type });
+    if (upErr) { toast('Falha no upload: '+upErr.message, 'error'); continue; }
+    const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
+    const url = pub.publicUrl;
+    uploaded.push(url);
+    if (thumbsEl) {
+      const div = document.createElement('div');
+      div.className = 'gallery-thumb';
+      div.dataset.url = url;
+      div.innerHTML = `<img src="${url}" alt=""><button type="button" class="gallery-thumb__remove" data-url="${url}">✕</button>`;
+      div.querySelector('.gallery-thumb__remove').addEventListener('click', () => {
+        uploaded = uploaded.filter(u => u !== url);
+        if (dataEl) dataEl.value = JSON.stringify(uploaded);
+        div.remove();
+      });
+      thumbsEl.appendChild(div);
+    }
+  }
+  if (dataEl) dataEl.value = JSON.stringify(uploaded);
+  if (statusEl) statusEl.textContent = `${uploaded.length} imagem(ns) adicionada(s)`;
+}
+
 // ─── Drawer ───────────────────────────────────────────────────────────────────
 
 function openDrawer(title, bodyHtml) {
@@ -1100,9 +1135,16 @@ function openNovaExperienciaModal() {
             </div>
           </div>
           <div class="adm-field">
-            <label>Galeria (URLs)</label>
-            <textarea id="ne-gallery" class="adm-input" rows="3" placeholder="Uma URL por linha&#10;https://...imagem1.jpg"></textarea>
-            <span class="adm-hint">Uma URL por linha.</span>
+            <label>Galeria de Imagens</label>
+            <div class="gallery-upload-widget" id="ne-gallery-widget">
+              <div class="gallery-thumbs" id="ne-gallery-thumbs"></div>
+              <div class="gallery-upload-row">
+                <button type="button" class="adm-btn adm-btn--sm" id="ne-gallery-btn">🖼️ Adicionar imagens</button>
+                <span class="adm-hint" id="ne-gallery-status"></span>
+              </div>
+              <input type="file" id="ne-gallery-file" multiple accept="image/*" style="display:none">
+              <input type="hidden" id="ne-gallery-data" value="[]">
+            </div>
           </div>
         </div>
       </fieldset>
@@ -1126,7 +1168,7 @@ function openNovaExperienciaModal() {
           Criar primeira saída agora
         </label>
       </div>
-      <div id="ne-dep-section" style="display:none;display:flex;flex-direction:column;gap:12px">
+      <div id="ne-dep-section" style="display:none;flex-direction:column;gap:12px">
         <div class="adm-grid-2">
           <div class="adm-field"><label>Data/hora de início *</label>
             ${dtpFieldHtml('ne-dep-start')}
@@ -1173,7 +1215,7 @@ function openNovaExperienciaModal() {
           Criar reserva manual inicial
         </label>
       </div>
-      <div id="ne-res-section" style="display:none;display:flex;flex-direction:column;gap:12px">
+      <div id="ne-res-section" style="display:none;flex-direction:column;gap:12px">
         <p style="font-size:12px;color:var(--adm-text-muted)">Preencha os dados do responsável pela reserva.</p>
         <div class="adm-field"><label>Nome do responsável *</label>
           <input id="ne-res-name" class="adm-input" placeholder="Nome completo" />
@@ -1443,6 +1485,14 @@ function openNovaExperienciaModal() {
     toast('Imagem enviada!', 'success');
   });
 
+  // Wire gallery upload — Nova form
+  document.getElementById('ne-gallery-btn')?.addEventListener('click', () => document.getElementById('ne-gallery-file')?.click());
+  document.getElementById('ne-gallery-file')?.addEventListener('change', async e => {
+    await _uploadGalleryImages([...e.target.files], 'ne-gallery-thumbs', 'ne-gallery-data', 'ne-gallery-status');
+    e.target.value = '';
+  });
+  // Wire existing thumb remove buttons — Nova form (none on init, handled dynamically)
+
   // ── Submit ─────────────────────────────────────────────────────────────────
   document.getElementById('nova-exp-form')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -1475,7 +1525,7 @@ function openNovaExperienciaModal() {
       what_to_bring:       _taToArr(document.getElementById('ne-bring')?.value),
       cancellation_policy: document.getElementById('ne-cancel-policy')?.value.trim() || null,
       cover_image_url:     document.getElementById('ne-cover')?.value.trim() || null,
-      gallery:             _taToArr(document.getElementById('ne-gallery')?.value),
+      gallery:             JSON.parse(document.getElementById('ne-gallery-data')?.value || '[]'),
       is_active:           document.getElementById('ne-active')?.checked ?? true,
       featured:            document.getElementById('ne-featured')?.checked ?? false,
       is_new:              document.getElementById('ne-is-new')?.checked ?? false,
@@ -1854,9 +1904,16 @@ async function openEditExperienciaModal(id) {
             </div>
           </div>
           <div class="adm-field">
-            <label>Galeria (URLs)</label>
-            <textarea id="ee-gallery" class="adm-input" rows="3" placeholder="Uma URL por linha">${esc(arrToTa(row.gallery))}</textarea>
-            <span class="adm-hint">Uma URL por linha.</span>
+            <label>Galeria de Imagens</label>
+            <div class="gallery-upload-widget" id="ee-gallery-widget">
+              <div class="gallery-thumbs" id="ee-gallery-thumbs">${(row.gallery||[]).map(u=>`<div class="gallery-thumb" data-url="${esc(u)}"><img src="${esc(u)}" alt=""><button type="button" class="gallery-thumb__remove" data-url="${esc(u)}">✕</button></div>`).join('')}</div>
+              <div class="gallery-upload-row">
+                <button type="button" class="adm-btn adm-btn--sm" id="ee-gallery-btn">🖼️ Adicionar imagens</button>
+                <span class="adm-hint" id="ee-gallery-status"></span>
+              </div>
+              <input type="file" id="ee-gallery-file" multiple accept="image/*" style="display:none">
+              <input type="hidden" id="ee-gallery-data" value="${esc(JSON.stringify(row.gallery||[]))}">  
+            </div>
           </div>
         </div>
       </fieldset>
@@ -2020,6 +2077,25 @@ async function openEditExperienciaModal(id) {
     if (previewEl) previewEl.style.display = 'flex';
     if (emptyEl)   emptyEl.style.display   = 'none';
     toast('Imagem enviada!', 'success');
+  });
+
+  // Wire gallery upload — Edit form
+  document.getElementById('ee-gallery-btn')?.addEventListener('click', () => document.getElementById('ee-gallery-file')?.click());
+  document.getElementById('ee-gallery-file')?.addEventListener('change', async e => {
+    await _uploadGalleryImages([...e.target.files], 'ee-gallery-thumbs', 'ee-gallery-data', 'ee-gallery-status');
+    e.target.value = '';
+  });
+  // Wire existing thumb remove buttons loaded in HTML
+  document.getElementById('ee-gallery-thumbs')?.querySelectorAll('.gallery-thumb__remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.url;
+      const dataEl = document.getElementById('ee-gallery-data');
+      if (dataEl) {
+        const arr = JSON.parse(dataEl.value || '[]').filter(u => u !== url);
+        dataEl.value = JSON.stringify(arr);
+      }
+      btn.closest('.gallery-thumb')?.remove();
+    });
   });
 
   // ── Section B: pontos de embarque ────────────────────────────────────────
@@ -2240,7 +2316,7 @@ async function openEditExperienciaModal(id) {
       what_to_bring:       _taToArr(document.getElementById('ee-bring')?.value),
       cancellation_policy: document.getElementById('ee-cancel-policy')?.value.trim() || null,
       cover_image_url:     document.getElementById('ee-cover')?.value.trim() || null,
-      gallery:             _taToArr(document.getElementById('ee-gallery')?.value),
+      gallery:             JSON.parse(document.getElementById('ee-gallery-data')?.value || '[]'),
       is_active:           document.getElementById('ee-active')?.checked ?? true,
       featured:            document.getElementById('ee-featured')?.checked ?? false,
       is_new:              document.getElementById('ee-is-new')?.checked ?? false,

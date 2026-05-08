@@ -270,6 +270,7 @@
 .badge--level-kids      { background: rgba(74,127,168,0.15); color: var(--badge-kids);      border: 1px solid rgba(74,127,168,0.3); }
 .badge--new             { background: var(--color-earth); color: var(--color-deep); }
 .badge--sold-out        { background: var(--color-danger); color: white; }
+.badge--featured        { background: #c88a2a; color: #fff; font-weight: 700; letter-spacing: 0.04em; box-shadow: 0 2px 8px rgba(200,138,42,0.35); }
 
 /* ── EXPERIENCE CARD ─────────────────────────────────────── */
 .card {
@@ -435,6 +436,21 @@
   font-weight: var(--weight-bold);
   color: white;
   letter-spacing: 0.05em;
+}
+
+/* ── SKELETON LOADER ─────────────────────────────────────── */
+/* Featured card frame */
+.card--featured {
+  box-shadow: 0 0 0 2px #c88a2a, 0 4px 20px rgba(200,138,42,0.22);
+}
+.card--featured .card__thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(200,138,42,0.45);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* ── SKELETON LOADER ─────────────────────────────────────── */
