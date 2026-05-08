@@ -3258,10 +3258,16 @@ window.wlConvert = async function(id) {
       <div class="wlc-extend-panel" id="wlc-extend-panel" style="display:none">
         <div class="wlc-extend-panel__row">
           <label class="wlc-extend-panel__lbl">Adicionar vagas:</label>
-          <input id="wlc-extend-extra" type="number" min="1" max="999" value="${Math.max(1, paxCount - avail)}"
+          <input id="wlc-extend-extra" type="number"
+            min="${Math.max(1, occupied + paxCount - capacity)}"
+            max="999"
+            value="${Math.max(1, occupied + paxCount - capacity)}"
             class="adm-input wlc-extend-panel__input" />
           <span class="wlc-extend-panel__preview">
-            → nova capacidade: <strong id="wlc-extend-newcap">${capacity + Math.max(1, paxCount - avail)}</strong> vagas
+            → nova capacidade: <strong id="wlc-extend-newcap">${capacity + Math.max(1, occupied + paxCount - capacity)}</strong> vagas
+            <span id="wlc-extend-avail-hint" class="wlc-extend-panel__hint">
+              (${Math.max(0, capacity + Math.max(1, occupied + paxCount - capacity) - occupied)} disponíveis)
+            </span>
           </span>
         </div>
         <div class="wlc-extend-panel__actions">
@@ -3279,6 +3285,7 @@ window.wlConvert = async function(id) {
     const extendBar     = document.getElementById('wlc-extend-bar');
     const extendExtra   = document.getElementById('wlc-extend-extra');
     const extendNewCap  = document.getElementById('wlc-extend-newcap');
+    const extendAvailHint = document.getElementById('wlc-extend-avail-hint');
     const extendCancel  = document.getElementById('wlc-extend-cancel');
     const extendConfirm = document.getElementById('wlc-extend-confirm');
 
@@ -3287,11 +3294,16 @@ window.wlConvert = async function(id) {
         extendBar.style.display  = 'none';
         extendPanel.style.display = 'block';
         extendExtra?.focus();
+        extendExtra?.select();
       });
 
       extendExtra?.addEventListener('input', () => {
-        const extra = Math.max(1, parseInt(extendExtra.value) || 1);
-        if (extendNewCap) extendNewCap.textContent = capacity + extra;
+        const extra      = Math.max(1, parseInt(extendExtra.value) || 1);
+        const previewCap = capacity + extra;
+        const previewAvail = Math.max(0, previewCap - occupied);
+        if (extendNewCap)    extendNewCap.textContent  = previewCap;
+        if (extendAvailHint) extendAvailHint.textContent = `(${previewAvail} disponíveis)`;
+        if (extendAvailHint) extendAvailHint.style.color = previewAvail >= paxCount ? '#15803d' : '#b91c1c';
       });
 
       extendCancel?.addEventListener('click', () => {
@@ -3302,8 +3314,14 @@ window.wlConvert = async function(id) {
       extendConfirm?.addEventListener('click', async () => {
         const extra  = Math.max(1, parseInt(extendExtra?.value) || 1);
         const newCap = capacity + extra;
+        // Validation: ensure at least paxCount spots become available
+        const wouldAvail = newCap - occupied;
+        if (wouldAvail < paxCount) {
+          toast(`Adicione pelo menos ${occupied + paxCount - capacity} vaga${(occupied + paxCount - capacity) !== 1 ? 's' : ''} para acomodar os ${paxCount} participantes.`, 'error');
+          return;
+        }
         extendConfirm.disabled = true;
-        extendConfirm.textContent = 'Salvando…';
+        extendConfirm.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="12" x2="12" y2="12"/></svg> Salvando…';
 
         const { error } = await window.anauaDb
           .from('departures')
@@ -3317,24 +3335,25 @@ window.wlConvert = async function(id) {
           return;
         }
 
-        // Patch the <option> data attributes so re-firing change reflects new state
-        const newAvail = newCap - occupied;
-        opt.dataset.capacity = newCap;
-        opt.dataset.avail    = newAvail;
-        opt.dataset.sold     = '0';
-        // Update the option label
-        const [labelBase] = opt.textContent.split(' · ');
-        const newPrice = price > 0 ? ` · R$ ${Number(price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
-        opt.textContent = `${labelBase}${newPrice} · ${newAvail} disp.`;
-
-        // Also update occMap entry so getDepartureAvailability stays consistent
+        // Update occMap so getDepartureAvailability is consistent everywhere
         occMap[depId] = occupied;
 
-        toast(`Saída estendida: +${extra} vaga${extra !== 1 ? 's' : ''} (total ${newCap})`, 'success');
+        // Patch option dataset — all stale data replaced with verified values
+        const newAvail = newCap - occupied;  // now >= paxCount
+        opt.dataset.capacity = String(newCap);
+        opt.dataset.avail    = String(newAvail);
+        opt.dataset.sold     = '0';
+        // Rebuild option label cleanly (re-split on em dash separator)
+        const labelParts = opt.textContent.split(' — ');
+        const expPart    = labelParts[0] ?? '';
+        const datePart   = labelParts[1] ? labelParts[1].split(' · ')[0] : '';
+        const newPriceLbl = price > 0 ? ` · R$ ${Number(price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
+        opt.textContent  = `${expPart} — ${datePart}${newPriceLbl} · ${newAvail} disp.`;
 
-        // Re-fire change event to refresh the whole dep-info panel
-        const depSel2 = document.getElementById('wlc-dep');
-        depSel2?.dispatchEvent(new Event('change'));
+        toast(`Saída estendida: +${extra} vaga${extra !== 1 ? 's' : ''} (capacidade total: ${newCap}, disponíveis: ${newAvail})`, 'success');
+
+        // Re-fire change to refresh grid + re-enable submit
+        document.getElementById('wlc-dep')?.dispatchEvent(new Event('change'));
       });
     }
 

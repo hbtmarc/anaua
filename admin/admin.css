@@ -2305,6 +2305,7 @@ label.exp-check input[type="checkbox"] {
 .wlc-extend-panel__input { width: 80px; text-align: center; font-weight: 700; font-size: 1rem; }
 .wlc-extend-panel__preview { font-size: .82rem; color: var(--adm-muted); flex: 1; white-space: nowrap; }
 .wlc-extend-panel__preview strong { color: var(--adm-forest); }
+.wlc-extend-panel__hint { font-size: .78rem; margin-left: 4px; font-weight: 600; transition: color .15s; }
 .wlc-extend-panel__actions {
   display: flex; justify-content: flex-end; gap: 8px;
   margin-top: 10px;
