@@ -63,6 +63,20 @@ function fmtCpfAdmin(v) {
   return v ?? '—';
 }
 
+/**
+ * Calcula disponibilidade real de uma saída.
+ * @param {object} departure  — objeto com .id, .capacity, .status
+ * @param {object} occMap     — { [departure_id]: occupiedCount }
+ * @returns {{ capacity, occupied, available, isSoldOut }}
+ */
+function getDepartureAvailability(departure, occMap = {}) {
+  const capacity  = departure?.capacity ?? 0;
+  const occupied  = occMap[departure?.id] ?? 0;
+  const available = Math.max(0, capacity - occupied);
+  const isSoldOut = departure?.status === 'sold_out' || available === 0;
+  return { capacity, occupied, available, isSoldOut };
+}
+
 function initials(name) {
   const p = (name ?? '').trim().split(' ').filter(Boolean);
   if (!p.length) return '?';
@@ -170,9 +184,11 @@ function closeModal() {
   const modal = $('adm-modal');
   // Move focus out before setting aria-hidden to avoid accessibility warning
   if (modal?.contains(document.activeElement)) document.activeElement.blur();
-  modal?.classList.remove('is-open');
+  modal?.classList.remove('is-open', 'adm-modal--convert');
   modal?.setAttribute('aria-hidden', 'true');
   $('adm-modal-overlay').classList.remove('is-open');
+  window._wlConvertCleanup?.();
+  window._wlConvertCleanup = null;
 }
 
 $('adm-modal-close').addEventListener('click', closeModal);
@@ -2819,7 +2835,6 @@ window.wlOfferDeparture = async function(id) {
     const prc   = d.price ? `R$ ${Number(d.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '—';
     const nom   = (entry.name ?? '').split(' ')[0] || 'você';
     const msg   = _wlBuildProposal(entry, d);
-    const safeMsg = JSON.stringify(msg);
     return `
       <div class="wl-dep-card ${full?'wl-dep-card--full':''}">
         <div class="wl-dep-card__info">
@@ -2827,9 +2842,9 @@ window.wlOfferDeparture = async function(id) {
           <div class="wl-dep-card__meta">${dt} · ${prc} · ${full?'<span style="color:var(--adm-danger)">Esgotada</span>':d.capacity+' vaga(s)'}</div>
         </div>
         <div class="wl-dep-card__btns">
-          <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="_wlCopy(${safeMsg})">Copiar proposta</button>
+          <button class="adm-btn adm-btn--ghost adm-btn--sm wl-dep-copy-btn" data-msg="${escHtml(msg)}">Copiar proposta</button>
           ${!full ? `<button class="adm-btn adm-btn--primary adm-btn--sm wl-dep-offer-btn"
-            data-id="${d.id}" data-msg=${safeMsg}>Marcar oferecida</button>` : ''}
+            data-id="${d.id}" data-msg="${escHtml(msg)}">Marcar oferecida</button>` : ''}
         </div>
       </div>`;
   }
@@ -2842,11 +2857,14 @@ window.wlOfferDeparture = async function(id) {
     </div>`;
   document.getElementById('adm-modal-footer').innerHTML = `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
 
+  document.querySelectorAll('.wl-dep-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => _wlCopy(btn.dataset.msg));
+  });
+
   document.querySelectorAll('.wl-dep-offer-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const depId = btn.dataset.id;
-      const msg   = btn.dataset.msg; // already JSON string — parse it
-      const msgText = JSON.parse(msg);
+      const msgText = btn.dataset.msg;
       closeModal();
       await _wlPatchEntry(id, { status: 'offered', offered_departure_id: depId, offered_at: new Date().toISOString(), last_contact_channel: 'manual', last_contact_message: msgText });
       await _wlLogAction(id, 'offered_departure', 'manual', msgText, { departure_id: depId });
@@ -2873,7 +2891,6 @@ window.wlOfferOtherExp = async function(id) {
       ${list.map(ex => {
         const nom = (entry.name ?? '').split(' ')[0] || 'você';
         const msg = `Olá ${nom}! Que tal conhecer *${ex.title}*? ${ex.short_description ?? 'Uma experiência incrível com a Anauá Ecoturismo!'} Posso te contar mais? 🌿`;
-        const safeMsg = JSON.stringify(msg);
         return `
           <div class="wl-dep-card">
             <div class="wl-dep-card__info">
@@ -2881,18 +2898,22 @@ window.wlOfferOtherExp = async function(id) {
               ${ex.short_description ? `<div class="wl-dep-card__meta">${escHtml(ex.short_description.substring(0,80))}</div>` : ''}
             </div>
             <div class="wl-dep-card__btns">
-              <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="_wlCopy(${safeMsg})">Copiar msg</button>
-              <button class="adm-btn adm-btn--primary adm-btn--sm wl-exp-offer-btn" data-exp="${ex.id}" data-msg=${safeMsg}>Marcar oferecida</button>
+              <button class="adm-btn adm-btn--ghost adm-btn--sm wl-exp-copy-btn" data-msg="${escHtml(msg)}">Copiar msg</button>
+              <button class="adm-btn adm-btn--primary adm-btn--sm wl-exp-offer-btn" data-exp="${ex.id}" data-msg="${escHtml(msg)}">Marcar oferecida</button>
             </div>
           </div>`;
       }).join('')}
     </div>`;
   document.getElementById('adm-modal-footer').innerHTML = `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
 
+  document.querySelectorAll('.wl-exp-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => _wlCopy(btn.dataset.msg));
+  });
+
   document.querySelectorAll('.wl-exp-offer-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const expId   = btn.dataset.exp;
-      const msgText = JSON.parse(btn.dataset.msg);
+      const msgText = btn.dataset.msg;
       closeModal();
       await _wlPatchEntry(id, { status: 'offered', offered_at: new Date().toISOString(), last_contact_channel: 'manual', last_contact_message: msgText });
       await _wlLogAction(id, 'offered_experience', 'manual', msgText, { experience_id: expId });
@@ -2906,129 +2927,534 @@ window.wlConvert = async function(id) {
   const entry = _wlGetEntry(id);
   if (!entry) return;
 
-  openModal('Converter em reserva', `<div class="wl-action-modal"><p style="color:var(--adm-text-muted);padding:12px 0">Carregando saídas disponíveis…</p></div>`, '');
+  // Abre modal largo e mostra skeleton
+  const modalEl = document.getElementById('adm-modal');
+  modalEl?.classList.add('adm-modal--convert');
+  const origClose = window._wlConvertCleanup;
+  window._wlConvertCleanup = () => modalEl?.classList.remove('adm-modal--convert');
+
+  const STATUS_BADGE = { pending:'Pendente', contacted:'Contatado', offered:'Oferta enviada', converted:'Convertido', discarded:'Descartado' };
+  const statusBadgeHtml = (s) => `<span class="adm-badge adm-badge--${s === 'pending' ? 'warning' : s === 'converted' ? 'success' : 'info'}">${STATUS_BADGE[s] ?? s}</span>`;
+
+  openModal('Converter em reserva', `<div class="wlc-skeleton">Carregando saídas disponíveis…</div>`, '');
 
   const minDate = new Date(); minDate.setDate(minDate.getDate() - 1);
   const { data: deps = [] } = await window.anauaDb.from('departures')
     .select('id, start_at, price, capacity, status, experience_id, experiences(id,title)')
-    .eq('status', 'scheduled').gte('start_at', minDate.toISOString())
+    .in('status', ['scheduled', 'sold_out'])
+    .gte('start_at', minDate.toISOString())
     .order('start_at', { ascending: true }).limit(40);
 
   if (!deps || deps.length === 0) {
-    document.getElementById('adm-modal-body').innerHTML = `<div class="wl-action-modal"><p style="color:var(--adm-text-muted)">Nenhuma saída disponível para conversão no momento.</p></div>`;
-    document.getElementById('adm-modal-footer').innerHTML = `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
+    document.getElementById('adm-modal-body').innerHTML =
+      `<div class="wlc-empty"><span>Nenhuma saída disponível para conversão no momento.</span></div>`;
+    document.getElementById('adm-modal-footer').innerHTML =
+      `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
     return;
   }
+
+  // ── Contagem de ocupação por saída ────────────────────────────────────────
+  const depIds = deps.map(d => d.id);
+  const { data: occRows = [] } = await window.anauaDb
+    .from('reservations')
+    .select('departure_id, participants(id)')
+    .in('departure_id', depIds)
+    .not('reservation_status', 'in', '(cancelled,refunded,discarded)');
+
+  const occMap = {};
+  (occRows ?? []).forEach(r => {
+    occMap[r.departure_id] = (occMap[r.departure_id] ?? 0) + (r.participants?.length ?? 0);
+  });
 
   const same  = deps.filter(d => d.experience_id === entry.experience_id);
   const other = deps.filter(d => d.experience_id !== entry.experience_id);
 
-  function depOpt(d) {
-    const dt  = fmtDate(d.start_at);
-    const exp = d.experiences?.title ?? '—';
-    const prc = d.price ? ` · R$ ${Number(d.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '';
-    return `<option value="${d.id}" data-price="${d.price??0}" data-exp="${d.experience_id}">${escHtml(exp)} — ${dt} (${d.capacity} vagas${prc})</option>`;
+  function depOptHtml(d) {
+    const dt   = fmtDate(d.start_at);
+    const exp  = d.experiences?.title ?? '—';
+    const { capacity, occupied, available, isSoldOut } = getDepartureAvailability(d, occMap);
+    const prc  = d.price != null ? ` · R$ ${Number(d.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
+    const soldLbl = isSoldOut ? ' · ⚠ Esgotada' : ` · ${available} disp.`;
+    return `<option value="${d.id}"
+      data-price="${d.price ?? 0}"
+      data-exp="${d.experience_id}"
+      data-avail="${available}"
+      data-occupied="${occupied}"
+      data-capacity="${capacity}"
+      data-sold="${isSoldOut ? '1' : '0'}"
+    >${escHtml(exp)} — ${dt}${prc}${soldLbl}</option>`;
   }
 
   const paxCount = entry.participants_count ?? 1;
-  let paxFields  = '';
-  for (let i = 0; i < paxCount; i++) {
-    paxFields += `<div class="wl-pax-row">
-      <span class="wl-pax-idx">${i+1}</span>
-      <input class="adm-input wl-pax-name" placeholder="Nome completo${i===0?' (responsável)':''}"
-        value="${escHtml(i===0 ? (entry.name??'') : '')}">
-    </div>`;
+
+  function buildPaxFields(count, name = '', email = '', phone = '') {
+    let html = '';
+    for (let i = 0; i < count; i++) {
+      const isFirst = i === 0;
+      html += `<div class="wlc-pax-row" data-idx="${i}">
+        <span class="wlc-pax-idx">${i + 1}</span>
+        <div class="wlc-pax-fields">
+          <input class="adm-input wlc-pax-name" placeholder="Nome completo${isFirst ? ' (responsável)' : ''}"
+            value="${escHtml(isFirst ? name : '')}">
+          <input class="adm-input wlc-pax-doc" placeholder="CPF / documento" style="max-width:160px">
+        </div>
+        ${!isFirst ? `<button type="button" class="wlc-pax-remove adm-btn adm-btn--ghost adm-btn--sm" title="Remover">✕</button>` : '<span style="width:28px"></span>'}
+      </div>`;
+    }
+    return html;
   }
 
+  // Prefers the entry's own desired departure date as display
+  const prefDate = entry.preferred_departure_id
+    ? deps.find(d => d.id === entry.preferred_departure_id)
+    : null;
+
   document.getElementById('adm-modal-body').innerHTML = `
-    <div class="wl-action-modal wl-convert-form">
-      <div class="adm-form-group">
-        <label class="adm-label">Saída *</label>
-        <select id="wlc-dep" class="adm-input">
-          <option value="">— Selecione —</option>
-          ${same.length  ? `<optgroup label="Mesma experiência">${same.map(depOpt).join('')}</optgroup>` : ''}
-          ${other.length ? `<optgroup label="Outras experiências">${other.map(depOpt).join('')}</optgroup>` : ''}
-        </select>
+    <div class="wlc-form">
+
+      <!-- Interesse original -->
+      <div class="adm-section">
+        <div class="adm-section__title">Interesse original</div>
+        <div class="wlc-origin-card">
+          <dl class="wlc-origin-dl">
+            <dt>Experiência</dt>
+            <dd>${escHtml(entry.experiences?.title ?? entry.experience_id ?? '—')}</dd>
+            <dt>Saída desejada</dt>
+            <dd>${prefDate ? fmtDate(prefDate.start_at) : '—'}</dd>
+            <dt>Participantes</dt>
+            <dd>${paxCount} pax</dd>
+            ${entry.message ? `
+            <dt>Mensagem</dt>
+            <dd class="wlc-origin-msg">${escHtml(entry.message)}</dd>` : ''}
+          </dl>
+        </div>
       </div>
-      <div id="wlc-bp-wrap" class="adm-form-group" style="display:none">
-        <label class="adm-label">Ponto de embarque</label>
-        <select id="wlc-bp" class="adm-input"><option value="">— Selecione —</option></select>
-      </div>
-      <div class="adm-form-group">
-        <label class="adm-label">Responsável *</label>
-        <input id="wlc-name"  class="adm-input" placeholder="Nome completo" value="${escHtml(entry.name??'')}">
-        <input id="wlc-email" class="adm-input" style="margin-top:6px" placeholder="E-mail" value="${escHtml(entry.email??'')}">
-        <input id="wlc-phone" class="adm-input" style="margin-top:6px" placeholder="WhatsApp / telefone" value="${escHtml(entry.phone??'')}">
-      </div>
-      <div class="adm-form-group">
-        <label class="adm-label">Participantes (${paxCount}) <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" style="margin-left:8px" id="wlc-add-pax">+ Adicionar</button></label>
-        <div id="wlc-pax">${paxFields}</div>
-      </div>
-      <div class="wl-convert-row">
-        <div class="adm-form-group" style="flex:1">
-          <label class="adm-label">Pagamento</label>
-          <select id="wlc-method" class="adm-input">
-            <option value="pix">PIX</option>
-            <option value="credit_card">Cartão de crédito</option>
-            <option value="bank_transfer">Transferência</option>
-            <option value="cash">Dinheiro</option>
-            <option value="signal_balance">Sinal + saldo</option>
+
+      <!-- Nova reserva -->
+      <div class="adm-section">
+        <div class="adm-section__title">Nova reserva</div>
+        <div class="adm-field">
+          <label for="wlc-dep">Saída *</label>
+          <select id="wlc-dep" class="adm-input">
+            <option value="">— Selecione uma saída —</option>
+            ${same.length  ? `<optgroup label="Mesma experiência">${same.map(depOptHtml).join('')}</optgroup>` : ''}
+            ${other.length ? `<optgroup label="Outras experiências">${other.map(depOptHtml).join('')}</optgroup>` : ''}
+          </select>
+          <div id="wlc-dep-info" class="wlc-dep-info" style="display:none"></div>
+        </div>
+        <div id="wlc-bp-wrap" class="adm-field" style="display:none; margin-top:10px">
+          <label for="wlc-bp">Ponto de embarque</label>
+          <select id="wlc-bp" class="adm-input">
+            <option value="">— Selecione —</option>
           </select>
         </div>
-        <div class="adm-form-group" style="flex:1">
-          <label class="adm-label">Valor total (R$)</label>
-          <input id="wlc-total" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="adm-form-group" style="flex:1">
-          <label class="adm-label">Valor pago (R$)</label>
-          <input id="wlc-paid" class="adm-input" type="number" min="0" step="0.01" value="0">
+      </div>
+
+      <!-- Responsável -->
+      <div class="adm-section">
+        <div class="adm-section__title">Responsável pela reserva</div>
+        <div class="adm-grid-3">
+          <div class="adm-field">
+            <label for="wlc-name">Nome completo *</label>
+            <input id="wlc-name" class="adm-input" placeholder="Nome completo" value="${escHtml(entry.name ?? '')}">
+          </div>
+          <div class="adm-field">
+            <label for="wlc-email">E-mail</label>
+            <input id="wlc-email" class="adm-input" type="email" placeholder="email@ex.com" value="${escHtml(entry.email ?? '')}">
+          </div>
+          <div class="adm-field">
+            <label for="wlc-phone">WhatsApp</label>
+            <input id="wlc-phone" class="adm-input" type="tel" placeholder="(00) 00000-0000" value="${escHtml(entry.phone ?? '')}">
+          </div>
         </div>
       </div>
-      <div class="adm-form-group">
-        <label class="adm-label">Observações</label>
-        <textarea id="wlc-notes" class="adm-input" rows="2" placeholder="Restrições, pedidos…">${escHtml(entry.message??'')}</textarea>
+
+      <!-- Participantes -->
+      <div class="adm-section">
+        <div class="adm-section__title">Participantes</div>
+        <div class="wlc-pax-controls">
+          <button type="button" id="wlc-rem-pax" class="adm-btn adm-btn--ghost adm-btn--sm">− Remover</button>
+          <span id="wlc-pax-count" class="wlc-pax-badge">${paxCount}</span>
+          <button type="button" id="wlc-add-pax" class="adm-btn adm-btn--ghost adm-btn--sm">+ Adicionar</button>
+        </div>
+        <div id="wlc-pax" class="wlc-pax-list">${buildPaxFields(paxCount, entry.name ?? '')}</div>
+        <div id="wlc-cap-warn" class="wlc-cap-warn" style="display:none"></div>
       </div>
+
+      <!-- Pagamento -->
+      <div class="adm-section">
+        <div class="adm-section__title">Pagamento</div>
+        <div class="wlc-pay-grid">
+          <div class="adm-field">
+            <label for="wlc-method">Forma de pagamento</label>
+            <select id="wlc-method" class="adm-input">
+              <option value="pix">PIX</option>
+              <option value="credit_card">Cartão de crédito</option>
+              <option value="bank_transfer">Transferência bancária</option>
+              <option value="cash">Dinheiro</option>
+              <option value="signal_balance">Sinal + saldo</option>
+            </select>
+          </div>
+          <div class="adm-field">
+            <label for="wlc-total">Valor total (R$)</label>
+            <input id="wlc-total" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="adm-field">
+            <label for="wlc-paid">Valor pago (R$)</label>
+            <input id="wlc-paid" class="adm-input" type="number" min="0" step="0.01" value="0">
+          </div>
+        </div>
+        <div id="wlc-pay-warn" class="wlc-cap-warn" style="display:none"></div>
+        <div id="wlc-pending-row" class="wlc-pending-row" style="display:none">
+          <span>Saldo pendente após esta reserva:</span>
+          <strong id="wlc-pending-val">R$ 0,00</strong>
+        </div>
+      </div>
+
+      <!-- Observações -->
+      <div class="adm-section">
+        <div class="adm-section__title">Observações</div>
+        <div class="adm-field">
+          <textarea id="wlc-notes" class="adm-input wlc-notes" rows="2"
+            placeholder="Restrições alimentares, pedidos especiais…">${escHtml(entry.message ?? '')}</textarea>
+        </div>
+      </div>
+
     </div>`;
 
   document.getElementById('adm-modal-footer').innerHTML = `
     <button class="adm-btn adm-btn--ghost" onclick="closeModal()">Cancelar</button>
-    <button id="wlc-submit" class="adm-btn adm-btn--primary">Converter →</button>`;
+    <button id="wlc-submit" class="adm-btn adm-btn--primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      Converter em reserva
+    </button>`;
 
-  // Add pax row
-  document.getElementById('wlc-add-pax').addEventListener('click', () => {
-    const wrap = document.getElementById('wlc-pax');
-    const n    = wrap.querySelectorAll('.wl-pax-row').length + 1;
-    const row  = document.createElement('div');
-    row.className = 'wl-pax-row';
-    row.innerHTML = `<span class="wl-pax-idx">${n}</span><input class="adm-input wl-pax-name" placeholder="Nome completo">`;
-    wrap.appendChild(row);
-  });
+  // ── Helpers de UI ─────────────────────────────────────────────────────────
 
-  // Boarding points on departure select
+  function getPaxRows()    { return document.querySelectorAll('#wlc-pax .wlc-pax-row'); }
+  function getPaxCount()   { return getPaxRows().length; }
+  function updatePaxBadge() {
+    const badge = document.getElementById('wlc-pax-count');
+    if (badge) badge.textContent = getPaxCount();
+  }
+  function syncNameToFirst() {
+    const nameInp = document.getElementById('wlc-name');
+    const firstPax = document.querySelector('#wlc-pax .wlc-pax-row:first-child .wlc-pax-name');
+    if (nameInp && firstPax && !firstPax._manual) firstPax.value = nameInp.value;
+  }
+  function checkCapAndPay() {
+    const depSel   = document.getElementById('wlc-dep');
+    const opt      = depSel?.options[depSel.selectedIndex];
+    const avail    = opt ? parseInt(opt.dataset.avail ?? '999') : 999;
+    const sold     = opt?.dataset.sold === '1';
+    const pax      = getPaxCount();
+    const capWarn  = document.getElementById('wlc-cap-warn');
+    const submitBtn = document.getElementById('wlc-submit');
+
+    if (capWarn) {
+      if (sold) {
+        capWarn.style.display = 'flex';
+        capWarn.className = 'wlc-cap-warn wlc-cap-warn--error';
+        capWarn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Saída esgotada — não é possível adicionar reservas.`;
+        if (submitBtn) submitBtn.disabled = true;
+      } else if (pax > avail) {
+        capWarn.style.display = 'flex';
+        capWarn.className = 'wlc-cap-warn wlc-cap-warn--error';
+        capWarn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Capacidade insuficiente: ${avail} vaga${avail !== 1 ? 's' : ''} disponível, ${pax} solicitada${pax !== 1 ? 's' : ''}.`;
+        if (submitBtn) submitBtn.disabled = true;
+      } else if (depSel?.value && pax > 0) {
+        capWarn.style.display = 'flex';
+        capWarn.className = 'wlc-cap-warn wlc-cap-warn--ok';
+        capWarn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${avail} vaga${avail !== 1 ? 's' : ''} disponível — ${pax} participante${pax !== 1 ? 's' : ''} selecionado${pax !== 1 ? 's' : ''}.`;
+        if (submitBtn) submitBtn.disabled = false;
+      } else {
+        capWarn.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    }
+
+    // Paid <= total + pending display
+    const total = parseFloat(document.getElementById('wlc-total')?.value || '0');
+    const paid  = parseFloat(document.getElementById('wlc-paid')?.value  || '0');
+    const payWarn    = document.getElementById('wlc-pay-warn');
+    const pendingRow = document.getElementById('wlc-pending-row');
+    const pendingVal = document.getElementById('wlc-pending-val');
+    if (payWarn) {
+      if (paid > total && total > 0) {
+        payWarn.style.display = 'flex';
+        payWarn.className = 'wlc-cap-warn wlc-cap-warn--error';
+        payWarn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Valor pago não pode exceder o total.`;
+        if (submitBtn) submitBtn.disabled = true;
+      } else {
+        payWarn.style.display = 'none';
+      }
+    }
+    // Pendente
+    if (pendingRow && pendingVal) {
+      const pending = Math.max(0, total - paid);
+      if (total > 0) {
+        pendingRow.style.display = 'flex';
+        pendingVal.textContent = `R$ ${pending.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        pendingVal.style.color = pending > 0 ? 'var(--adm-warning, #d97706)' : 'var(--adm-success)';
+      } else {
+        pendingRow.style.display = 'none';
+      }
+    }
+  }
+
+  // ── Seleção de saída ──────────────────────────────────────────────────────
   document.getElementById('wlc-dep').addEventListener('change', async function() {
-    const depId   = this.value;
-    const bpWrap  = document.getElementById('wlc-bp-wrap');
-    const bpSel   = document.getElementById('wlc-bp');
-    if (!depId) { bpWrap.style.display = 'none'; return; }
-    const opt  = this.options[this.selectedIndex];
-    const pric = parseFloat(opt.dataset.price || '0');
-    const paxN = document.getElementById('wlc-pax').querySelectorAll('.wl-pax-row').length;
-    if (pric > 0) document.getElementById('wlc-total').value = (pric * paxN).toFixed(2);
+    const depId  = this.value;
+    const bpWrap = document.getElementById('wlc-bp-wrap');
+    const bpSel  = document.getElementById('wlc-bp');
+    const depInfo = document.getElementById('wlc-dep-info');
+
+    if (!depId) {
+      bpWrap.style.display = 'none';
+      depInfo.style.display = 'none';
+      checkCapAndPay();
+      return;
+    }
+
+    const opt   = this.options[this.selectedIndex];
+    const price = parseFloat(opt.dataset.price || '0');
+    const avail = parseInt(opt.dataset.avail ?? '0');
+    const sold  = opt.dataset.sold === '1';
+
+    const occupied = parseInt(opt.dataset.occupied ?? '0');
+    const capacity  = parseInt(opt.dataset.capacity ?? '0');
+
+    // Mostra grid de disponibilidade
+    depInfo.style.display = 'block';
+    depInfo.innerHTML = `
+      <div class="wlc-avail-grid">
+        <div class="wlc-avail-cell">
+          <span class="wlc-avail-label">Capacidade</span>
+          <span class="wlc-avail-val">${capacity}</span>
+        </div>
+        <div class="wlc-avail-cell">
+          <span class="wlc-avail-label">Ocupadas</span>
+          <span class="wlc-avail-val">${occupied}</span>
+        </div>
+        <div class="wlc-avail-cell wlc-avail-cell--${avail === 0 ? 'danger' : avail <= 2 ? 'warn' : 'ok'}">
+          <span class="wlc-avail-label">Disponíveis</span>
+          <span class="wlc-avail-val">${sold ? '0' : avail}</span>
+        </div>
+        <div class="wlc-avail-cell wlc-avail-cell--req">
+          <span class="wlc-avail-label">Solicitadas</span>
+          <span class="wlc-avail-val">${paxCount}</span>
+        </div>
+      </div>
+      ${price > 0 ? `<div class="wlc-avail-price">R$ ${Number(price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / pax</div>` : ''}
+      ${(sold || avail < paxCount) ? `
+      <div class="wlc-extend-bar" id="wlc-extend-bar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>${sold ? 'Saída esgotada' : `Apenas ${avail} vaga${avail !== 1 ? 's' : ''} disponível`}.</span>
+        <button type="button" id="wlc-extend-btn" class="adm-btn adm-btn--ghost adm-btn--sm wlc-extend-trigger">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Estender saída
+        </button>
+      </div>
+      <div class="wlc-extend-panel" id="wlc-extend-panel" style="display:none">
+        <div class="wlc-extend-panel__row">
+          <label class="wlc-extend-panel__lbl">Adicionar vagas:</label>
+          <input id="wlc-extend-extra" type="number" min="1" max="999" value="${Math.max(1, paxCount - avail)}"
+            class="adm-input wlc-extend-panel__input" />
+          <span class="wlc-extend-panel__preview">
+            → nova capacidade: <strong id="wlc-extend-newcap">${capacity + Math.max(1, paxCount - avail)}</strong> vagas
+          </span>
+        </div>
+        <div class="wlc-extend-panel__actions">
+          <button type="button" id="wlc-extend-cancel" class="adm-btn adm-btn--ghost adm-btn--sm">Cancelar</button>
+          <button type="button" id="wlc-extend-confirm" class="adm-btn adm-btn--primary adm-btn--sm">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar extensão
+          </button>
+        </div>
+      </div>` : ''}`;
+
+    // Wire up inline extend panel
+    const extendBtn     = document.getElementById('wlc-extend-btn');
+    const extendPanel   = document.getElementById('wlc-extend-panel');
+    const extendBar     = document.getElementById('wlc-extend-bar');
+    const extendExtra   = document.getElementById('wlc-extend-extra');
+    const extendNewCap  = document.getElementById('wlc-extend-newcap');
+    const extendCancel  = document.getElementById('wlc-extend-cancel');
+    const extendConfirm = document.getElementById('wlc-extend-confirm');
+
+    if (extendBtn && extendPanel) {
+      extendBtn.addEventListener('click', () => {
+        extendBar.style.display  = 'none';
+        extendPanel.style.display = 'block';
+        extendExtra?.focus();
+      });
+
+      extendExtra?.addEventListener('input', () => {
+        const extra = Math.max(1, parseInt(extendExtra.value) || 1);
+        if (extendNewCap) extendNewCap.textContent = capacity + extra;
+      });
+
+      extendCancel?.addEventListener('click', () => {
+        extendPanel.style.display = 'none';
+        extendBar.style.display   = 'flex';
+      });
+
+      extendConfirm?.addEventListener('click', async () => {
+        const extra  = Math.max(1, parseInt(extendExtra?.value) || 1);
+        const newCap = capacity + extra;
+        extendConfirm.disabled = true;
+        extendConfirm.textContent = 'Salvando…';
+
+        const { error } = await window.anauaDb
+          .from('departures')
+          .update({ capacity: newCap, status: 'scheduled', updated_at: new Date().toISOString() })
+          .eq('id', depId);
+
+        if (error) {
+          toast('Erro ao estender: ' + error.message, 'error');
+          extendConfirm.disabled = false;
+          extendConfirm.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Confirmar extensão';
+          return;
+        }
+
+        // Patch the <option> data attributes so re-firing change reflects new state
+        const newAvail = newCap - occupied;
+        opt.dataset.capacity = newCap;
+        opt.dataset.avail    = newAvail;
+        opt.dataset.sold     = '0';
+        // Update the option label
+        const [labelBase] = opt.textContent.split(' · ');
+        const newPrice = price > 0 ? ` · R$ ${Number(price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '';
+        opt.textContent = `${labelBase}${newPrice} · ${newAvail} disp.`;
+
+        // Also update occMap entry so getDepartureAvailability stays consistent
+        occMap[depId] = occupied;
+
+        toast(`Saída estendida: +${extra} vaga${extra !== 1 ? 's' : ''} (total ${newCap})`, 'success');
+
+        // Re-fire change event to refresh the whole dep-info panel
+        const depSel2 = document.getElementById('wlc-dep');
+        depSel2?.dispatchEvent(new Event('change'));
+      });
+    }
+
+    // Auto-preenche total
+    if (price > 0) {
+      document.getElementById('wlc-total').value = (price * getPaxCount()).toFixed(2);
+    }
+
+    // Carrega pontos de embarque
     bpSel.innerHTML = '<option value="">Carregando…</option>';
     bpWrap.style.display = 'block';
-    const { data: bps } = await window.anauaDb.from('departure_boarding_points')
-      .select('id, pickup_at, custom_label, custom_address, boarding_points(name,address)')
-      .eq('departure_id', depId).order('pickup_at', { ascending: true });
-    if (!bps || bps.length === 0) { bpWrap.style.display = 'none'; return; }
-    bpSel.innerHTML = `<option value="">— Selecione —</option>` +
-      bps.map(b => {
-        const nm   = b.custom_label || b.boarding_points?.name || '—';
-        const time = b.pickup_at ? b.pickup_at.substring(0, 5) : '';
-        return `<option value="${b.id}">${escHtml(nm)}${time?' ('+time+')':''}</option>`;
-      }).join('');
+    const { data: bps } = await window.anauaDb
+      .from('departure_boarding_points')
+      .select('id, pickup_at, custom_label, custom_address, boarding_points(name, address)')
+      .eq('departure_id', depId)
+      .order('pickup_at', { ascending: true });
+
+    if (!bps || bps.length === 0) {
+      bpWrap.style.display = 'none';
+    } else {
+      bpSel.innerHTML = `<option value="">— Selecione —</option>` +
+        bps.map(b => {
+          const nm   = b.custom_label || b.boarding_points?.name || '—';
+          const time = b.pickup_at ? b.pickup_at.substring(0, 5) : '';
+          const addr = b.custom_address || b.boarding_points?.address || '';
+          return `<option value="${b.id}">${escHtml(nm)}${time ? ' · ' + time : ''}${addr ? ' — ' + escHtml(addr.substring(0, 40)) : ''}</option>`;
+        }).join('');
+    }
+
+    checkCapAndPay();
   });
 
-  // Submit
+  // ── Nome responsável → 1º participante ──────────────────────────────────
+  document.getElementById('wlc-name').addEventListener('input', syncNameToFirst);
+
+  // ── Adicionar participante ────────────────────────────────────────────────
+  document.getElementById('wlc-add-pax').addEventListener('click', () => {
+    const depSel = document.getElementById('wlc-dep');
+    const opt    = depSel?.options[depSel.selectedIndex];
+    const avail  = opt ? parseInt(opt.dataset.avail ?? '999') : 999;
+    const cur    = getPaxCount();
+    if (cur >= avail && avail < 999) {
+      toast(`Capacidade máxima atingida (${avail} vagas).`, 'error');
+      return;
+    }
+    const wrap = document.getElementById('wlc-pax');
+    const n    = cur + 1;
+    const row  = document.createElement('div');
+    row.className = 'wlc-pax-row';
+    row.dataset.idx = n - 1;
+    row.innerHTML = `
+      <span class="wlc-pax-idx">${n}</span>
+      <div class="wlc-pax-fields">
+        <input class="adm-input wlc-pax-name" placeholder="Nome completo">
+        <input class="adm-input wlc-pax-doc" placeholder="CPF / documento" style="max-width:160px">
+      </div>
+      <button type="button" class="wlc-pax-remove adm-btn adm-btn--ghost adm-btn--sm" title="Remover">✕</button>`;
+    row.querySelector('.wlc-pax-remove').addEventListener('click', () => {
+      row.remove();
+      renumberPax();
+      updatePaxBadge();
+      checkCapAndPay();
+    });
+    wrap.appendChild(row);
+    updatePaxBadge();
+    checkCapAndPay();
+    // Auto-update total
+    const price = parseFloat(opt?.dataset.price ?? '0');
+    if (price > 0) document.getElementById('wlc-total').value = (price * getPaxCount()).toFixed(2);
+  });
+
+  // ── Remover último participante ──────────────────────────────────────────
+  document.getElementById('wlc-rem-pax').addEventListener('click', () => {
+    const rows = Array.from(getPaxRows());
+    if (rows.length <= 1) { toast('Deve haver pelo menos 1 participante.', 'error'); return; }
+    rows[rows.length - 1].remove();
+    updatePaxBadge();
+    checkCapAndPay();
+    const depSel = document.getElementById('wlc-dep');
+    const price  = parseFloat(depSel?.options[depSel.selectedIndex]?.dataset.price ?? '0');
+    if (price > 0) document.getElementById('wlc-total').value = (price * getPaxCount()).toFixed(2);
+  });
+
+  function renumberPax() {
+    getPaxRows().forEach((row, i) => {
+      const idx = row.querySelector('.wlc-pax-idx');
+      if (idx) idx.textContent = i + 1;
+      row.dataset.idx = i;
+      const namePh = row.querySelector('.wlc-pax-name');
+      if (namePh) namePh.placeholder = `Nome completo${i === 0 ? ' (responsável)' : ''}`;
+    });
+  }
+
+  // Delegação para botões de remoção existentes
+  document.getElementById('wlc-pax').addEventListener('click', e => {
+    const btn = e.target.closest('.wlc-pax-remove');
+    if (!btn) return;
+    const row = btn.closest('.wlc-pax-row');
+    if (document.querySelectorAll('#wlc-pax .wlc-pax-row').length <= 1) {
+      toast('Deve haver pelo menos 1 participante.', 'error'); return;
+    }
+    row?.remove();
+    renumberPax();
+    updatePaxBadge();
+    checkCapAndPay();
+  });
+
+  // ── Pagamento: validação em tempo real ───────────────────────────────────
+  ['wlc-total', 'wlc-paid'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', checkCapAndPay);
+  });
+
+  // Marca edição manual no 1º participante para não sobrescrever
+  document.getElementById('wlc-pax').addEventListener('input', e => {
+    if (e.target.classList.contains('wlc-pax-name') && e.target.closest('[data-idx="0"]')) {
+      e.target._manual = true;
+    }
+  });
+
+  // ── Submit ────────────────────────────────────────────────────────────────
   document.getElementById('wlc-submit').addEventListener('click', async function() {
     const depId  = document.getElementById('wlc-dep').value;
     const bpId   = document.getElementById('wlc-bp')?.value || null;
@@ -3040,39 +3466,57 @@ window.wlConvert = async function(id) {
     const paid   = parseFloat(document.getElementById('wlc-paid').value   || '0');
     const notes  = document.getElementById('wlc-notes').value.trim();
 
-    if (!depId) { toast('Selecione uma saída.', 'error'); return; }
-    if (!name)  { toast('Informe o nome do responsável.', 'error'); return; }
+    if (!depId)  { toast('Selecione uma saída.', 'error'); return; }
+    if (!name)   { toast('Informe o nome do responsável.', 'error'); return; }
+    if (paid > total && total > 0) { toast('Valor pago não pode exceder o total.', 'error'); return; }
 
-    const participants = Array.from(document.querySelectorAll('.wl-pax-name')).map((inp, i) => ({
-      full_name: inp.value.trim() || `Participante ${i + 1}`,
-      profile_type: 'adult',
+    const depSel = document.getElementById('wlc-dep');
+    const expId  = depSel.options[depSel.selectedIndex]?.dataset.exp ?? null;
+
+    const participants = Array.from(document.querySelectorAll('#wlc-pax .wlc-pax-name')).map((inp, i) => ({
+      full_name:       inp.value.trim() || (i === 0 ? name : `Participante ${i + 1}`),
+      document_number: document.querySelectorAll('#wlc-pax .wlc-pax-doc')[i]?.value.trim() || null,
+      profile_type:    'adult',
     }));
 
-    const depOpt = document.getElementById('wlc-dep').options[document.getElementById('wlc-dep').selectedIndex];
-    const expId  = depOpt.dataset.exp || null;
+    this.disabled = true;
+    this.innerHTML = `<span class="adm-spinner" style="width:14px;height:14px;border-width:2px"></span> Convertendo…`;
 
-    this.disabled = true; this.textContent = 'Convertendo…';
-
-    const { data: { user } } = await window.anauaDb.auth.getUser().catch(() => ({ data: { user: null } }));
-
-    const { data: rpcData, error: rpcErr } = await window.anauaDb.rpc('convert_waitlist_to_reservation', {
-      p_entry_id: id, p_departure_id: depId, p_experience_id: expId,
-      p_boarding_point_id: bpId || null, p_customer_name: name,
-      p_customer_email: email, p_customer_phone: phone,
-      p_payment_method: method, p_total_amount: total, p_amount_paid: paid,
-      p_notes: notes, p_participants: participants, p_operator_id: user?.id ?? null,
+    const { data: rpcData, error: rpcErr } = await window.anauaDb.rpc('reserve_departure', {
+      p_departure_id:      depId,
+      p_pickup_point_id:   bpId,
+      p_responsible_name:  name,
+      p_responsible_email: email,
+      p_responsible_phone: phone,
+      p_payment_method:    method,
+      p_total_amount:      total,
+      p_amount_paid:       paid,
+      p_notes:             notes,
+      p_participants:      participants,
+      p_waitlist_entry_id: id,
     });
 
     if (rpcErr || !rpcData?.ok) {
       toast((rpcErr?.message ?? rpcData?.error) || 'Conversão falhou.', 'error');
-      this.disabled = false; this.textContent = 'Converter →'; return;
+      this.disabled = false;
+      this.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Converter em reserva`;
+      return;
     }
 
-    await _wlPatchEntry(id, { status: 'converted', converted_reservation_id: rpcData.reservation_id, converted_at: new Date().toISOString() });
+    // Atualiza cache local da lista de espera
+    await _wlPatchEntry(id, {
+      status: 'converted',
+      converted_reservation_id: rpcData.reservation_id,
+      converted_at: new Date().toISOString(),
+    });
+
     closeModal();
-    toast('✓ Reserva criada com sucesso!', 'success');
+    toast(`✓ Reserva ${rpcData.code ?? ''} criada com sucesso!`, 'success');
+    window._wlConvertCleanup?.();
   });
 };
+
+
 
 // ── Discard modal ─────────────────────────────────────────────────────────────
 window.wlDiscard = function(id) {
