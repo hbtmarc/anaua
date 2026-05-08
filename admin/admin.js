@@ -250,7 +250,6 @@ window.closeModal             = closeModal;
 window.openNovaExperienciaModal = openNovaExperienciaModal;
 window.openEditExperienciaModal = openEditExperienciaModal;
 window.deactivateExp          = deactivateExp;
-window.setWlStatus            = setWlStatus;
 
 // ─── Sidebar toggle ───────────────────────────────────────────────────────────
 
@@ -2282,94 +2281,773 @@ async function deactivateExp(id, title) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  MODULE: LISTA DE ESPERA
+//  MODULE: LISTA DE ESPERA  —  CRM operacional completo
 // ─────────────────────────────────────────────────────────────────────────────
 
+let _wlEntries   = [];
+let _wlExpMap    = {};
+var _wlFltStatus = '';
+var _wlFltExp    = '';
+var _wlFltSearch = '';
+var _wlFltDateFrom = '';
+
+const WL_STATUS = {
+  pending:   { label: 'Pendente',       cls: 'wl-s-pending'   },
+  contacted: { label: 'Contatado',      cls: 'wl-s-contacted' },
+  offered:   { label: 'Oferta enviada', cls: 'wl-s-offered'   },
+  converted: { label: 'Convertido',     cls: 'wl-s-converted' },
+  discarded: { label: 'Descartado',     cls: 'wl-s-discarded' },
+};
+
+const WL_SOURCE_LABEL = {
+  site_form: 'Formulário', whatsapp_direct: 'WhatsApp',
+  instagram: 'Instagram',  referral: 'Indicação', manual: 'Manual',
+};
+
+const WL_CH_ICON = { whatsapp:'📱', email:'✉️', phone:'📞', system:'⚙️', manual:'👤' };
+const WL_ACTION_LABEL = {
+  contacted: 'Contatado', offered_departure: 'Saída oferecida',
+  offered_experience: 'Experiência oferecida', converted: 'Convertido',
+  discarded: 'Descartado', note: 'Nota',
+};
+
+// ── WA SVG icon ──────────────────────────────────────────────────────────────
+const WL_SVG_WA = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.136.562 4.14 1.54 5.874L.057 23.875a.5.5 0 0 0 .612.612l5.998-1.484A11.953 11.953 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.96 0-3.8-.522-5.383-1.432l-.361-.215-3.746.927.945-3.645-.233-.38A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>`;
+const WL_SVG_EMAIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
+const WL_SVG_CAL  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+const WL_SVG_PIN  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`;
+const WL_SVG_CHK  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+const WL_SVG_TRASH= `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+const WL_SVG_HIST = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+
+// ── Main render ───────────────────────────────────────────────────────────────
 async function renderListaEspera(root) {
-  root.innerHTML = `
-    <div class="adm-card">
-      <div class="adm-card__header">Lista de espera</div>
-      <div style="padding:16px;color:var(--adm-text-muted)">Carregando…</div>
-    </div>`;
+  root.innerHTML = `<div class="wl-page"><div class="wl-skeleton-toolbar"></div><div class="wl-skeleton-list">${Array(4).fill('<div class="wl-skeleton-card"></div>').join('')}</div></div>`;
 
   const db = window.anauaDb;
   if (!db) { root.innerHTML = `<div class="adm-empty"><p style="color:var(--adm-danger)">Supabase não disponível.</p></div>`; return; }
 
-  const { data, error } = await db
-    .from('waitlist_entries')
-    .select('id, created_at, name, email, phone, participants_count, message, status, experience_id, experiences(title)')
-    .order('created_at', { ascending: false });
+  let entries, error;
+  ({ data: entries, error } = await db.from('waitlist_entries')
+    .select(`id, created_at, name, email, phone, participants_count, message, status, source, notes,
+             experience_id, experiences(id, title),
+             departure_id, departures(id, date, price, status),
+             pickup_point_id, pickup_point_label, pickup_time,
+             preferred_departure_id, offered_departure_id, converted_reservation_id,
+             contacted_at, offered_at, converted_at, discarded_at, discard_reason,
+             last_contact_channel, last_contact_message`)
+    .order('created_at', { ascending: false }));
+
+  if (error && (error.code === 'PGRST204' || error.code?.startsWith('42') || error.message?.includes('column'))) {
+    console.warn('[waitlist] Migração ainda não aplicada, usando colunas base.', error.message);
+    ({ data: entries, error } = await db.from('waitlist_entries')
+      .select('id, created_at, name, email, phone, participants_count, message, status, experience_id, experiences(id, title)')
+      .order('created_at', { ascending: false }));
+  }
+
+  const { data: exps } = await db.from('experiences').select('id, title').eq('is_active', true).order('title');
 
   if (error) {
-    root.innerHTML = `<div class="adm-empty" style="padding:48px;text-align:center"><p style="color:var(--adm-danger)">Erro ao carregar lista de espera.</p></div>`;
-    console.error('[admin-db] Lista de espera:', error.message);
+    root.innerHTML = `<div class="adm-empty" style="padding:48px;text-align:center">
+      <p style="color:var(--adm-danger)">Erro: ${escHtml(error.message)}</p>
+      <p style="font-size:.85rem;color:var(--adm-text-muted);margin-top:8px">Execute a migração <code>20260508_waitlist_funnel.sql</code> no Supabase.</p></div>`;
     return;
   }
 
-  const entries = data ?? [];
+  _wlEntries = entries ?? [];
+  _wlExpMap  = {};
+  (exps ?? []).forEach(e => { _wlExpMap[e.id] = e; });
 
-  if (entries.length === 0) {
-    root.innerHTML = `
-      <div class="adm-empty" style="padding:64px 32px;text-align:center">
-        <div style="font-size:2.5rem;margin-bottom:12px">📋</div>
-        <p style="font-weight:600;font-size:1.1rem">Nenhum interessado na lista de espera</p>
-        <p class="text-muted" style="margin-top:8px">Quando visitantes preencherem o formulário, aparecerão aqui.</p>
+  const expOpts = (exps ?? []).map(e => `<option value="${e.id}" ${_wlFltExp===e.id?'selected':''}>${escHtml(e.title)}</option>`).join('');
+
+  // Status stats
+  const counts = {};
+  Object.keys(WL_STATUS).forEach(k => { counts[k] = 0; });
+  _wlEntries.forEach(e => { if (counts[e.status] !== undefined) counts[e.status]++; });
+
+  root.innerHTML = `
+    <div class="wl-page">
+      <div class="wl-toolbar">
+        <div class="wl-toolbar__top">
+          <h2 class="wl-title">Lista de espera <span class="wl-count">${_wlEntries.length}</span></h2>
+          <div class="wl-status-pills">
+            <button class="wl-pill ${!_wlFltStatus?'wl-pill--active':''}" onclick="(()=>{_wlFltStatus='';document.getElementById('wl-flt-status').value='';_wlRenderList();})()">Todos <span>${_wlEntries.length}</span></button>
+            ${Object.entries(WL_STATUS).map(([k, v]) => `
+              <button class="wl-pill wl-pill--${k} ${_wlFltStatus===k?'wl-pill--active':''}" onclick="(()=>{_wlFltStatus='${k}';document.getElementById('wl-flt-status').value='${k}';_wlRenderList();})()">
+                ${v.label} <span>${counts[k]}</span>
+              </button>`).join('')}
+          </div>
+        </div>
+        <div class="wl-toolbar__filters">
+          <div class="wl-search-wrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input id="wl-search" type="search" placeholder="Nome, e-mail, telefone…" class="wl-search-input" value="${escHtml(_wlFltSearch)}">
+          </div>
+          <select id="wl-flt-status" class="wl-filter-sel">
+            <option value="">Todos os status</option>
+            ${Object.entries(WL_STATUS).map(([k,v]) => `<option value="${k}" ${_wlFltStatus===k?'selected':''}>${v.label}</option>`).join('')}
+          </select>
+          <select id="wl-flt-exp" class="wl-filter-sel">
+            <option value="">Todas as exp.</option>
+            ${expOpts}
+          </select>
+          <input id="wl-flt-date" type="date" class="wl-filter-sel" title="Desde esta data" value="${_wlFltDateFrom}">
+        </div>
+      </div>
+      <div id="wl-list"></div>
+    </div>`;
+
+  _wlRenderList();
+
+  document.getElementById('wl-search')?.addEventListener('input', e => { _wlFltSearch = e.target.value.toLowerCase().trim(); _wlRenderList(); });
+  document.getElementById('wl-flt-status')?.addEventListener('change', e => { _wlFltStatus = e.target.value; _wlRenderList(); });
+  document.getElementById('wl-flt-exp')?.addEventListener('change', e => { _wlFltExp = e.target.value; _wlRenderList(); });
+  document.getElementById('wl-flt-date')?.addEventListener('change', e => { _wlFltDateFrom = e.target.value; _wlRenderList(); });
+}
+
+// ── List rendering (exposed globally for inline onclick handlers) ─────────────
+window._wlRenderList = function _wlRenderList() {
+  const list = document.getElementById('wl-list');
+  if (!list) return;
+
+  let items = _wlEntries;
+  if (_wlFltStatus)   items = items.filter(e => e.status === _wlFltStatus);
+  if (_wlFltExp)      items = items.filter(e => e.experience_id === _wlFltExp);
+  if (_wlFltDateFrom) items = items.filter(e => e.created_at >= _wlFltDateFrom);
+  if (_wlFltSearch)   items = items.filter(e =>
+    [e.name, e.email, e.phone, e.message].some(v => v?.toLowerCase().includes(_wlFltSearch)));
+
+  if (items.length === 0) {
+    list.innerHTML = `
+      <div class="wl-empty">
+        <div class="wl-empty__icon">📋</div>
+        <p class="wl-empty__title">Nenhum interessado encontrado</p>
+        <p class="wl-empty__sub">Ajuste os filtros ou aguarde novos cadastros no formulário do site.</p>
       </div>`;
     return;
   }
 
-  const STATUS_WL = {
-    pending:    { label: 'Pendente',    cls: 'badge--pending' },
-    contacted:  { label: 'Contatado',   cls: 'badge--draft' },
-    converted:  { label: 'Convertido',  cls: 'badge--active' },
-    cancelled:  { label: 'Descartado',  cls: 'badge--cancelled' },
-  };
+  list.innerHTML = items.map(e => {
+    const s      = WL_STATUS[e.status] ?? { label: e.status, cls: 'wl-s-pending' };
+    const expTit = e.experiences?.title ?? '—';
+    const pax    = e.participants_count ?? 1;
+    const phone  = e.phone ?? '';
+    const isDone = e.status === 'converted' || e.status === 'discarded';
+    const depDate = e.departures?.date ? fmtDate(e.departures.date) : null;
+    const lastCh  = e.last_contact_channel ? (WL_CH_ICON[e.last_contact_channel] ?? '•') : '';
 
-  root.innerHTML = `
-    <div class="adm-card">
-      <div class="adm-card__header">Lista de espera <span class="adm-count">${entries.length}</span></div>
-      <div class="adm-table-wrap">
-        <table class="adm-table">
-          <thead><tr>
-            <th>Data</th><th>Experiência</th><th>Nome</th><th>E-mail</th>
-            <th>WhatsApp</th><th>Pax</th><th>Status</th><th></th>
-          </tr></thead>
-          <tbody>${entries.map(e => {
-            const s = STATUS_WL[e.status] ?? { label: e.status, cls: 'badge--draft' };
-            const expTitle = e.experiences?.title ?? e.experience_id ?? '—';
-            return `<tr>
-              <td class="text-small text-muted no-wrap">${fmtDate(e.created_at)}</td>
-              <td class="text-small">${escHtml(expTitle)}</td>
-              <td class="text-bold">${escHtml(e.name ?? '—')}</td>
-              <td class="text-small">${escHtml(e.email ?? '—')}</td>
-              <td class="text-small">${escHtml(e.phone ?? '—')}</td>
-              <td class="text-small" style="text-align:center">${e.participants_count ?? 1}</td>
-              <td><span class="badge ${s.cls}">${s.label}</span></td>
-              <td>
-                <div style="display:flex;gap:4px;flex-wrap:wrap">
-                  ${e.status !== 'contacted'  ? `<button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="setWlStatus('${e.id}','contacted')">Contatado</button>` : ''}
-                  ${e.status !== 'converted'  ? `<button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="setWlStatus('${e.id}','converted')">Convertido</button>` : ''}
-                  ${e.status !== 'cancelled'  ? `<button class="adm-btn adm-btn--danger adm-btn--sm" onclick="setWlStatus('${e.id}','cancelled')">Descartar</button>` : ''}
-                </div>
-              </td>
-            </tr>`;
-          }).join('')}</tbody>
-        </table>
+    return `
+      <div class="wl-card ${isDone?'wl-card--done':''}" data-id="${e.id}" role="button" tabindex="0"
+           onclick="wlOpenDetail('${e.id}')" onkeydown="if(event.key==='Enter')wlOpenDetail('${e.id}')">
+        <div class="wl-card__aside">
+          <div class="wl-card__date">${fmtDateShort(e.created_at)}</div>
+          <div class="wl-card__pax" title="${pax} participante(s)">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>${pax}
+          </div>
+          ${lastCh ? `<div class="wl-card__ch" title="Último contato">${lastCh}</div>` : ''}
+        </div>
+        <div class="wl-card__body">
+          <div class="wl-card__top">
+            <span class="wl-card__name">${escHtml(e.name ?? '—')}</span>
+            <span class="wl-badge ${s.cls}">${s.label}</span>
+            ${e.status === 'converted' ? `<span class="wl-ref">✓ Reserva</span>` : ''}
+          </div>
+          <div class="wl-card__exp">
+            ${escHtml(expTit)}${depDate ? ` · <span class="wl-card__depdate">${depDate}</span>` : ''}
+          </div>
+          <div class="wl-card__contact">
+            ${phone ? `<span class="wl-contact-chip">📱 ${escHtml(phone)}</span>` : ''}
+            ${e.email ? `<span class="wl-contact-chip">✉️ ${escHtml(e.email)}</span>` : ''}
+          </div>
+          ${e.message ? `<div class="wl-card__msg">"${escHtml(e.message.substring(0,120))}${e.message.length>120?'…':''}"</div>` : ''}
+        </div>
+        <div class="wl-card__actions" onclick="event.stopPropagation()">
+          ${phone ? `<button class="wl-act-btn wl-act-btn--whatsapp" title="WhatsApp" onclick="wlWhatsApp('${e.id}')">${WL_SVG_WA}</button>` : ''}
+          ${e.email ? `<button class="wl-act-btn wl-act-btn--email" title="E-mail" onclick="wlEmail('${e.id}')">${WL_SVG_EMAIL}</button>` : ''}
+          ${!isDone ? `<button class="wl-act-btn wl-act-btn--convert" title="Converter em reserva" onclick="wlConvert('${e.id}')">${WL_SVG_CHK}</button>` : ''}
+          ${!isDone ? `<button class="wl-act-btn wl-act-btn--discard" title="Descartar" onclick="wlDiscard('${e.id}')">${WL_SVG_TRASH}</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+function _wlGetEntry(id) { return _wlEntries.find(e => e.id === id); }
+function _wlPhoneDigits(p) { return (p ?? '').replace(/\D/g, ''); }
+
+function _wlBuildProposal(entry, dep = null) {
+  const exp     = entry.experiences?.title ?? 'nossa experiência';
+  const nome    = (entry.name ?? '').split(' ')[0] || 'você';
+  const dtDep   = dep ? fmtDate(dep.date) : (entry.departures?.date ? fmtDate(entry.departures.date) : 'a definir');
+  const prc     = dep?.price ? `R$ ${Number(dep.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '';
+  const bp      = entry.pickup_point_label ?? '';
+  const bpLine  = bp ? `\n📍 Embarque: ${bp}${entry.pickup_time ? ' às ' + entry.pickup_time : ''}` : '';
+  const paxLine = entry.participants_count ? `\n👥 ${entry.participants_count} pessoa(s)` : '';
+  return `Olá ${nome}! 👋\n\nTemos a saída de *${exp}* em *${dtDep}*${prc?' por '+prc:''} disponível!\n${paxLine}${bpLine}\n\nVagas são limitadas — gostaria de garantir a sua? 🌿\n\nResponda aqui ou acesse nosso site para reservar.`;
+}
+
+function _wlWaMsg(entry) {
+  const exp  = entry.experiences?.title ?? 'nossa experiência';
+  const nome = (entry.name ?? '').split(' ')[0] || 'você';
+  return `Olá ${nome}! 👋 Vi que você demonstrou interesse em *${exp}*.\nTemos saídas disponíveis — vagas limitadas! Posso te ajudar a garantir a sua? 🌿`;
+}
+
+function _wlEmailSubject(entry) {
+  return `Lista de espera — ${entry.experiences?.title ?? 'experiência'}`;
+}
+
+function _wlEmailBody(entry) {
+  const exp  = entry.experiences?.title ?? 'nossa experiência';
+  const nome = (entry.name ?? '').split(' ')[0] || 'você';
+  return `Olá ${nome},\n\nVi que você se inscreveu na lista de espera para "${exp}".\nTemos saídas disponíveis — adoraríamos te ter conosco!\n\nResponda este e-mail ou nos chame no WhatsApp para garantir sua vaga.\n\nAbçs,\nAnauá Ecoturismo`;
+}
+
+async function _wlPatchEntry(id, patch) {
+  const { error } = await window.anauaDb.from('waitlist_entries').update(patch).eq('id', id);
+  if (error) throw error;
+  const idx = _wlEntries.findIndex(e => e.id === id);
+  if (idx !== -1) _wlEntries[idx] = { ..._wlEntries[idx], ...patch };
+  _wlRenderList();
+}
+
+async function _wlLogAction(entryId, action, channel, message, metadata = {}) {
+  const { error } = await window.anauaDb.from('waitlist_entry_logs').insert({ entry_id: entryId, action, channel, message, metadata });
+  if (error) console.warn('[wl-log]', error.message);
+}
+
+window._wlCopy = function _wlCopy(text) {
+  navigator.clipboard?.writeText(text).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+  toast('Copiado!', 'success');
+}
+
+// ── Detail Drawer ─────────────────────────────────────────────────────────────
+window.wlOpenDetail = async function(id) {
+  const entry = _wlGetEntry(id);
+  if (!entry) return;
+
+  const s = WL_STATUS[entry.status] ?? { label: entry.status, cls: 'wl-s-pending' };
+  const src = entry.source ? (WL_SOURCE_LABEL[entry.source] ?? entry.source) : null;
+  const isDone = entry.status === 'converted' || entry.status === 'discarded';
+
+  // Skeleton open
+  openDrawer(entry.name ?? 'Detalhe', `<div class="wl-detail-loading"><div class="wl-skeleton-card" style="height:72px;margin-bottom:12px"></div><div class="wl-skeleton-card" style="height:120px;margin-bottom:12px"></div><div class="wl-skeleton-card" style="height:200px"></div></div>`);
+
+  // Load logs in background
+  const { data: logs } = await window.anauaDb.from('waitlist_entry_logs')
+    .select('id, action, channel, message, created_at')
+    .eq('entry_id', id).order('created_at', { ascending: false });
+
+  // ── Build body ──
+  const phone   = entry.phone ?? '';
+  const pax     = entry.participants_count ?? 1;
+  const expTit  = entry.experiences?.title ?? '—';
+  const depDate = entry.departures?.date ? fmtDate(entry.departures.date) : null;
+  const depPrc  = entry.departures?.price ? `R$ ${Number(entry.departures.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : null;
+  const proposal = _wlBuildProposal(entry);
+
+  // Interest section
+  let interestHtml = `
+    <div class="wl-detail-section">
+      <div class="wl-detail-section__title">Interesse original</div>
+      <div class="wl-detail-rows">
+        <div class="wl-detail-row"><span>Experiência</span><strong>${escHtml(expTit)}</strong></div>
+        ${depDate ? `<div class="wl-detail-row"><span>Saída desejada</span><strong>${depDate}</strong></div>` : ''}
+        ${depPrc  ? `<div class="wl-detail-row"><span>Preço</span><strong>${depPrc}</strong></div>` : ''}
+        <div class="wl-detail-row"><span>Participantes</span><strong>${pax}</strong></div>
+        ${entry.pickup_point_label ? `<div class="wl-detail-row"><span>Embarque</span><strong>${escHtml(entry.pickup_point_label)}${entry.pickup_time?' · '+entry.pickup_time:''}</strong></div>` : ''}
+        ${src ? `<div class="wl-detail-row"><span>Origem</span><strong>${escHtml(src)}</strong></div>` : ''}
+        <div class="wl-detail-row"><span>Cadastrado em</span><strong>${fmtDate(entry.created_at)}</strong></div>
       </div>
     </div>`;
-}
 
-async function setWlStatus(id, status) {
-  const db = window.anauaDb;
-  if (!db) return;
-  const { error } = await db.from('waitlist_entries').update({ status }).eq('id', id);
-  if (error) { toast('Erro ao atualizar: ' + error.message, 'error'); return; }
-  toast('Status atualizado.', 'success');
-  navigate('#lista-espera');
-}
+  // Contact section
+  let contactHtml = `
+    <div class="wl-detail-section">
+      <div class="wl-detail-section__title">Dados de contato</div>
+      <div class="wl-detail-rows">
+        ${phone ? `<div class="wl-detail-row"><span>WhatsApp</span><a href="tel:${escHtml(phone)}" class="wl-contact-link">${escHtml(phone)}</a></div>` : ''}
+        ${entry.email ? `<div class="wl-detail-row"><span>E-mail</span><a href="mailto:${escHtml(entry.email)}" class="wl-contact-link">${escHtml(entry.email)}</a></div>` : ''}
+        ${entry.last_contact_channel ? `<div class="wl-detail-row"><span>Último contato</span><strong>${WL_CH_ICON[entry.last_contact_channel]??''} ${entry.last_contact_channel}${entry.contacted_at?' · '+fmtDate(entry.contacted_at):''}</strong></div>` : ''}
+      </div>
+    </div>`;
+
+  // Message / notes
+  let msgHtml = '';
+  if (entry.message || entry.notes) {
+    msgHtml = `<div class="wl-detail-section">
+      <div class="wl-detail-section__title">Mensagem / observações</div>
+      ${entry.message ? `<div class="wl-detail-msg">"${escHtml(entry.message)}"</div>` : ''}
+      ${entry.notes   ? `<div class="wl-detail-notes">${escHtml(entry.notes)}</div>` : ''}
+    </div>`;
+  }
+
+  // Converted reservation
+  let convHtml = '';
+  if (entry.converted_reservation_id) {
+    convHtml = `<div class="wl-detail-section wl-detail-section--converted">
+      <div class="wl-detail-section__title">Reserva vinculada</div>
+      <div class="wl-detail-rows">
+        <div class="wl-detail-row"><span>ID</span><strong>${entry.converted_reservation_id.substring(0,8).toUpperCase()}</strong></div>
+        ${entry.converted_at ? `<div class="wl-detail-row"><span>Convertido em</span><strong>${fmtDate(entry.converted_at)}</strong></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  if (entry.discard_reason) {
+    convHtml += `<div class="wl-detail-section wl-detail-section--discarded">
+      <div class="wl-detail-section__title">Motivo do descarte</div>
+      <div class="wl-detail-msg">${escHtml(entry.discard_reason)}</div>
+    </div>`;
+  }
+
+  // Action buttons
+  let actionsHtml = `<div class="wl-detail-section">
+    <div class="wl-detail-section__title">Ações</div>
+    <div class="wl-detail-actions">
+      ${phone ? `<button class="wl-detail-action-btn wl-detail-action-btn--wa" onclick="wlWhatsApp('${id}')">${WL_SVG_WA} WhatsApp</button>` : ''}
+      ${entry.email ? `<button class="wl-detail-action-btn wl-detail-action-btn--email" onclick="wlEmail('${id}')">${WL_SVG_EMAIL} E-mail</button>` : ''}
+      <button class="wl-detail-action-btn wl-detail-action-btn--copy" onclick="_wlCopy(${JSON.stringify(proposal)})">${WL_SVG_CAL} Copiar proposta</button>
+      ${!isDone ? `
+      <button class="wl-detail-action-btn wl-detail-action-btn--offer" onclick="wlOfferDeparture('${id}')">${WL_SVG_CAL} Oferecer saída</button>
+      <button class="wl-detail-action-btn wl-detail-action-btn--offerexp" onclick="wlOfferOtherExp('${id}')">${WL_SVG_PIN} Outra experiência</button>
+      <button class="wl-detail-action-btn wl-detail-action-btn--convert" onclick="closeDrawer();wlConvert('${id}')">${WL_SVG_CHK} Converter em reserva</button>
+      <button class="wl-detail-action-btn wl-detail-action-btn--discard" onclick="wlDiscard('${id}')">${WL_SVG_TRASH} Descartar</button>` : ''}
+    </div>
+  </div>`;
+
+  // History section
+  const logItems = logs ?? [];
+  let histHtml = `<div class="wl-detail-section">
+    <div class="wl-detail-section__title">Histórico de contatos</div>`;
+  if (logItems.length === 0) {
+    histHtml += `<p class="wl-detail-empty-hist">Sem registros de contato ainda.</p>`;
+  } else {
+    histHtml += `<div class="wl-log-list">`;
+    logItems.forEach(l => {
+      const icon  = WL_CH_ICON[l.channel] ?? '•';
+      const label = WL_ACTION_LABEL[l.action] ?? l.action;
+      histHtml += `
+        <div class="wl-log-item">
+          <div class="wl-log-item__header">
+            <span class="wl-log-item__icon">${icon}</span>
+            <span class="wl-log-item__label">${escHtml(label)}</span>
+            <span class="wl-log-item__date">${fmtDate(l.created_at)}</span>
+          </div>
+          ${l.message ? `<div class="wl-log-item__msg">${escHtml(l.message.substring(0,200))}${l.message.length>200?'…':''}</div>` : ''}
+        </div>`;
+    });
+    histHtml += `</div>`;
+  }
+  histHtml += `</div>`;
+
+  // Assemble drawer body
+  const bodyHtml = `
+    <div class="wl-detail">
+      <div class="wl-detail-header">
+        <div class="wl-detail-header__name">${escHtml(entry.name ?? '—')}</div>
+        <span class="wl-badge ${s.cls}">${s.label}</span>
+      </div>
+      ${interestHtml}
+      ${contactHtml}
+      ${msgHtml}
+      ${convHtml}
+      ${actionsHtml}
+      ${histHtml}
+    </div>`;
+
+  document.getElementById('adm-drawer-body').innerHTML = bodyHtml;
+};
+
+// ── WhatsApp modal ────────────────────────────────────────────────────────────
+window.wlWhatsApp = function(id) {
+  const e = _wlGetEntry(id);
+  if (!e) return;
+  const digits = _wlPhoneDigits(e.phone);
+  const msg    = _wlWaMsg(e);
+  openModal('WhatsApp', `
+    <div class="wl-action-modal">
+      <p class="wl-action-modal__label">Mensagem para <strong>${escHtml(e.name ?? '')}</strong>:</p>
+      <textarea id="wl-wa-msg" class="wl-textarea" rows="5">${escHtml(msg)}</textarea>
+      ${!digits ? `<p class="wl-warn">⚠️ Nenhum telefone cadastrado.</p>` : ''}
+    </div>`,
+    `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Cancelar</button>
+     <button class="adm-btn adm-btn--secondary" id="wl-wa-copy">Copiar msg</button>
+     ${digits ? `<button class="adm-btn adm-btn--primary" id="wl-wa-open">Abrir WhatsApp →</button>` : ''}`);
+
+  document.getElementById('wl-wa-copy')?.addEventListener('click', () => {
+    _wlCopy(document.getElementById('wl-wa-msg').value);
+  });
+
+  document.getElementById('wl-wa-open')?.addEventListener('click', async () => {
+    const t = document.getElementById('wl-wa-msg').value;
+    window.open(`https://wa.me/55${digits}?text=${encodeURIComponent(t)}`, '_blank');
+    closeModal();
+    await _wlPatchEntry(id, { status: 'contacted', contacted_at: new Date().toISOString(), last_contact_channel: 'whatsapp', last_contact_message: t });
+    await _wlLogAction(id, 'contacted', 'whatsapp', t);
+    toast('WhatsApp aberto · status → Contatado', 'success');
+  });
+};
+
+// ── E-mail modal ──────────────────────────────────────────────────────────────
+window.wlEmail = function(id) {
+  const e = _wlGetEntry(id);
+  if (!e) return;
+  const subj = _wlEmailSubject(e);
+  const body = _wlEmailBody(e);
+  openModal('Enviar e-mail', `
+    <div class="wl-action-modal">
+      <div class="adm-form-group"><label class="adm-label">Para</label>
+        <input class="adm-input" readonly value="${escHtml(e.email ?? '')}"></div>
+      <div class="adm-form-group"><label class="adm-label">Assunto</label>
+        <input id="wl-em-subj" class="adm-input" value="${escHtml(subj)}"></div>
+      <div class="adm-form-group"><label class="adm-label">Mensagem</label>
+        <textarea id="wl-em-body" class="wl-textarea" rows="7">${escHtml(body)}</textarea></div>
+    </div>`,
+    `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Cancelar</button>
+     <button class="adm-btn adm-btn--secondary" id="wl-em-copy">Copiar</button>
+     <button class="adm-btn adm-btn--primary" id="wl-em-open">Abrir cliente de e-mail →</button>`);
+
+  document.getElementById('wl-em-copy')?.addEventListener('click', () => {
+    _wlCopy(document.getElementById('wl-em-body').value);
+  });
+
+  document.getElementById('wl-em-open')?.addEventListener('click', async () => {
+    const s = document.getElementById('wl-em-subj').value;
+    const b = document.getElementById('wl-em-body').value;
+    window.open(`mailto:${e.email}?subject=${encodeURIComponent(s)}&body=${encodeURIComponent(b)}`);
+    closeModal();
+    await _wlPatchEntry(id, { status: 'contacted', contacted_at: new Date().toISOString(), last_contact_channel: 'email', last_contact_message: b });
+    await _wlLogAction(id, 'contacted', 'email', b);
+    toast('E-mail aberto · status → Contatado', 'success');
+  });
+};
+
+// ── Offer departure modal ─────────────────────────────────────────────────────
+window.wlOfferDeparture = async function(id) {
+  const entry = _wlGetEntry(id);
+  if (!entry) return;
+
+  openModal('Oferecer saída', `<div class="wl-action-modal"><p style="color:var(--adm-text-muted);padding:12px 0">Carregando saídas…</p></div>`, '');
+
+  const minDate = new Date(); minDate.setDate(minDate.getDate() - 1);
+  const { data: deps = [] } = await window.anauaDb.from('departures')
+    .select('id, date, price, capacity, status, experience_id, experiences(id,title)')
+    .in('status', ['scheduled', 'sold_out'])
+    .gte('date', minDate.toISOString())
+    .order('date', { ascending: true }).limit(30);
+
+  const same  = (deps ?? []).filter(d => d.experience_id === entry.experience_id);
+  const other = (deps ?? []).filter(d => d.experience_id !== entry.experience_id);
+
+  function depCard(d) {
+    const expN  = d.experiences?.title ?? '—';
+    const full  = d.status === 'sold_out';
+    const dt    = fmtDate(d.date);
+    const prc   = d.price ? `R$ ${Number(d.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '—';
+    const nom   = (entry.name ?? '').split(' ')[0] || 'você';
+    const msg   = _wlBuildProposal(entry, d);
+    const safeMsg = JSON.stringify(msg);
+    return `
+      <div class="wl-dep-card ${full?'wl-dep-card--full':''}">
+        <div class="wl-dep-card__info">
+          <div class="wl-dep-card__exp">${escHtml(expN)}</div>
+          <div class="wl-dep-card__meta">${dt} · ${prc} · ${full?'<span style="color:var(--adm-danger)">Esgotada</span>':d.capacity+' vaga(s)'}</div>
+        </div>
+        <div class="wl-dep-card__btns">
+          <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="_wlCopy(${safeMsg})">Copiar proposta</button>
+          ${!full ? `<button class="adm-btn adm-btn--primary adm-btn--sm wl-dep-offer-btn"
+            data-id="${d.id}" data-msg=${safeMsg}>Marcar oferecida</button>` : ''}
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('adm-modal-body').innerHTML = `
+    <div class="wl-action-modal">
+      ${same.length ? `<p class="wl-section-label">Mesma experiência — ${escHtml(entry.experiences?.title??'')}:</p>${same.map(depCard).join('')}` : `<p style="color:var(--adm-text-muted);font-size:.85rem">Sem saídas futuras para esta experiência.</p>`}
+      ${other.length ? `<p class="wl-section-label" style="margin-top:16px">Outras experiências:</p>${other.map(depCard).join('')}` : ''}
+      ${(deps??[]).length===0 ? '<p style="color:var(--adm-text-muted)">Nenhuma saída ativa encontrada.</p>' : ''}
+    </div>`;
+  document.getElementById('adm-modal-footer').innerHTML = `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
+
+  document.querySelectorAll('.wl-dep-offer-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const depId = btn.dataset.id;
+      const msg   = btn.dataset.msg; // already JSON string — parse it
+      const msgText = JSON.parse(msg);
+      closeModal();
+      await _wlPatchEntry(id, { status: 'offered', offered_departure_id: depId, offered_at: new Date().toISOString(), last_contact_channel: 'manual', last_contact_message: msgText });
+      await _wlLogAction(id, 'offered_departure', 'manual', msgText, { departure_id: depId });
+      toast('Saída marcada como oferecida', 'success');
+    });
+  });
+};
+
+// ── Offer other experience modal ──────────────────────────────────────────────
+window.wlOfferOtherExp = async function(id) {
+  const entry = _wlGetEntry(id);
+  if (!entry) return;
+
+  openModal('Oferecer outra experiência', `<div class="wl-action-modal"><p style="color:var(--adm-text-muted);padding:12px 0">Carregando…</p></div>`, '');
+
+  const { data: exps = [] } = await window.anauaDb.from('experiences')
+    .select('id, title, short_description').eq('is_active', true).order('title');
+
+  const list = (exps ?? []).filter(ex => ex.id !== entry.experience_id);
+
+  document.getElementById('adm-modal-body').innerHTML = `
+    <div class="wl-action-modal">
+      ${list.length === 0 ? '<p style="color:var(--adm-text-muted)">Sem outras experiências ativas.</p>' : ''}
+      ${list.map(ex => {
+        const nom = (entry.name ?? '').split(' ')[0] || 'você';
+        const msg = `Olá ${nom}! Que tal conhecer *${ex.title}*? ${ex.short_description ?? 'Uma experiência incrível com a Anauá Ecoturismo!'} Posso te contar mais? 🌿`;
+        const safeMsg = JSON.stringify(msg);
+        return `
+          <div class="wl-dep-card">
+            <div class="wl-dep-card__info">
+              <div class="wl-dep-card__exp">${escHtml(ex.title)}</div>
+              ${ex.short_description ? `<div class="wl-dep-card__meta">${escHtml(ex.short_description.substring(0,80))}</div>` : ''}
+            </div>
+            <div class="wl-dep-card__btns">
+              <button class="adm-btn adm-btn--ghost adm-btn--sm" onclick="_wlCopy(${safeMsg})">Copiar msg</button>
+              <button class="adm-btn adm-btn--primary adm-btn--sm wl-exp-offer-btn" data-exp="${ex.id}" data-msg=${safeMsg}>Marcar oferecida</button>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+  document.getElementById('adm-modal-footer').innerHTML = `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
+
+  document.querySelectorAll('.wl-exp-offer-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const expId   = btn.dataset.exp;
+      const msgText = JSON.parse(btn.dataset.msg);
+      closeModal();
+      await _wlPatchEntry(id, { status: 'offered', offered_at: new Date().toISOString(), last_contact_channel: 'manual', last_contact_message: msgText });
+      await _wlLogAction(id, 'offered_experience', 'manual', msgText, { experience_id: expId });
+      toast('Oferta registrada', 'success');
+    });
+  });
+};
+
+// ── Convert to reservation modal ──────────────────────────────────────────────
+window.wlConvert = async function(id) {
+  const entry = _wlGetEntry(id);
+  if (!entry) return;
+
+  openModal('Converter em reserva', `<div class="wl-action-modal"><p style="color:var(--adm-text-muted);padding:12px 0">Carregando saídas disponíveis…</p></div>`, '');
+
+  const minDate = new Date(); minDate.setDate(minDate.getDate() - 1);
+  const { data: deps = [] } = await window.anauaDb.from('departures')
+    .select('id, date, price, capacity, status, experience_id, experiences(id,title)')
+    .eq('status', 'scheduled').gte('date', minDate.toISOString())
+    .order('date', { ascending: true }).limit(40);
+
+  if (!deps || deps.length === 0) {
+    document.getElementById('adm-modal-body').innerHTML = `<div class="wl-action-modal"><p style="color:var(--adm-text-muted)">Nenhuma saída disponível para conversão no momento.</p></div>`;
+    document.getElementById('adm-modal-footer').innerHTML = `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Fechar</button>`;
+    return;
+  }
+
+  const same  = deps.filter(d => d.experience_id === entry.experience_id);
+  const other = deps.filter(d => d.experience_id !== entry.experience_id);
+
+  function depOpt(d) {
+    const dt  = fmtDate(d.date);
+    const exp = d.experiences?.title ?? '—';
+    const prc = d.price ? ` · R$ ${Number(d.price).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '';
+    return `<option value="${d.id}" data-price="${d.price??0}" data-exp="${d.experience_id}">${escHtml(exp)} — ${dt} (${d.capacity} vagas${prc})</option>`;
+  }
+
+  const paxCount = entry.participants_count ?? 1;
+  let paxFields  = '';
+  for (let i = 0; i < paxCount; i++) {
+    paxFields += `<div class="wl-pax-row">
+      <span class="wl-pax-idx">${i+1}</span>
+      <input class="adm-input wl-pax-name" placeholder="Nome completo${i===0?' (responsável)':''}"
+        value="${escHtml(i===0 ? (entry.name??'') : '')}">
+    </div>`;
+  }
+
+  document.getElementById('adm-modal-body').innerHTML = `
+    <div class="wl-action-modal wl-convert-form">
+      <div class="adm-form-group">
+        <label class="adm-label">Saída *</label>
+        <select id="wlc-dep" class="adm-input">
+          <option value="">— Selecione —</option>
+          ${same.length  ? `<optgroup label="Mesma experiência">${same.map(depOpt).join('')}</optgroup>` : ''}
+          ${other.length ? `<optgroup label="Outras experiências">${other.map(depOpt).join('')}</optgroup>` : ''}
+        </select>
+      </div>
+      <div id="wlc-bp-wrap" class="adm-form-group" style="display:none">
+        <label class="adm-label">Ponto de embarque</label>
+        <select id="wlc-bp" class="adm-input"><option value="">— Selecione —</option></select>
+      </div>
+      <div class="adm-form-group">
+        <label class="adm-label">Responsável *</label>
+        <input id="wlc-name"  class="adm-input" placeholder="Nome completo" value="${escHtml(entry.name??'')}">
+        <input id="wlc-email" class="adm-input" style="margin-top:6px" placeholder="E-mail" value="${escHtml(entry.email??'')}">
+        <input id="wlc-phone" class="adm-input" style="margin-top:6px" placeholder="WhatsApp / telefone" value="${escHtml(entry.phone??'')}">
+      </div>
+      <div class="adm-form-group">
+        <label class="adm-label">Participantes (${paxCount}) <button type="button" class="adm-btn adm-btn--ghost adm-btn--sm" style="margin-left:8px" id="wlc-add-pax">+ Adicionar</button></label>
+        <div id="wlc-pax">${paxFields}</div>
+      </div>
+      <div class="wl-convert-row">
+        <div class="adm-form-group" style="flex:1">
+          <label class="adm-label">Pagamento</label>
+          <select id="wlc-method" class="adm-input">
+            <option value="pix">PIX</option>
+            <option value="credit_card">Cartão de crédito</option>
+            <option value="bank_transfer">Transferência</option>
+            <option value="cash">Dinheiro</option>
+            <option value="signal_balance">Sinal + saldo</option>
+          </select>
+        </div>
+        <div class="adm-form-group" style="flex:1">
+          <label class="adm-label">Valor total (R$)</label>
+          <input id="wlc-total" class="adm-input" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="adm-form-group" style="flex:1">
+          <label class="adm-label">Valor pago (R$)</label>
+          <input id="wlc-paid" class="adm-input" type="number" min="0" step="0.01" value="0">
+        </div>
+      </div>
+      <div class="adm-form-group">
+        <label class="adm-label">Observações</label>
+        <textarea id="wlc-notes" class="adm-input" rows="2" placeholder="Restrições, pedidos…">${escHtml(entry.message??'')}</textarea>
+      </div>
+    </div>`;
+
+  document.getElementById('adm-modal-footer').innerHTML = `
+    <button class="adm-btn adm-btn--ghost" onclick="closeModal()">Cancelar</button>
+    <button id="wlc-submit" class="adm-btn adm-btn--primary">Converter →</button>`;
+
+  // Add pax row
+  document.getElementById('wlc-add-pax').addEventListener('click', () => {
+    const wrap = document.getElementById('wlc-pax');
+    const n    = wrap.querySelectorAll('.wl-pax-row').length + 1;
+    const row  = document.createElement('div');
+    row.className = 'wl-pax-row';
+    row.innerHTML = `<span class="wl-pax-idx">${n}</span><input class="adm-input wl-pax-name" placeholder="Nome completo">`;
+    wrap.appendChild(row);
+  });
+
+  // Boarding points on departure select
+  document.getElementById('wlc-dep').addEventListener('change', async function() {
+    const depId   = this.value;
+    const bpWrap  = document.getElementById('wlc-bp-wrap');
+    const bpSel   = document.getElementById('wlc-bp');
+    if (!depId) { bpWrap.style.display = 'none'; return; }
+    const opt  = this.options[this.selectedIndex];
+    const pric = parseFloat(opt.dataset.price || '0');
+    const paxN = document.getElementById('wlc-pax').querySelectorAll('.wl-pax-row').length;
+    if (pric > 0) document.getElementById('wlc-total').value = (pric * paxN).toFixed(2);
+    bpSel.innerHTML = '<option value="">Carregando…</option>';
+    bpWrap.style.display = 'block';
+    const { data: bps } = await window.anauaDb.from('departure_boarding_points')
+      .select('id, pickup_at, custom_label, custom_address, boarding_points(name,address)')
+      .eq('departure_id', depId).order('pickup_at', { ascending: true });
+    if (!bps || bps.length === 0) { bpWrap.style.display = 'none'; return; }
+    bpSel.innerHTML = `<option value="">— Selecione —</option>` +
+      bps.map(b => {
+        const nm   = b.custom_label || b.boarding_points?.name || '—';
+        const time = b.pickup_at ? b.pickup_at.substring(0, 5) : '';
+        return `<option value="${b.id}">${escHtml(nm)}${time?' ('+time+')':''}</option>`;
+      }).join('');
+  });
+
+  // Submit
+  document.getElementById('wlc-submit').addEventListener('click', async function() {
+    const depId  = document.getElementById('wlc-dep').value;
+    const bpId   = document.getElementById('wlc-bp')?.value || null;
+    const name   = document.getElementById('wlc-name').value.trim();
+    const email  = document.getElementById('wlc-email').value.trim();
+    const phone  = document.getElementById('wlc-phone').value.trim();
+    const method = document.getElementById('wlc-method').value;
+    const total  = parseFloat(document.getElementById('wlc-total').value  || '0');
+    const paid   = parseFloat(document.getElementById('wlc-paid').value   || '0');
+    const notes  = document.getElementById('wlc-notes').value.trim();
+
+    if (!depId) { toast('Selecione uma saída.', 'error'); return; }
+    if (!name)  { toast('Informe o nome do responsável.', 'error'); return; }
+
+    const participants = Array.from(document.querySelectorAll('.wl-pax-name')).map((inp, i) => ({
+      full_name: inp.value.trim() || `Participante ${i + 1}`,
+      profile_type: 'adult',
+    }));
+
+    const depOpt = document.getElementById('wlc-dep').options[document.getElementById('wlc-dep').selectedIndex];
+    const expId  = depOpt.dataset.exp || null;
+
+    this.disabled = true; this.textContent = 'Convertendo…';
+
+    const { data: { user } } = await window.anauaDb.auth.getUser().catch(() => ({ data: { user: null } }));
+
+    const { data: rpcData, error: rpcErr } = await window.anauaDb.rpc('convert_waitlist_to_reservation', {
+      p_entry_id: id, p_departure_id: depId, p_experience_id: expId,
+      p_boarding_point_id: bpId || null, p_customer_name: name,
+      p_customer_email: email, p_customer_phone: phone,
+      p_payment_method: method, p_total_amount: total, p_amount_paid: paid,
+      p_notes: notes, p_participants: participants, p_operator_id: user?.id ?? null,
+    });
+
+    if (rpcErr || !rpcData?.ok) {
+      toast((rpcErr?.message ?? rpcData?.error) || 'Conversão falhou.', 'error');
+      this.disabled = false; this.textContent = 'Converter →'; return;
+    }
+
+    await _wlPatchEntry(id, { status: 'converted', converted_reservation_id: rpcData.reservation_id, converted_at: new Date().toISOString() });
+    closeModal();
+    toast('✓ Reserva criada com sucesso!', 'success');
+  });
+};
+
+// ── Discard modal ─────────────────────────────────────────────────────────────
+window.wlDiscard = function(id) {
+  const entry = _wlGetEntry(id);
+  if (!entry) return;
+
+  openModal('Descartar contato', `
+    <div class="wl-action-modal">
+      <p style="margin-bottom:12px">Descartar <strong>${escHtml(entry.name ?? 'este contato')}</strong>? Informe o motivo:</p>
+      <select id="wl-disc-preset" class="adm-input">
+        <option value="">— Selecione um motivo —</option>
+        <option>Não respondeu ao contato</option>
+        <option>Desistiu da viagem</option>
+        <option>Encontrou outra operadora</option>
+        <option>Fora do perfil</option>
+        <option>Dados inválidos / duplicado</option>
+        <option value="outro">Outro (descreva abaixo)</option>
+      </select>
+      <textarea id="wl-disc-reason" class="wl-textarea" style="margin-top:8px" rows="3" placeholder="Complemento opcional…"></textarea>
+    </div>`,
+    `<button class="adm-btn adm-btn--ghost" onclick="closeModal()">Cancelar</button>
+     <button class="adm-btn adm-btn--danger" id="wl-disc-confirm">Descartar</button>`);
+
+  document.getElementById('wl-disc-confirm').addEventListener('click', async function() {
+    const preset = document.getElementById('wl-disc-preset').value;
+    const extra  = document.getElementById('wl-disc-reason').value.trim();
+    if (!preset) { toast('Selecione um motivo.', 'error'); return; }
+    const reason = [preset !== 'outro' ? preset : '', extra].filter(Boolean).join(' — ');
+    this.disabled = true; this.textContent = 'Descartando…';
+    try {
+      await _wlPatchEntry(id, { status: 'discarded', discarded_at: new Date().toISOString(), discard_reason: reason });
+      await _wlLogAction(id, 'discarded', 'system', reason);
+      closeModal();
+      toast('Contato descartado.', 'info');
+    } catch (err) {
+      this.disabled = false; this.textContent = 'Descartar';
+      toast('Erro: ' + err.message, 'error');
+    }
+  });
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MODULE: PONTOS DE EMBARQUE (catálogo reutilizável)
+// ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
