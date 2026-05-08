@@ -5403,162 +5403,838 @@ async function renderConfiguracoes(root) {
     return;
   }
 
-  const { data, error } = await db
-    .from('app_settings')
-    .select('key, value, updated_at')
-    .eq('key', 'company_settings')
-    .maybeSingle();
+  // Load all settings keys in parallel
+  const [settingsRes, experiencesRes] = await Promise.all([
+    db.from('app_settings').select('key, value, updated_at').eq('key', 'company_settings').maybeSingle(),
+    db.from('experiences').select('id, title').eq('is_active', true).order('title'),
+  ]);
 
-  const cfg = (error || !data) ? {} : (data.value ?? {});
-  const res = cfg.reservations ?? {};
-  const ntf = cfg.notifications ?? {};
-
-  if (error) {
-    // PGRST116 = row not found — first-time use, show empty form
+  const { data, error } = settingsRes;
+  if (error && error.code !== 'PGRST116') {
     console.warn('[admin-settings] Erro ao carregar configurações:', error.message);
     root.innerHTML = `
-      <div class="adm-empty" style="padding:var(--adm-sp-8);text-align:center">
+      <div class="adm-empty">
         <p style="color:var(--adm-danger);font-weight:600">Não foi possível carregar as configurações.</p>
-        <p class="text-muted text-small">${error.message}</p>
+        <p class="text-muted text-small" style="margin-top:6px">${escHtml(error.message)}</p>
         <button class="adm-btn adm-btn--primary" style="margin-top:16px" onclick="navigate('#configuracoes')">Tentar novamente</button>
       </div>`;
     return;
   }
 
-  if (data?.updated_at) {
-    console.log('[admin-settings] Configurações carregadas do Supabase — atualizado em:', data.updated_at);
-  } else {
-    console.log('[admin-settings] Configurações carregadas do Supabase — nenhum registro ainda, usando padrões');
+  const cfg  = (data?.value) ?? {};
+  const co   = cfg.company       ?? {};   // company identity
+  const res  = cfg.reservations  ?? {};   // reservation rules
+  const pay  = cfg.payments      ?? {};   // payment config
+  const ntf  = cfg.notifications ?? {};   // notification triggers
+  const site = cfg.site          ?? {};   // public site integration
+  const adv  = cfg.advanced      ?? {};   // advanced / debug
+
+  let _cfgDirty  = false;
+  let _activeTab = 'empresa';
+
+  const TABS = [
+    { id: 'empresa',       icon: '🏢', label: 'Empresa'        },
+    { id: 'reservas',      icon: '📋', label: 'Reservas'       },
+    { id: 'pagamentos',    icon: '💳', label: 'Pagamentos'     },
+    { id: 'notificacoes',  icon: '🔔', label: 'Notificações'   },
+    { id: 'site',          icon: '🌐', label: 'Site público'   },
+    { id: 'avancado',      icon: '⚙️',  label: 'Avançado'       },
+  ];
+
+  // ── Helper: mark as dirty on any input change ──────────────────────────────
+  const SAVE_BTN_HTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Salvar configurações`;
+  const SAVE_BTN_HTML_DIRTY = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Salvar alterações ●`;
+
+  function markDirty() {
+    if (_cfgDirty) return;
+    _cfgDirty = true;
+    const btn = document.getElementById('cfg-save-btn');
+    if (btn) { btn.classList.add('cfg-save-btn--dirty'); btn.innerHTML = SAVE_BTN_HTML_DIRTY; }
   }
 
-  root.innerHTML = `
-    <div style="max-width:680px">
+  // ── Section: Empresa ───────────────────────────────────────────────────────
+  function sectionEmpresa() {
+    return `
+      <div class="cfg-section-title">Identidade da empresa</div>
+      <div class="cfg-section-desc">Informações que aparecem em vouchers, e-mails e na área pública do site.</div>
 
-      <div class="adm-config-section">
-        <div class="adm-config-section__title">Empresa</div>
+      <div class="adm-config-section" style="margin-top:16px">
+        <div class="adm-config-section__title">Dados principais</div>
         <div class="adm-config-section__body">
           <div class="adm-field">
             <label for="cfg-company-name">Nome da empresa</label>
-            <input id="cfg-company-name" class="adm-input" value="${escHtml(cfg.company_name ?? '')}" placeholder="Anauá Ecoturismo" />
+            <input id="cfg-company-name" class="adm-input" value="${escHtml(co.name ?? cfg.company_name ?? '')}" placeholder="Anauá Ecoturismo" />
+          </div>
+          <div class="adm-field">
+            <label for="cfg-tagline">Slogan / tagline</label>
+            <input id="cfg-tagline" class="adm-input" value="${escHtml(co.tagline ?? '')}" placeholder="Aventura com consciência" />
           </div>
           <div class="adm-grid-2">
             <div class="adm-field">
               <label for="cfg-contact-email">E-mail de contato</label>
-              <input id="cfg-contact-email" class="adm-input" type="email" value="${escHtml(cfg.contact_email ?? '')}" placeholder="contato@anaua.com.br" />
+              <input id="cfg-contact-email" class="adm-input" type="email" value="${escHtml(co.contact_email ?? cfg.contact_email ?? '')}" placeholder="contato@anaua.com.br" />
             </div>
             <div class="adm-field">
-              <label for="cfg-whatsapp">WhatsApp</label>
-              <input id="cfg-whatsapp" class="adm-input" value="${escHtml(cfg.whatsapp ?? '')}" placeholder="(21) 99000-0000" />
+              <label for="cfg-whatsapp">WhatsApp principal</label>
+              <input id="cfg-whatsapp" class="adm-input" value="${escHtml(co.whatsapp ?? cfg.whatsapp ?? '')}" placeholder="(21) 99000-0000" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-cnpj">CNPJ</label>
+              <input id="cfg-cnpj" class="adm-input" value="${escHtml(co.cnpj ?? cfg.cnpj ?? '')}" placeholder="00.000.000/0001-00" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-reg-number">Cadastro turismo (CADASTUR)</label>
+              <input id="cfg-reg-number" class="adm-input" value="${escHtml(co.cadastur ?? '')}" placeholder="00.123456.00-0" />
             </div>
           </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Endereço</div>
+        <div class="adm-config-section__body">
           <div class="adm-field">
-            <label for="cfg-cnpj">CNPJ</label>
-            <input id="cfg-cnpj" class="adm-input" value="${escHtml(cfg.cnpj ?? '')}" placeholder="00.000.000/0001-00" />
+            <label for="cfg-addr-street">Logradouro</label>
+            <input id="cfg-addr-street" class="adm-input" value="${escHtml(co.address?.street ?? '')}" placeholder="Rua das Palmeiras, 123" />
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-addr-city">Cidade</label>
+              <input id="cfg-addr-city" class="adm-input" value="${escHtml(co.address?.city ?? '')}" placeholder="Rio de Janeiro" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-addr-state">Estado</label>
+              <input id="cfg-addr-state" class="adm-input" value="${escHtml(co.address?.state ?? '')}" placeholder="RJ" maxlength="2" style="text-transform:uppercase" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-addr-zip">CEP</label>
+              <input id="cfg-addr-zip" class="adm-input" value="${escHtml(co.address?.zip ?? '')}" placeholder="20000-000" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-addr-country">País</label>
+              <input id="cfg-addr-country" class="adm-input" value="${escHtml(co.address?.country ?? 'Brasil')}" placeholder="Brasil" />
+            </div>
           </div>
         </div>
       </div>
 
       <div class="adm-config-section">
-        <div class="adm-config-section__title">Reservas</div>
+        <div class="adm-config-section__title">Redes sociais</div>
         <div class="adm-config-section__body">
-          ${configRow('cfg-auto-confirm',      'Confirmação automática',        'Confirmar reservas automaticamente após pagamento',     res.auto_confirm_after_payment ?? true)}
-          ${configRow('cfg-voucher-email',     'Enviar voucher por e-mail',     'E-mail com voucher ao responsável após pagamento',      res.send_voucher_email ?? true)}
-          ${configRow('cfg-signal-balance',    'Permitir sinal + saldo',        'Habilitar pagamento em duas etapas',                    res.allow_signal_balance ?? true)}
-          ${configRow('cfg-image-consent',     'Aceite de imagem obrigatório',  'Tornar consentimento de imagem obrigatório',            res.image_consent_required ?? false)}
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-instagram">Instagram</label>
+              <div class="cfg-input-prefix"><span>@</span><input id="cfg-instagram" class="adm-input" value="${escHtml(co.instagram ?? '')}" placeholder="anauaecoturismo" /></div>
+            </div>
+            <div class="adm-field">
+              <label for="cfg-facebook">Facebook (URL ou @)</label>
+              <input id="cfg-facebook" class="adm-input" value="${escHtml(co.facebook ?? '')}" placeholder="facebook.com/anaua" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-youtube">YouTube (URL ou canal)</label>
+              <input id="cfg-youtube" class="adm-input" value="${escHtml(co.youtube ?? '')}" placeholder="youtube.com/@anaua" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-tiktok">TikTok</label>
+              <div class="cfg-input-prefix"><span>@</span><input id="cfg-tiktok" class="adm-input" value="${escHtml(co.tiktok ?? '')}" placeholder="anauaecoturismo" /></div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Section: Reservas ──────────────────────────────────────────────────────
+  function sectionReservas() {
+    return `
+      <div class="cfg-section-title">Regras de reserva</div>
+      <div class="cfg-section-desc">Controle como clientes fazem e gerenciam reservas.</div>
+
+      <div class="adm-config-section" style="margin-top:16px">
+        <div class="adm-config-section__title">Fluxo de confirmação</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-auto-confirm',   'Confirmação automática',         'Confirmar reservas automaticamente após pagamento integral',         res.auto_confirm_after_payment ?? true)}
+          ${cfgToggle('cfg-voucher-email',  'Enviar voucher por e-mail',      'E-mail automático com voucher ao responsável após confirmação',      res.send_voucher_email ?? true)}
+          ${cfgToggle('cfg-cancel-online',  'Cancelamento pelo cliente',      'Permitir que o cliente cancele a reserva pelo site',                 res.allow_online_cancel ?? false)}
+          ${cfgToggle('cfg-image-consent',  'Aceite de imagem obrigatório',   'Consentimento de uso de imagem obrigatório na reserva',              res.image_consent_required ?? false)}
         </div>
       </div>
 
       <div class="adm-config-section">
-        <div class="adm-config-section__title">Notificações</div>
+        <div class="adm-config-section__title">Pagamento em etapas</div>
         <div class="adm-config-section__body">
-          ${configRow('cfg-notif-booking',     'Nova reserva',                  'Notificar ao criar nova reserva',                      ntf.new_booking ?? true)}
-          ${configRow('cfg-notif-payment',     'Pagamento recebido',            'Notificar ao registrar pagamento',                     ntf.payment_received ?? true)}
-          ${configRow('cfg-notif-overdue',     'Saldo vencido',                 'Alertar quando saldo ultrapassar vencimento',           ntf.overdue_balance ?? true)}
-          ${configRow('cfg-notif-departure',   'Saída próxima (48h)',           'Lembrete 48h antes de cada saída',                     ntf.departure_48h ?? false)}
+          ${cfgToggle('cfg-signal-balance', 'Permitir sinal + saldo',         'Habilitar pagamento em duas etapas (sinal na hora, saldo depois)',   res.allow_signal_balance ?? true)}
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Sinal mínimo (%)</div>
+              <div class="adm-config-row__desc">Percentual mínimo que o cliente deve pagar como sinal</div>
+            </div>
+            <input id="cfg-signal-pct" type="number" min="10" max="100" step="5"
+              class="adm-input cfg-input-num" value="${res.signal_min_pct ?? 30}" />
+          </div>
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Prazo do saldo (dias antes da saída)</div>
+              <div class="adm-config-row__desc">Quantos dias antes da saída o saldo deve ser quitado</div>
+            </div>
+            <input id="cfg-balance-deadline" type="number" min="1" max="90" step="1"
+              class="adm-input cfg-input-num" value="${res.balance_deadline_days ?? 7}" />
+          </div>
         </div>
       </div>
 
       <div class="adm-config-section">
-        <div class="adm-config-section__body" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-          <span class="text-small text-muted" id="cfg-last-saved">
-            ${data?.updated_at ? 'Última atualização: ' + fmtDateShort(data.updated_at) : 'Ainda não salvo no banco.'}
-          </span>
-          <button id="cfg-save-btn" class="adm-btn adm-btn--primary">Salvar configurações</button>
+        <div class="adm-config-section__title">Limites e prazos</div>
+        <div class="adm-config-section__body">
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Máx. participantes por reserva</div>
+              <div class="adm-config-row__desc">Número máximo de pessoas em uma única reserva (0 = sem limite)</div>
+            </div>
+            <input id="cfg-max-pax" type="number" min="0" max="50" step="1"
+              class="adm-input cfg-input-num" value="${res.max_pax_per_booking ?? 10}" />
+          </div>
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Antecedência mínima p/ reservar (dias)</div>
+              <div class="adm-config-row__desc">Quantos dias de antecedência são necessários para abrir uma reserva</div>
+            </div>
+            <input id="cfg-min-advance" type="number" min="0" max="60" step="1"
+              class="adm-input cfg-input-num" value="${res.min_advance_days ?? 2}" />
+          </div>
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Prazo de pagamento (dias)</div>
+              <div class="adm-config-row__desc">Dias para concluir o pagamento após criar a reserva antes de expirar</div>
+            </div>
+            <input id="cfg-pay-deadline" type="number" min="1" max="30" step="1"
+              class="adm-input cfg-input-num" value="${res.payment_deadline_days ?? 3}" />
+          </div>
+          ${cfgToggle('cfg-waitlist-auto',  'Lista de espera automática',     'Ao esgotar vagas, ativar lista de espera automaticamente',           res.auto_waitlist ?? true)}
         </div>
       </div>
 
-    </div>`;
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Política de cancelamento</div>
+        <div class="adm-config-section__body">
+          <div class="adm-field">
+            <label for="cfg-cancel-policy">Texto da política (exibido no site e nos vouchers)</label>
+            <textarea id="cfg-cancel-policy" class="adm-textarea" rows="4" placeholder="Ex: Cancelamentos até 7 dias antes da saída têm reembolso integral…">${escHtml(res.cancellation_policy ?? '')}</textarea>
+          </div>
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-refund-full-days">Reembolso integral até (dias antes)</label>
+              <input id="cfg-refund-full-days" type="number" min="0" max="60" class="adm-input" value="${res.refund_full_days ?? 7}" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-refund-partial-days">Reembolso parcial até (dias antes)</label>
+              <input id="cfg-refund-partial-days" type="number" min="0" max="60" class="adm-input" value="${res.refund_partial_days ?? 3}" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-refund-partial-pct">% devolvido no reembolso parcial</label>
+              <input id="cfg-refund-partial-pct" type="number" min="0" max="100" class="adm-input" value="${res.refund_partial_pct ?? 50}" />
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
 
-  document.getElementById('cfg-save-btn')?.addEventListener('click', async () => {
+  // ── Section: Pagamentos ────────────────────────────────────────────────────
+  function sectionPagamentos() {
+    const methods = pay.accepted_methods ?? ['pix','credit_card','bank_transfer','cash'];
+    const chk = m => methods.includes(m) ? 'checked' : '';
+    return `
+      <div class="cfg-section-title">Métodos e dados de pagamento</div>
+      <div class="cfg-section-desc">Configure como os clientes podem pagar e os dados para transferências.</div>
+
+      <div class="adm-config-section" style="margin-top:16px">
+        <div class="adm-config-section__title">Métodos aceitos</div>
+        <div class="adm-config-section__body">
+          <div class="cfg-method-grid">
+            ${cfgMethodCheck('pay-pix',       'pix',           '⚡', 'PIX',          chk('pix'))}
+            ${cfgMethodCheck('pay-card',      'credit_card',   '💳', 'Cartão',       chk('credit_card'))}
+            ${cfgMethodCheck('pay-transfer',  'bank_transfer', '🏦', 'TED/DOC',      chk('bank_transfer'))}
+            ${cfgMethodCheck('pay-cash',      'cash',          '💵', 'Dinheiro',     chk('cash'))}
+            ${cfgMethodCheck('pay-boleto',    'boleto',        '🧾', 'Boleto',       chk('boleto'))}
+            ${cfgMethodCheck('pay-link',      'payment_link',  '🔗', 'Link pag.',    chk('payment_link'))}
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Dados PIX</div>
+        <div class="adm-config-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-pix-key-type">Tipo de chave</label>
+              <select id="cfg-pix-key-type" class="adm-input">
+                ${['cpf','cnpj','email','phone','random'].map(t =>
+                  `<option value="${t}" ${(pay.pix?.key_type ?? 'phone') === t ? 'selected' : ''}>${t.toUpperCase()}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <div class="adm-field">
+              <label for="cfg-pix-key">Chave PIX</label>
+              <input id="cfg-pix-key" class="adm-input" value="${escHtml(pay.pix?.key ?? '')}" placeholder="Chave PIX" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-pix-holder">Favorecido</label>
+              <input id="cfg-pix-holder" class="adm-input" value="${escHtml(pay.pix?.holder ?? '')}" placeholder="Nome do titular" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-pix-bank">Banco</label>
+              <input id="cfg-pix-bank" class="adm-input" value="${escHtml(pay.pix?.bank ?? '')}" placeholder="Banco Inter / Nubank…" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Dados bancários (TED/DOC)</div>
+        <div class="adm-config-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-bank-name">Banco</label>
+              <input id="cfg-bank-name" class="adm-input" value="${escHtml(pay.bank?.name ?? '')}" placeholder="Banco do Brasil" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-bank-agency">Agência</label>
+              <input id="cfg-bank-agency" class="adm-input" value="${escHtml(pay.bank?.agency ?? '')}" placeholder="0001-0" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-bank-account">Conta</label>
+              <input id="cfg-bank-account" class="adm-input" value="${escHtml(pay.bank?.account ?? '')}" placeholder="00000-0" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-bank-holder">Favorecido</label>
+              <input id="cfg-bank-holder" class="adm-input" value="${escHtml(pay.bank?.holder ?? '')}" placeholder="Anauá Ecoturismo Ltda." />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-bank-cnpj">CNPJ do titular</label>
+              <input id="cfg-bank-cnpj" class="adm-input" value="${escHtml(pay.bank?.cnpj ?? '')}" placeholder="00.000.000/0001-00" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Regras financeiras</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-pay-receipt',   'Exigir comprovante',    'Solicitar comprovante de pagamento ao registrar transferência/PIX',  pay.require_receipt ?? false)}
+          ${cfgToggle('cfg-pay-invoice',   'Emitir recibo digital', 'Gerar e-mail de recibo para o cliente após cada pagamento',          pay.issue_receipt_email ?? true)}
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Moeda</div>
+              <div class="adm-config-row__desc">Moeda utilizada em todos os valores do sistema</div>
+            </div>
+            <select id="cfg-currency" class="adm-input" style="width:120px">
+              <option value="BRL" ${(pay.currency ?? 'BRL') === 'BRL' ? 'selected' : ''}>BRL R$</option>
+              <option value="USD" ${pay.currency === 'USD' ? 'selected' : ''}>USD $</option>
+              <option value="EUR" ${pay.currency === 'EUR' ? 'selected' : ''}>EUR €</option>
+            </select>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Section: Notificações ──────────────────────────────────────────────────
+  function sectionNotificacoes() {
+    return `
+      <div class="cfg-section-title">Notificações e alertas</div>
+      <div class="cfg-section-desc">Escolha quais eventos geram notificações e por quais canais.</div>
+
+      <div class="adm-config-section" style="margin-top:16px">
+        <div class="adm-config-section__title">Canais ativos</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-ch-email',    'E-mail',     'Enviar notificações por e-mail (ao responsável da reserva)',     ntf.channel_email    ?? true)}
+          ${cfgToggle('cfg-ch-whatsapp', 'WhatsApp',   'Enviar notificações por WhatsApp (requer integração ativa)',     ntf.channel_whatsapp ?? false)}
+          ${cfgToggle('cfg-ch-admin',    'Backoffice', 'Exibir alertas no painel administrativo',                       ntf.channel_admin    ?? true)}
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Eventos — cliente</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-notif-booking',      'Nova reserva criada',         'Confirmação automática ao cliente ao criar reserva',                 ntf.new_booking        ?? true)}
+          ${cfgToggle('cfg-notif-payment',      'Pagamento recebido',          'Confirmação ao cliente ao registrar pagamento',                      ntf.payment_received   ?? true)}
+          ${cfgToggle('cfg-notif-confirm',      'Reserva confirmada',          'E-mail/WhatsApp quando a reserva muda para confirmado',              ntf.booking_confirmed  ?? true)}
+          ${cfgToggle('cfg-notif-voucher',      'Envio do voucher',            'Voucher enviado após confirmação',                                   ntf.voucher_sent       ?? true)}
+          ${cfgToggle('cfg-notif-cancel-cust',  'Cancelamento ao cliente',     'Notificar cliente quando reserva for cancelada',                     ntf.cancel_client      ?? true)}
+          ${cfgToggle('cfg-notif-reminder',     'Lembrete (48h antes)',        'Lembrete automático 48h antes da saída',                             ntf.departure_48h      ?? false)}
+          ${cfgToggle('cfg-notif-reminder24',   'Lembrete (24h antes)',        'Lembrete automático 24h antes da saída',                             ntf.departure_24h      ?? false)}
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Eventos — administrador</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-notif-adm-booking',  'Nova reserva recebida',      'Alertar admin quando nova reserva for criada',                       ntf.adm_new_booking    ?? true)}
+          ${cfgToggle('cfg-notif-overdue',      'Saldo vencido',              'Alertar quando saldo ultrapassar o vencimento',                      ntf.overdue_balance    ?? true)}
+          ${cfgToggle('cfg-notif-wl-convert',   'Lista de espera convertida', 'Alertar admin quando WL virar reserva',                             ntf.wl_converted       ?? true)}
+          ${cfgToggle('cfg-notif-departure',    'Saída com vagas críticas',   'Alertar admin quando ocupação ≥ 90%',                                ntf.departure_critical ?? false)}
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">E-mail de destino (admin)</div>
+        <div class="adm-config-section__body">
+          <div class="adm-field">
+            <label for="cfg-notif-email">E-mail para receber notificações administrativas</label>
+            <input id="cfg-notif-email" class="adm-input" type="email" value="${escHtml(ntf.admin_email ?? '')}" placeholder="admin@anaua.com.br" />
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Section: Site público ──────────────────────────────────────────────────
+  function sectionSite() {
+    return `
+      <div class="cfg-section-title">Integração com o site público</div>
+      <div class="cfg-section-desc">Controle o que aparece e como funciona em <strong>anaua.com.br</strong>.</div>
+
+      <div class="adm-config-section" style="margin-top:16px">
+        <div class="adm-config-section__title">Disponibilidade</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-site-bookings-open',  'Reservas abertas',            'Permitir novas reservas pelo site público',                          site.bookings_open     ?? true)}
+          ${cfgToggle('cfg-site-show-prices',    'Exibir preços',               'Mostrar preços das experiências no site',                            site.show_prices       ?? true)}
+          ${cfgToggle('cfg-site-show-capacity',  'Exibir vagas restantes',      'Mostrar contagem de vagas disponíveis nas saídas',                   site.show_capacity     ?? false)}
+          ${cfgToggle('cfg-site-show-reviews',   'Exibir avaliações',           'Mostrar reviews/depoimentos dos clientes',                           site.show_reviews      ?? true)}
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">SEO & Rastreamento</div>
+        <div class="adm-config-section__body">
+          <div class="adm-field">
+            <label for="cfg-ga-id">Google Analytics (ID)</label>
+            <input id="cfg-ga-id" class="adm-input" value="${escHtml(site.ga_id ?? '')}" placeholder="G-XXXXXXXXXX" />
+          </div>
+          <div class="adm-field">
+            <label for="cfg-fb-pixel">Facebook Pixel (ID)</label>
+            <input id="cfg-fb-pixel" class="adm-input" value="${escHtml(site.fb_pixel ?? '')}" placeholder="0000000000000000" />
+          </div>
+          <div class="adm-field">
+            <label for="cfg-site-url">URL do site</label>
+            <input id="cfg-site-url" class="adm-input" type="url" value="${escHtml(site.url ?? '')}" placeholder="https://anaua.com.br" />
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Mensagem de manutenção</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-site-maintenance', 'Modo manutenção', 'Exibir página de manutenção no site público (reservas bloqueadas)', site.maintenance_mode ?? false)}
+          <div class="adm-field" style="margin-top:12px">
+            <label for="cfg-maintenance-msg">Mensagem exibida durante manutenção</label>
+            <textarea id="cfg-maintenance-msg" class="adm-textarea" rows="3" placeholder="Estamos realizando melhorias. Voltaremos em breve!">${escHtml(site.maintenance_message ?? '')}</textarea>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Section: Avançado ──────────────────────────────────────────────────────
+  function sectionAvancado() {
+    const lastSaved = data?.updated_at
+      ? `Salvo em ${fmtDateShort(data.updated_at)}`
+      : 'Ainda não salvo no banco de dados';
+    return `
+      <div class="cfg-section-title">Configurações avançadas</div>
+      <div class="cfg-section-desc">Opções técnicas para desenvolvedores e administradores do sistema.</div>
+
+      <div class="adm-config-section" style="margin-top:16px">
+        <div class="adm-config-section__title">Banco de dados & cache</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-adv-realtime',    'Sincronização em tempo real',  'Manter painéis atualizados automaticamente (Supabase Realtime)',     adv.realtime_sync ?? true)}
+          <div class="adm-config-row">
+            <div class="adm-config-row__info">
+              <div class="adm-config-row__label">Registros por página</div>
+              <div class="adm-config-row__desc">Quantidade de linhas carregadas por padrão nas listagens</div>
+            </div>
+            <select id="cfg-page-size" class="adm-input" style="width:100px">
+              ${[25,50,100,250].map(n => `<option value="${n}" ${(adv.page_size ?? 50) === n ? 'selected' : ''}>${n}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Logs & debug</div>
+        <div class="adm-config-section__body">
+          ${cfgToggle('cfg-adv-debug',   'Modo debug (console)',   'Exibir logs detalhados no console do navegador',                    adv.debug_mode     ?? false)}
+          ${cfgToggle('cfg-adv-audit',   'Log de auditoria',       'Registrar todas as ações de admin em tabela de auditoria',          adv.audit_log      ?? false)}
+        </div>
+      </div>
+
+      <div class="adm-config-section">
+        <div class="adm-config-section__title">Termos & documentos</div>
+        <div class="adm-config-section__body">
+          <div class="adm-grid-2">
+            <div class="adm-field">
+              <label for="cfg-terms-version">Versão atual dos termos</label>
+              <input id="cfg-terms-version" class="adm-input" value="${escHtml(adv.terms_version ?? '1.0')}" placeholder="1.0" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-terms-url">URL dos Termos de Uso</label>
+              <input id="cfg-terms-url" class="adm-input" type="url" value="${escHtml(adv.terms_url ?? '')}" placeholder="https://anaua.com.br/termos" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-privacy-url">URL da Política de Privacidade</label>
+              <input id="cfg-privacy-url" class="adm-input" type="url" value="${escHtml(adv.privacy_url ?? '')}" placeholder="https://anaua.com.br/privacidade" />
+            </div>
+            <div class="adm-field">
+              <label for="cfg-lgpd-email">E-mail LGPD / DPO</label>
+              <input id="cfg-lgpd-email" class="adm-input" type="email" value="${escHtml(adv.lgpd_email ?? '')}" placeholder="lgpd@anaua.com.br" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="adm-config-section adm-config-section--muted">
+        <div class="adm-config-section__title">Informações do sistema</div>
+        <div class="adm-config-section__body">
+          <div class="cfg-meta-row">
+            <span class="text-small text-muted">Estado do banco</span>
+            <span class="badge badge--confirmed">✔ Conectado</span>
+          </div>
+          <div class="cfg-meta-row">
+            <span class="text-small text-muted">Última gravação</span>
+            <span class="text-small" id="cfg-last-saved">${lastSaved}</span>
+          </div>
+          <div class="cfg-meta-row">
+            <span class="text-small text-muted">Chave de configuração</span>
+            <code class="cfg-meta-code">company_settings</code>
+          </div>
+          <div class="cfg-meta-row" style="margin-top:12px;border-top:1px solid var(--adm-border);padding-top:12px;flex-wrap:wrap;gap:8px">
+            <span class="text-small text-muted">Backup de configurações</span>
+            <div style="display:flex;gap:8px">
+              <button id="cfg-export-btn" class="adm-btn adm-btn--secondary adm-btn--sm">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                Exportar JSON
+              </button>
+              <button id="cfg-import-btn" class="adm-btn adm-btn--secondary adm-btn--sm">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                Importar JSON
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    // Wire export/import after next microtask (DOM must be ready)
+    setTimeout(() => {
+      document.getElementById('cfg-export-btn')?.addEventListener('click', exportConfig);
+      document.getElementById('cfg-import-btn')?.addEventListener('click', importConfig);
+    }, 0);
+  }
+
+  // ── Render shell ───────────────────────────────────────────────────────────
+  function renderShell() {
+    root.innerHTML = `
+      <div class="cfg-layout">
+
+        <!-- Sidebar nav -->
+        <nav class="cfg-nav" id="cfg-nav">
+          ${TABS.map(t => `
+            <button class="cfg-nav__item ${t.id === _activeTab ? 'is-active' : ''}" data-tab="${t.id}">
+              <span class="cfg-nav__icon">${t.icon}</span>
+              <span class="cfg-nav__label">${t.label}</span>
+            </button>`).join('')}
+        </nav>
+
+        <!-- Content -->
+        <div class="cfg-content">
+          <div id="cfg-section-body"></div>
+
+          <div class="cfg-footer">
+            <span class="text-small text-muted" id="cfg-footer-status">
+              ${data?.updated_at ? 'Salvo em ' + fmtDateShort(data.updated_at) : 'Configurações ainda não salvas'}
+            </span>
+            <button id="cfg-save-btn" class="adm-btn adm-btn--primary adm-btn--lg"></button>
+          </div>
+        </div>
+      </div>`;
+
+    // wire nav clicks
+    root.querySelectorAll('.cfg-nav__item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (_cfgDirty) {
+          const ok = confirm('Você tem alterações não salvas nesta seção. Ao trocar de aba, elas serão perdidas.\n\nDeseja continuar sem salvar?');
+          if (!ok) return;
+          _cfgDirty = false;
+          const saveBtn = document.getElementById('cfg-save-btn');
+          if (saveBtn) { saveBtn.classList.remove('cfg-save-btn--dirty'); saveBtn.innerHTML = SAVE_BTN_HTML; }
+        }
+        _activeTab = btn.dataset.tab;
+        root.querySelectorAll('.cfg-nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.tab === _activeTab));
+        renderSection();
+      });
+    });
+
+    // wire save
+    const saveBtn = document.getElementById('cfg-save-btn');
+    saveBtn.innerHTML = SAVE_BTN_HTML;
+    saveBtn.addEventListener('click', saveSettings);
+
+    renderSection();
+  }
+
+  function renderSection() {
+    const body = document.getElementById('cfg-section-body');
+    if (!body) return;
+    const sections = {
+      empresa:      sectionEmpresa,
+      reservas:     sectionReservas,
+      pagamentos:   sectionPagamentos,
+      notificacoes: sectionNotificacoes,
+      site:         sectionSite,
+      avancado:     sectionAvancado,
+    };
+    body.innerHTML = (sections[_activeTab] ?? sectionEmpresa)();
+    // mark dirty on any change
+    body.querySelectorAll('input,select,textarea').forEach(el =>
+      el.addEventListener('change', markDirty)
+    );
+    body.querySelectorAll('input[type="text"],input[type="email"],input[type="url"],textarea').forEach(el =>
+      el.addEventListener('input', markDirty)
+    );
+  }
+
+  // ── Save all sections ──────────────────────────────────────────────────────
+
+  // ── Validation ────────────────────────────────────────────────────────────
+  function validateCurrentSection() {
+    const errors = [];
+    const nameEl  = document.getElementById('cfg-company-name');
+    if (nameEl && !nameEl.value.trim()) errors.push('Nome da empresa é obrigatório.');
+    const emailEl = document.getElementById('cfg-contact-email');
+    if (emailEl && emailEl.value.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailEl.value.trim()))
+      errors.push('E-mail de contato inválido.');
+    const pixKey = document.getElementById('cfg-pix-key');
+    if (document.getElementById('pay-pix')?.checked && pixKey && !pixKey.value.trim())
+      errors.push('Chave PIX é obrigatória quando PIX está habilitado.');
+    return errors;
+  }
+
+  // ── Export config as JSON ─────────────────────────────────────────────────
+  function exportConfig() {
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `anaua-config-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Configurações exportadas!', 'success');
+  }
+
+  // ── Import config from JSON ───────────────────────────────────────────────
+  function importConfig() {
+    const input = document.createElement('input');
+    input.type  = 'file'; input.accept = '.json,application/json';
+    input.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text   = await file.text();
+        const parsed = JSON.parse(text);
+        if (typeof parsed !== 'object' || Array.isArray(parsed))
+          throw new Error('Arquivo inválido: esperado objeto JSON.');
+        const ok = confirm(`Importar configurações de "${file.name}"?\nIsso sobrescreverá os valores exibidos (você ainda precisa salvar).`);
+        if (!ok) return;
+        Object.assign(cfg,  parsed);
+        Object.assign(co,   parsed.company       ?? {});
+        Object.assign(res,  parsed.reservations  ?? {});
+        Object.assign(pay,  parsed.payments       ?? {});
+        Object.assign(ntf,  parsed.notifications  ?? {});
+        Object.assign(site, parsed.site           ?? {});
+        Object.assign(adv,  parsed.advanced       ?? {});
+        renderSection(); // re-render tab with imported values
+        markDirty();
+        toast('Arquivo importado. Revise os campos e clique em Salvar.', 'info');
+      } catch (err) {
+        toast('Erro ao importar: ' + err.message, 'error');
+      }
+    });
+    input.click();
+  }
+
+  async function saveSettings() {
+    // Validate before disabling the button
+    const errs = validateCurrentSection();
+    if (errs.length) { toast(errs[0], 'error'); return; }
+
     const btn = document.getElementById('cfg-save-btn');
-    btn.disabled = true;
-    btn.textContent = 'Salvando…';
-    console.log('[admin-settings] Salvando configurações');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span style="opacity:.6">Salvando…</span>'; }
+
+    // Collect all field values from the currently rendered section first
+    // (other sections keep their last-saved values from cfg object)
+    const g = id => document.getElementById(id);
+    const gv = (id, fallback = '') => g(id)?.value?.trim() ?? fallback;
+    const gc = (id, fallback = false) => g(id)?.checked ?? fallback;
 
     const newCfg = {
-      company_name:   document.getElementById('cfg-company-name')?.value.trim()  ?? '',
-      contact_email:  document.getElementById('cfg-contact-email')?.value.trim() ?? '',
-      whatsapp:       document.getElementById('cfg-whatsapp')?.value.trim()       ?? '',
-      cnpj:           document.getElementById('cfg-cnpj')?.value.trim()           ?? '',
-      reservations: {
-        auto_confirm_after_payment: document.getElementById('cfg-auto-confirm')?.checked    ?? true,
-        send_voucher_email:         document.getElementById('cfg-voucher-email')?.checked   ?? true,
-        allow_signal_balance:       document.getElementById('cfg-signal-balance')?.checked  ?? true,
-        image_consent_required:     document.getElementById('cfg-image-consent')?.checked   ?? false,
+      // Always merge: preserve fields from other sections not currently visible
+      ...cfg,
+      company: {
+        ...(cfg.company ?? {}),
+        name:         gv('cfg-company-name',  co.name ?? ''),
+        tagline:      gv('cfg-tagline',        co.tagline ?? ''),
+        contact_email:gv('cfg-contact-email',  co.contact_email ?? ''),
+        whatsapp:     gv('cfg-whatsapp',        co.whatsapp ?? ''),
+        cnpj:         gv('cfg-cnpj',            co.cnpj ?? ''),
+        cadastur:     gv('cfg-reg-number',      co.cadastur ?? ''),
+        instagram:    gv('cfg-instagram',       co.instagram ?? ''),
+        facebook:     gv('cfg-facebook',        co.facebook ?? ''),
+        youtube:      gv('cfg-youtube',         co.youtube ?? ''),
+        tiktok:       gv('cfg-tiktok',          co.tiktok ?? ''),
+        address: {
+          street:  gv('cfg-addr-street',  co.address?.street ?? ''),
+          city:    gv('cfg-addr-city',    co.address?.city ?? ''),
+          state:   gv('cfg-addr-state',   co.address?.state ?? ''),
+          zip:     gv('cfg-addr-zip',     co.address?.zip ?? ''),
+          country: gv('cfg-addr-country', co.address?.country ?? 'Brasil'),
+        },
       },
+      // Legacy compat keys (used by vouchers/emails already)
+      company_name:  gv('cfg-company-name',  co.name ?? cfg.company_name ?? ''),
+      contact_email: gv('cfg-contact-email', co.contact_email ?? cfg.contact_email ?? ''),
+      whatsapp:      gv('cfg-whatsapp',       co.whatsapp ?? cfg.whatsapp ?? ''),
+      cnpj:          gv('cfg-cnpj',           co.cnpj ?? cfg.cnpj ?? ''),
+
+      reservations: {
+        ...(cfg.reservations ?? {}),
+        auto_confirm_after_payment: gc('cfg-auto-confirm',      res.auto_confirm_after_payment ?? true),
+        send_voucher_email:         gc('cfg-voucher-email',      res.send_voucher_email ?? true),
+        allow_signal_balance:       gc('cfg-signal-balance',     res.allow_signal_balance ?? true),
+        image_consent_required:     gc('cfg-image-consent',      res.image_consent_required ?? false),
+        allow_online_cancel:        gc('cfg-cancel-online',      res.allow_online_cancel ?? false),
+        auto_waitlist:              gc('cfg-waitlist-auto',       res.auto_waitlist ?? true),
+        signal_min_pct:             Number(gv('cfg-signal-pct',         String(res.signal_min_pct ?? 30))),
+        balance_deadline_days:      Number(gv('cfg-balance-deadline',   String(res.balance_deadline_days ?? 7))),
+        max_pax_per_booking:        Number(gv('cfg-max-pax',            String(res.max_pax_per_booking ?? 10))),
+        min_advance_days:           Number(gv('cfg-min-advance',        String(res.min_advance_days ?? 2))),
+        payment_deadline_days:      Number(gv('cfg-pay-deadline',       String(res.payment_deadline_days ?? 3))),
+        cancellation_policy:        gv('cfg-cancel-policy',      res.cancellation_policy ?? ''),
+        refund_full_days:           Number(gv('cfg-refund-full-days',   String(res.refund_full_days ?? 7))),
+        refund_partial_days:        Number(gv('cfg-refund-partial-days',String(res.refund_partial_days ?? 3))),
+        refund_partial_pct:         Number(gv('cfg-refund-partial-pct', String(res.refund_partial_pct ?? 50))),
+      },
+
+      payments: {
+        ...(cfg.payments ?? {}),
+        // BUG-FIX: only read method checkboxes when the pagamentos tab is rendered.
+        // If on another tab, preserve the previously saved value to avoid wiping config.
+        accepted_methods: document.getElementById('pay-pix')
+          ? ['pix','credit_card','bank_transfer','cash','boleto','payment_link']
+              .filter(m => gc(`pay-${m === 'credit_card' ? 'card' : m === 'bank_transfer' ? 'transfer' : m === 'payment_link' ? 'link' : m}`, false))
+          : (pay.accepted_methods ?? ['pix','credit_card','bank_transfer','cash']),
+        currency: gv('cfg-currency', pay.currency ?? 'BRL'),
+        require_receipt:      gc('cfg-pay-receipt',  pay.require_receipt ?? false),
+        issue_receipt_email:  gc('cfg-pay-invoice',  pay.issue_receipt_email ?? true),
+        pix: {
+          key_type: gv('cfg-pix-key-type', pay.pix?.key_type ?? 'phone'),
+          key:      gv('cfg-pix-key',      pay.pix?.key ?? ''),
+          holder:   gv('cfg-pix-holder',   pay.pix?.holder ?? ''),
+          bank:     gv('cfg-pix-bank',     pay.pix?.bank ?? ''),
+        },
+        bank: {
+          name:    gv('cfg-bank-name',    pay.bank?.name ?? ''),
+          agency:  gv('cfg-bank-agency',  pay.bank?.agency ?? ''),
+          account: gv('cfg-bank-account', pay.bank?.account ?? ''),
+          holder:  gv('cfg-bank-holder',  pay.bank?.holder ?? ''),
+          cnpj:    gv('cfg-bank-cnpj',    pay.bank?.cnpj ?? ''),
+        },
+      },
+
       notifications: {
-        new_booking:      document.getElementById('cfg-notif-booking')?.checked    ?? true,
-        payment_received: document.getElementById('cfg-notif-payment')?.checked    ?? true,
-        overdue_balance:  document.getElementById('cfg-notif-overdue')?.checked    ?? true,
-        departure_48h:    document.getElementById('cfg-notif-departure')?.checked  ?? false,
+        ...(cfg.notifications ?? {}),
+        channel_email:    gc('cfg-ch-email',         ntf.channel_email ?? true),
+        channel_whatsapp: gc('cfg-ch-whatsapp',       ntf.channel_whatsapp ?? false),
+        channel_admin:    gc('cfg-ch-admin',           ntf.channel_admin ?? true),
+        new_booking:      gc('cfg-notif-booking',      ntf.new_booking ?? true),
+        payment_received: gc('cfg-notif-payment',      ntf.payment_received ?? true),
+        booking_confirmed:gc('cfg-notif-confirm',      ntf.booking_confirmed ?? true),
+        voucher_sent:     gc('cfg-notif-voucher',      ntf.voucher_sent ?? true),
+        cancel_client:    gc('cfg-notif-cancel-cust',  ntf.cancel_client ?? true),
+        departure_48h:    gc('cfg-notif-reminder',     ntf.departure_48h ?? false),
+        departure_24h:    gc('cfg-notif-reminder24',   ntf.departure_24h ?? false),
+        adm_new_booking:  gc('cfg-notif-adm-booking',  ntf.adm_new_booking ?? true),
+        overdue_balance:  gc('cfg-notif-overdue',       ntf.overdue_balance ?? true),
+        wl_converted:     gc('cfg-notif-wl-convert',    ntf.wl_converted ?? true),
+        departure_critical:gc('cfg-notif-departure',    ntf.departure_critical ?? false),
+        admin_email:      gv('cfg-notif-email',         ntf.admin_email ?? ''),
+      },
+
+      site: {
+        ...(cfg.site ?? {}),
+        bookings_open:       gc('cfg-site-bookings-open', site.bookings_open ?? true),
+        show_prices:         gc('cfg-site-show-prices',   site.show_prices ?? true),
+        show_capacity:       gc('cfg-site-show-capacity', site.show_capacity ?? false),
+        show_reviews:        gc('cfg-site-show-reviews',  site.show_reviews ?? true),
+        maintenance_mode:    gc('cfg-site-maintenance',   site.maintenance_mode ?? false),
+        maintenance_message: gv('cfg-maintenance-msg',    site.maintenance_message ?? ''),
+        ga_id:    gv('cfg-ga-id',    site.ga_id ?? ''),
+        fb_pixel: gv('cfg-fb-pixel', site.fb_pixel ?? ''),
+        url:      gv('cfg-site-url', site.url ?? ''),
+      },
+
+      advanced: {
+        ...(cfg.advanced ?? {}),
+        realtime_sync:  gc('cfg-adv-realtime', adv.realtime_sync ?? true),
+        debug_mode:     gc('cfg-adv-debug',    adv.debug_mode ?? false),
+        audit_log:      gc('cfg-adv-audit',    adv.audit_log ?? false),
+        page_size:      Number(gv('cfg-page-size', String(adv.page_size ?? 50))),
+        terms_version:  gv('cfg-terms-version', adv.terms_version ?? '1.0'),
+        terms_url:      gv('cfg-terms-url',     adv.terms_url ?? ''),
+        privacy_url:    gv('cfg-privacy-url',   adv.privacy_url ?? ''),
+        lgpd_email:     gv('cfg-lgpd-email',    adv.lgpd_email ?? ''),
       },
     };
 
     try {
       const { data: { user } } = await db.auth.getUser();
-
       const { error: saveErr } = await db
         .from('app_settings')
-        .upsert({
-          key:        'company_settings',
-          value:      newCfg,
-          updated_by: user?.id ?? null,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
+        .upsert({ key: 'company_settings', value: newCfg, updated_by: user?.id ?? null, updated_at: new Date().toISOString() }, { onConflict: 'key' });
 
       if (saveErr) {
-        console.error('[admin-settings] Erro ao salvar configurações:', saveErr.message);
+        console.error('[admin-settings] Erro ao salvar:', saveErr.message);
         toast('Não foi possível salvar as configurações.', 'error');
-        btn.disabled = false;
-        btn.textContent = 'Salvar configurações';
-        return;
-      }
-
-      console.log('[admin-settings] Configurações salvas com sucesso');
-      toast('Configurações salvas com sucesso.', 'success');
-
-      // Confirm persistence — reload updated_at
-      const { data: reloaded } = await db
-        .from('app_settings')
-        .select('updated_at')
-        .eq('key', 'company_settings')
-        .maybeSingle();
-
-      const savedEl = document.getElementById('cfg-last-saved');
-      if (savedEl && reloaded?.updated_at) {
-        savedEl.textContent = 'Última atualização: ' + fmtDateShort(reloaded.updated_at);
+      } else {
+        console.log('[admin-settings] Salvo com sucesso');
+        toast('Configurações salvas!', 'success');
+        // Update in-memory cfg so tab-switches reflect saved values
+        Object.assign(cfg, newCfg);
+        Object.assign(co,   newCfg.company       ?? {});
+        Object.assign(res,  newCfg.reservations   ?? {});
+        Object.assign(pay,  newCfg.payments       ?? {});
+        Object.assign(ntf,  newCfg.notifications  ?? {});
+        Object.assign(site, newCfg.site            ?? {});
+        Object.assign(adv,  newCfg.advanced        ?? {});
+        _cfgDirty = false;
+        const now = `Salvo em ${fmtDateShort(new Date().toISOString())}`;
+        const footer = document.getElementById('cfg-footer-status');
+        const meta   = document.getElementById('cfg-last-saved');
+        if (footer) footer.textContent = now;
+        if (meta)   meta.textContent   = now;
+        if (btn) btn.classList.remove('cfg-save-btn--dirty');
       }
     } catch (err) {
       console.error('[admin-settings] Erro inesperado:', err);
       toast('Não foi possível salvar as configurações.', 'error');
     } finally {
-      btn.disabled = false;
-      btn.textContent = 'Salvar configurações';
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('cfg-save-btn--dirty');
+        btn.innerHTML = SAVE_BTN_HTML;
+      }
     }
-  });
+  }
+
+  renderShell();
 }
 
-function configRow(id, label, desc, checked) {
+// ─── Config helper: toggle row ────────────────────────────────────────────────
+function cfgToggle(id, label, desc, checked) {
   return `<div class="adm-config-row">
     <div class="adm-config-row__info">
       <div class="adm-config-row__label">${label}</div>
@@ -5569,6 +6245,20 @@ function configRow(id, label, desc, checked) {
       <span class="adm-toggle__track"></span>
     </label>
   </div>`;
+}
+
+// ─── Config helper: payment method checkbox card ──────────────────────────────
+function cfgMethodCheck(id, value, icon, label, checked) {
+  return `<label class="cfg-method-card ${checked ? 'is-checked' : ''}" for="${id}">
+    <input type="checkbox" id="${id}" value="${value}" ${checked} onchange="this.closest('.cfg-method-card').classList.toggle('is-checked',this.checked)" />
+    <span class="cfg-method-card__icon">${icon}</span>
+    <span class="cfg-method-card__label">${label}</span>
+  </label>`;
+}
+
+// ─── Legacy alias (kept for any remaining callers) ────────────────────────────
+function configRow(id, label, desc, checked) {
+  return cfgToggle(id, label, desc, checked);
 }
 
 function escHtml(str) {
