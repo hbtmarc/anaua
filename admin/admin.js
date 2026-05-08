@@ -1131,7 +1131,10 @@ function openNovaExperienciaModal() {
   });
   document.getElementById('ne-maxpax')?.addEventListener('change', e => {
     const depCap = document.getElementById('ne-dep-capacity');
-    if (depCap && !depCap.value) depCap.value = e.target.value;
+    if (!depCap) return;
+    depCap.max = e.target.value;
+    if (!depCap.value) depCap.value = e.target.value;
+    else if (parseInt(depCap.value) > parseInt(e.target.value)) depCap.value = e.target.value;
   });
 
   // ── Section B: pontos de embarque ────────────────────────────────────────
@@ -1171,7 +1174,9 @@ function openNovaExperienciaModal() {
       const depPrice = document.getElementById('ne-dep-price');
       const depCap   = document.getElementById('ne-dep-capacity');
       if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ne-price')?.value ?? '';
-      if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ne-maxpax')?.value ?? '';
+      const maxpaxVal = document.getElementById('ne-maxpax')?.value ?? '';
+      if (depCap) depCap.max = maxpaxVal;
+      if (depCap && !depCap.value) depCap.value = maxpaxVal;
       const listEl = document.getElementById('ne-dep-bp-catalog-list');
       if (listEl && !listEl.dataset.loaded) {
         listEl.innerHTML = '<p style="font-size:11px;color:var(--adm-text-muted)">Carregando catálogo…</p>';
@@ -1398,7 +1403,7 @@ function openNovaExperienciaModal() {
         start_at:      new Date(startVal).toISOString(),
         end_at:        document.getElementById('ne-dep-end')?.value ? new Date(document.getElementById('ne-dep-end').value).toISOString() : null,
         meeting_point: firstBpName,
-        capacity:      parseInt(document.getElementById('ne-dep-capacity')?.value, 10) || experience.max_participants || null,
+        capacity:      Math.min(parseInt(document.getElementById('ne-dep-capacity')?.value, 10) || experience.max_participants || Infinity, experience.max_participants || Infinity) || null,
         price:         parseFloat(document.getElementById('ne-dep-price')?.value) || experience.base_price || null,
         status:        document.getElementById('ne-dep-status')?.value || 'scheduled',
         title:         document.getElementById('ne-dep-title')?.value.trim() || null,
@@ -1915,6 +1920,15 @@ async function openEditExperienciaModal(id) {
   }
   document.getElementById('ee-dep-add-custom-bp-btn')?.addEventListener('click', addEeCustomBpRow);
 
+  // ── maxpax → limita ee-dep-capacity ───────────────────────────────────────
+  document.getElementById('ee-maxpax')?.addEventListener('change', e => {
+    const depCap = document.getElementById('ee-dep-capacity');
+    if (!depCap) return;
+    depCap.max = e.target.value;
+    if (!depCap.value) depCap.value = e.target.value;
+    else if (parseInt(depCap.value) > parseInt(e.target.value)) depCap.value = e.target.value;
+  });
+
   // ── Section B toggle ──────────────────────────────────────────────────────
   document.getElementById('ee-dep-check')?.addEventListener('change', async e => {
     const sec = document.getElementById('ee-dep-section');
@@ -1923,7 +1937,9 @@ async function openEditExperienciaModal(id) {
       const depPrice = document.getElementById('ee-dep-price');
       const depCap   = document.getElementById('ee-dep-capacity');
       if (depPrice && !depPrice.value) depPrice.value = document.getElementById('ee-price')?.value ?? '';
-      if (depCap   && !depCap.value)   depCap.value   = document.getElementById('ee-maxpax')?.value ?? '';
+      const eeMaxpaxVal = document.getElementById('ee-maxpax')?.value ?? '';
+      if (depCap) depCap.max = eeMaxpaxVal;
+      if (depCap && !depCap.value) depCap.value = eeMaxpaxVal;
       const listEl = document.getElementById('ee-dep-bp-catalog-list');
       if (listEl && !listEl.dataset.loaded) {
         listEl.innerHTML = '<p style="font-size:11px;color:var(--adm-text-muted)">Carregando catálogo…</p>';
@@ -2151,7 +2167,7 @@ async function openEditExperienciaModal(id) {
         start_at:      new Date(startVal).toISOString(),
         end_at:        document.getElementById('ee-dep-end')?.value ? new Date(document.getElementById('ee-dep-end').value).toISOString() : null,
         meeting_point: firstEeBpName,
-        capacity:      parseInt(document.getElementById('ee-dep-capacity')?.value, 10) || expPayload.max_participants || null,
+        capacity:      Math.min(parseInt(document.getElementById('ee-dep-capacity')?.value, 10) || expPayload.max_participants || Infinity, expPayload.max_participants || Infinity) || null,
         price:         parseFloat(document.getElementById('ee-dep-price')?.value) || expPayload.base_price || null,
         status:        document.getElementById('ee-dep-status')?.value || 'scheduled',
         title:         document.getElementById('ee-dep-title')?.value.trim() || null,
@@ -3427,32 +3443,64 @@ async function renderParticipantes(root) {
 
   if (!db) return;
 
-  // Try rich join; on failure retry without nested joins
+  // ── Three-tier query strategy ────────────────────────────────────────────────
+  // Tier 1: rich join with all extended columns (requires migration to have run)
+  // Tier 2: flat query with extended columns + manual join on reservations
+  // Tier 3: absolute minimum (id + reservation_id) — still shows grouping structure
   let participants = [];
-  let expMap = {};  // experienceId → title
-  let depMap = {};  // departureId → { start_at, experience_id }
 
-  const { data, error } = await db
-    .from('participants')
-    .select('id, full_name, document_number, profile_type, birthdate, reservation_id, reservations(id, reservation_status, customer_name, departure_id, experience_id, experiences(id, title), departures(id, start_at))')
-    .order('full_name');
+  async function tryLoadParticipants() {
+    // Tier 1
+    const { data: t1, error: e1 } = await db
+      .from('participants')
+      .select('id, full_name, document_number, profile_type, birthdate, reservation_id, reservations(id, reservation_status, customer_name, departure_id, experience_id, experiences(id, title), departures(id, start_at))')
+      .order('full_name');
+    if (!e1) return t1 ?? [];
 
-  if (error) {
-    console.warn('[admin-parts] join query falhou, tentando query simples:', error.message);
-    // Fallback: fetch flat and join manually
-    const [{ data: pFlat, error: pFlatErr }, { data: resFlat }] = await Promise.all([
+    console.warn('[admin-parts] Tier-1 falhou:', e1.message);
+
+    // Tier 2: flat with extended columns
+    const [{ data: pFlat, error: e2 }, { data: resFlat }] = await Promise.all([
       db.from('participants').select('id, full_name, document_number, profile_type, birthdate, reservation_id').order('full_name'),
       db.from('reservations').select('id, reservation_status, customer_name, departure_id, experience_id').order('created_at', { ascending: false }),
     ]);
-    if (pFlatErr) {
-      $('part-body').innerHTML = `<div style="padding:40px;text-align:center;color:var(--adm-danger)">Erro ao carregar: ${escHtml(pFlatErr.message)}<br><small>Verifique se a migration fix_schema_and_rls.sql foi executada no Supabase.</small></div>`;
-      return;
+    if (!e2) {
+      console.warn('[admin-parts] Tier-2 ok (sem joins aninhados)');
+      const resById = Object.fromEntries((resFlat ?? []).map(r => [r.id, r]));
+      return (pFlat ?? []).map(p => ({ ...p, reservations: resById[p.reservation_id] ?? null }));
     }
-    const resById = Object.fromEntries((resFlat ?? []).map(r => [r.id, r]));
-    participants = (pFlat ?? []).map(p => ({ ...p, reservations: resById[p.reservation_id] ?? null }));
-  } else {
-    participants = data ?? [];
+
+    console.warn('[admin-parts] Tier-2 falhou:', e2.message);
+
+    // Tier 3: absolute minimum — migration not yet run, no extended columns exist
+    const [{ data: pMin, error: e3 }, { data: resMin }] = await Promise.all([
+      db.from('participants').select('id, reservation_id').order('id'),
+      db.from('reservations').select('id, reservation_status, customer_name, departure_id, experience_id').order('created_at', { ascending: false }),
+    ]);
+    if (e3) {
+      // Total failure — table may not exist at all
+      $('part-body').innerHTML = `<div style="padding:40px;text-align:center;color:var(--adm-danger)">
+        <strong>Tabela de participantes inacessível.</strong><br>
+        Execute a migration <code>fix_schema_and_rls.sql</code> no Supabase SQL Editor e recarregue.
+        <br><small style="color:var(--adm-muted)">${escHtml(e3.message)}</small></div>`;
+      return null; // signal total failure
+    }
+    console.warn('[admin-parts] Tier-3 ok (colunas estendidas ausentes — execute a migration)');
+    // Show a banner so admin knows migration is pending
+    $('part-body').insertAdjacentHTML('afterbegin',
+      `<div style="padding:10px 14px;margin-bottom:12px;background:#fff3cd;border:1px solid #ffd000;border-radius:6px;font-size:12px">
+        ⚠️ <strong>Migration pendente:</strong> colunas estendidas (nome, CPF, perfil, nascimento) ainda não existem.
+        Execute <code>fix_schema_and_rls.sql</code> no Supabase para ver todos os dados.
+      </div>`);
+    const resById = Object.fromEntries((resMin ?? []).map(r => [r.id, r]));
+    return (pMin ?? []).map(p => ({ id: p.id, reservation_id: p.reservation_id,
+      full_name: null, document_number: null, profile_type: null, birthdate: null,
+      reservations: resById[p.reservation_id] ?? null }));
   }
+
+  const loaded = await tryLoadParticipants();
+  if (loaded === null) return; // total failure already rendered
+  participants = loaded;
 
   // Build experience → departure → participants grouping
   function buildGroups(list) {
@@ -4186,7 +4234,9 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
         <div class="adm-field">
           <label>Capacidade (vagas) *</label>
           <input class="adm-input" type="number" id="ef-capacity"
-            value="${exit?.capacity ?? ''}" min="1" placeholder="10" />
+            value="${exit?.capacity ?? ''}" min="1"
+            max="${expObj?.max_participants ?? ''}"
+            placeholder="${expObj?.max_participants ?? 'Máximo da experiência'}" />
         </div>
         <div class="adm-field">
           <label>Preço (R$)</label>
@@ -4330,7 +4380,10 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     const priceEl = document.getElementById('ef-price');
     const endEl   = document.getElementById('ef-end');
     const startEl = document.getElementById('ef-start');
+    if (capEl) capEl.max = fullExp.max_participants ?? '';
+    if (capEl) capEl.placeholder = fullExp.max_participants ?? 'Máximo da experiência';
     if (capEl   && !capEl.value)   capEl.value   = fullExp.max_participants ?? '';
+    else if (capEl && fullExp.max_participants && parseInt(capEl.value) > fullExp.max_participants) capEl.value = fullExp.max_participants;
     if (priceEl && !priceEl.value) priceEl.value = fullExp.base_price ?? '';
     // Auto-set end_at from start_at + duration_hours if both available
     if (fullExp.duration_hours && startEl?.value && endEl) {
@@ -4377,7 +4430,9 @@ async function openExitFormDrawer(exit, expObj, experiences, onAfterSave) {
     const depTitle = document.getElementById('ef-title')?.value.trim() || null;
     const startAt  = document.getElementById('ef-start')?.value;
     const endAt    = document.getElementById('ef-end')?.value || null;
-    const capacity = parseInt(document.getElementById('ef-capacity')?.value, 10);
+    const _capEl   = document.getElementById('ef-capacity');
+    const _capMax  = parseInt(_capEl?.max, 10) || Infinity;
+    const capacity = Math.min(parseInt(_capEl?.value, 10), _capMax) || null;
     const price    = parseFloat(document.getElementById('ef-price')?.value) || null;
     const status   = document.getElementById('ef-status')?.value ?? 'scheduled';
 

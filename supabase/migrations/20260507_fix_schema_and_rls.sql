@@ -422,8 +422,59 @@ BEGIN
 END;
 $$;
 
--- Grant execute to authenticated users (RLS on related tables still applies for reads)
+-- Grant execute to authenticated users and anon (anonymous checkout)
 GRANT EXECUTE ON FUNCTION reserve_departure TO authenticated;
+GRANT EXECUTE ON FUNCTION reserve_departure TO anon;
+
+-- ─── 14. Anonymous checkout: table grants + insert policies ──────────────────
+-- Visitors who check out WITHOUT creating an account use the 'anon' role.
+-- They need INSERT on reservations/participants/payments and SELECT on
+-- departures/experiences/boarding_points (for the booking flow).
+
+-- Table-level grants for anon (RLS policies still control row access)
+GRANT SELECT, INSERT           ON reservations                TO anon;
+GRANT SELECT, INSERT           ON participants                TO anon;
+GRANT SELECT, INSERT           ON payments                    TO anon;
+GRANT SELECT                   ON departures                  TO anon;
+GRANT SELECT                   ON experiences                 TO anon;
+GRANT SELECT                   ON departure_boarding_points   TO anon;
+GRANT SELECT                   ON boarding_points             TO anon;
+GRANT SELECT                   ON app_settings                TO anon;
+
+-- Allow anonymous users to INSERT reservations with no user_id
+-- (they can only see their own created row via the anon session token,
+--  admins see everything via participants_admin policy)
+DROP POLICY IF EXISTS "reservations_anon_insert" ON reservations;
+CREATE POLICY "reservations_anon_insert" ON reservations
+  FOR INSERT
+  TO anon
+  WITH CHECK (user_id IS NULL);
+
+-- Allow anonymous users to INSERT participants for null-user reservations
+DROP POLICY IF EXISTS "participants_anon_insert" ON participants;
+CREATE POLICY "participants_anon_insert" ON participants
+  FOR INSERT
+  TO anon
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM reservations r
+      WHERE r.id = participants.reservation_id
+        AND r.user_id IS NULL
+    )
+  );
+
+-- Allow anonymous users to INSERT payments for null-user reservations
+DROP POLICY IF EXISTS "payments_anon_insert" ON payments;
+CREATE POLICY "payments_anon_insert" ON payments
+  FOR INSERT
+  TO anon
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM reservations r
+      WHERE r.id = payments.reservation_id
+        AND r.user_id IS NULL
+    )
+  );
 
 -- ─── 13. Reload PostgREST schema cache ───────────────────────────────────────
 NOTIFY pgrst, 'reload schema';
