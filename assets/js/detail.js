@@ -296,37 +296,137 @@ function renderContent(exp, bpMap = {}) {
 
 /* ── Gallery ─────────────────────────────────────────────── */
 function renderGallery(images, alt) {
-  // Filtra caminhos locais quebrados (assets/img/exp-*) que não existem no servidor
   const validImages = (images ?? []).filter(src =>
-    src && typeof src === 'string' && (
-      src.startsWith('http') || src.startsWith('https')
-    )
+    src && typeof src === 'string' && (src.startsWith('http') || src.startsWith('https'))
   );
 
   if (!validImages.length) return '<p style="color:var(--color-muted);font-size:var(--text-sm)">Imagens em breve.</p>';
 
-  const visible   = validImages.slice(0, 5);
-  const remaining = validImages.length - 5;
+  // Único ID por galeria para evitar colisão se houver múltiplas na página
+  const uid = 'gc-' + Math.random().toString(36).slice(2, 7);
 
-  const items = visible.map((src, i) => `
-    <div class="gallery__item ${i === 4 && remaining > 0 ? 'gallery__more' : ''}"
-         ${i === 4 && remaining > 0 ? `data-remaining="+${remaining}"` : ''}
-         data-index="${i}"
-         role="button"
-         tabindex="0"
-         aria-label="Ver foto ${i + 1}">
-      <img src="${src}" alt="${alt} — foto ${i + 1}" loading="lazy" onerror="this.src='assets/img/placeholder.svg'" />
+  const slides = validImages.map((src, i) => `
+    <div class="gc__slide${i === 0 ? ' is-active' : ''}" data-index="${i}">
+      <img src="${src}" alt="${alt} — foto ${i + 1}" loading="${i === 0 ? 'eager' : 'lazy'}" onerror="this.src='assets/img/placeholder.svg'" />
+      <button class="gc__slide-btn" aria-label="Ampliar foto ${i + 1} de ${validImages.length}"></button>
     </div>
   `).join('');
 
+  const dots = validImages.length > 1 ? `
+    <div class="gc__dots" role="tablist" aria-label="Fotos">
+      ${validImages.map((_, i) => `<button class="gc__dot${i === 0 ? ' is-active' : ''}" role="tab" aria-selected="${i === 0}" aria-label="Foto ${i + 1}"></button>`).join('')}
+    </div>` : '';
+
+  const arrows = validImages.length > 1 ? `
+    <button class="gc__arrow gc__arrow--prev" aria-label="Foto anterior">&#8249;</button>
+    <button class="gc__arrow gc__arrow--next" aria-label="Próxima foto">&#8250;</button>` : '';
+
+  const thumbs = validImages.length > 1 ? `
+    <div class="gc__strip" role="list" aria-label="Miniaturas">
+      ${validImages.map((src, i) => `
+        <div class="gc__thumb${i === 0 ? ' is-active' : ''}" role="listitem" tabindex="0" aria-label="Foto ${i + 1}">
+          <img src="${src}" alt="" loading="lazy" onerror="this.src='assets/img/placeholder.svg'" />
+        </div>`).join('')}
+    </div>` : '';
+
   setTimeout(() => {
-    document.querySelectorAll('.gallery__item').forEach(item => {
-      item.addEventListener('click', () => openGalleryModal(images, Number(item.getAttribute('data-index') ?? 0), alt));
-      item.addEventListener('keydown', e => { if (e.key === 'Enter') item.click(); });
+    const root = document.getElementById(uid);
+    if (!root) return;
+
+    const slideEls  = root.querySelectorAll('.gc__slide');
+    const dotEls    = root.querySelectorAll('.gc__dot');
+    const thumbEls  = root.querySelectorAll('.gc__thumb');
+    let current     = 0;
+    let timer       = null;
+    const INTERVAL  = 4500;
+    const n         = validImages.length;
+
+    function goTo(idx, pauseAuto = false) {
+      slideEls[current].classList.remove('is-active');
+      slideEls[current].classList.add('is-prev');
+      // reset prev after transition
+      const oldSlide = slideEls[current];
+      setTimeout(() => oldSlide.classList.remove('is-prev'), 800);
+
+      dotEls[current]?.classList.remove('is-active');
+      thumbEls[current]?.classList.remove('is-active');
+
+      current = (idx + n) % n;
+
+      slideEls[current].classList.add('is-active');
+      dotEls[current]?.classList.add('is-active');
+      thumbEls[current]?.classList.add('is-active');
+
+      // Scroll thumb into view
+      thumbEls[current]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+      if (pauseAuto) {
+        clearInterval(timer);
+        timer = setInterval(() => goTo(current + 1), INTERVAL);
+      }
+    }
+
+    // Autoplay
+    if (n > 1) {
+      timer = setInterval(() => goTo(current + 1), INTERVAL);
+      // Pause on hover
+      root.addEventListener('mouseenter', () => clearInterval(timer));
+      root.addEventListener('mouseleave', () => {
+        clearInterval(timer);
+        timer = setInterval(() => goTo(current + 1), INTERVAL);
+      });
+      root.addEventListener('focusin',  () => clearInterval(timer));
+      root.addEventListener('focusout', () => {
+        clearInterval(timer);
+        timer = setInterval(() => goTo(current + 1), INTERVAL);
+      });
+    }
+
+    // Arrows
+    root.querySelector('.gc__arrow--prev')?.addEventListener('click', () => goTo(current - 1, true));
+    root.querySelector('.gc__arrow--next')?.addEventListener('click', () => goTo(current + 1, true));
+
+    // Dots
+    dotEls.forEach((dot, i) => dot.addEventListener('click', () => goTo(i, true)));
+
+    // Thumbnails
+    thumbEls.forEach((th, i) => {
+      th.addEventListener('click', () => goTo(i, true));
+      th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo(i, true); } });
     });
+
+    // Slide click → lightbox
+    slideEls.forEach(sl => {
+      sl.querySelector('.gc__slide-btn')?.addEventListener('click', () => {
+        openGalleryModal(validImages, Number(sl.dataset.index), alt);
+      });
+    });
+
+    // Keyboard (arrow keys when carousel is focused)
+    root.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); goTo(current - 1, true); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); goTo(current + 1, true); }
+    });
+
+    // Touch swipe
+    let tx = 0;
+    root.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+    root.addEventListener('touchend',   e => {
+      const dx = e.changedTouches[0].clientX - tx;
+      if (Math.abs(dx) > 40) goTo(dx < 0 ? current + 1 : current - 1, true);
+    });
+
   }, 0);
 
-  return `<div class="gallery">${items}</div>`;
+  return `
+    <div class="gc" id="${uid}" tabindex="0" role="region" aria-label="Galeria de fotos — ${alt}">
+      <div class="gc__stage">
+        ${slides}
+        ${arrows}
+        ${dots}
+      </div>
+      ${thumbs}
+    </div>`;
 }
 
 /* ── Gallery modal ───────────────────────────────────────── */
