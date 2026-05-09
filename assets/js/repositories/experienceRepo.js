@@ -21,14 +21,15 @@ const CONFIRMED_COLUMNS = new Set([
 ]);
 
 /**
- * Colunas estendidas — adicionadas via migration experiences_extended_fields.sql.
+ * Colunas estendidas — adicionadas via migration 20260509_experiences_extended.sql.
  * Só são enviadas se o valor estiver presente E não for nulo/vazio.
  * Se a migration ainda não foi executada, o Supabase retornará erro de coluna
  * desconhecida — nesse caso, aplique a migration primeiro.
- * @see supabase/migrations/experiences_extended_fields.sql
+ * @see supabase/migrations/20260509_experiences_extended.sql
  */
 const EXTENDED_COLUMNS = new Set([
-  'subtitle', 'short_description', 'description', 'duration_text', 'duration_hours',
+  // Nota: short_description já está em CONFIRMED_COLUMNS (coluna base da tabela)
+  'subtitle', 'description', 'duration_text', 'duration_hours',
   'max_participants', 'is_new', 'featured', 'region', 'highlights', 'includes',
   'excludes', 'what_to_bring', 'gallery', 'currency',
   'min_age', 'distance_km', 'elevation_gain_m', 'cancellation_policy',
@@ -75,7 +76,7 @@ export function buildExperiencePayload(raw, { includeExtended = true } = {}) {
     console.warn(
       '[experienceRepo] Campos estendidos (subtitle, description, duration_hours, max_participants) ' +
       'foram omitidos pois includeExtended=false. ' +
-      'Execute supabase/migrations/experiences_extended_fields.sql antes de ativá-los.'
+      'Execute supabase/migrations/20260509_experiences_extended.sql antes de ativá-los.'
     );
   }
 
@@ -269,7 +270,7 @@ export async function createExperience(payload) {
     if (error.message?.includes('column') && error.message?.includes('does not exist')) {
       console.warn(
         '[experienceRepo] Coluna não encontrada no banco. ' +
-        'Execute supabase/migrations/experiences_extended_fields.sql no Supabase Dashboard.'
+        'Execute supabase/migrations/20260509_experiences_extended.sql no Supabase Dashboard.'
       );
     }
     return { data: null, error };
@@ -297,7 +298,7 @@ export async function updateExperience(id, payload) {
     if (error.message?.includes('column') && error.message?.includes('does not exist')) {
       console.warn(
         '[experienceRepo] Coluna não encontrada no banco. ' +
-        'Execute supabase/migrations/experiences_extended_fields.sql no Supabase Dashboard.'
+        'Execute supabase/migrations/20260509_experiences_extended.sql no Supabase Dashboard.'
       );
     }
     return { data: null, error };

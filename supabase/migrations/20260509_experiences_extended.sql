@@ -1,9 +1,11 @@
 -- ============================================================
--- Migration: experiences_extended_fields
--- Created:   2026-05-09
+-- Migration: 20260509_experiences_extended
+-- Created:   2026-05-08
 -- Purpose:   Adiciona colunas estendidas à tabela experiences
 --            necessárias para o backoffice renderizar dados
 --            completos na página pública.
+-- Notas:     short_description já existe na tabela base;
+--            IF NOT EXISTS garante idempotência segura.
 -- Run via:   Supabase Dashboard → SQL Editor → Executar tudo
 -- ============================================================
 
