@@ -141,7 +141,7 @@ async function _uploadGalleryImages(files, thumbsId, dataId, statusId) {
   for (const file of files) {
     const ext  = file.name.split('.').pop();
     const path = `gallery/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:false, contentType:file.type });
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:true, contentType:file.type });
     if (upErr) { toast('Falha no upload: '+upErr.message, 'error'); continue; }
     const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
     const url = pub.publicUrl;
@@ -1468,7 +1468,7 @@ function openNovaExperienciaModal() {
     if (statusEl) statusEl.textContent = 'Enviando…';
     const ext  = file.name.split('.').pop();
     const path = `covers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:false, contentType:file.type });
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:true, contentType:file.type });
     if (upErr) { if (statusEl) statusEl.textContent = '✗ Falha'; toast('Upload falhou: '+upErr.message,'error'); return; }
     const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
     const url = pub.publicUrl;
@@ -1680,7 +1680,7 @@ async function uploadExperienciaCover(file) {
 
   const { error: uploadError } = await db.storage
     .from('experience-covers')
-    .upload(path, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+    .upload(path, file, { cacheControl: '3600', upsert: true, contentType: file.type });
 
   if (uploadError) {
     console.warn('[upload] Erro ao enviar capa:', uploadError.message);
@@ -2062,7 +2062,7 @@ async function openEditExperienciaModal(id) {
     if (statusEl) statusEl.textContent = 'Enviando…';
     const ext  = file.name.split('.').pop();
     const path = `covers/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:false, contentType:file.type });
+    const { error: upErr } = await db.storage.from('experience-covers').upload(path, file, { cacheControl:'3600', upsert:true, contentType:file.type });
     if (upErr) { if (statusEl) statusEl.textContent = '✗ Falha'; toast('Upload falhou: '+upErr.message,'error'); return; }
     const { data: pub } = db.storage.from('experience-covers').getPublicUrl(path);
     const url = pub.publicUrl;

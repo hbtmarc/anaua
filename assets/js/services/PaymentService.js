@@ -155,4 +155,4 @@ function _fakeQrSvg(seed) {
 // ─── Default export ────────────────────────────────────────────────────────────
 
 /** Swap this to a real provider (Stripe, Pagar.me, etc.) without changing consumers. */
-export const DEFAULT_PROVIDER = new MockPaymentProvider();
+export { PIX_PROVIDER as DEFAULT_PROVIDER } from './PixProvider.js';

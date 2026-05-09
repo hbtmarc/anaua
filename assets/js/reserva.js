@@ -175,7 +175,7 @@ function goTo(step) {
   const panel = $(`panel-${step}`);
   if (panel) {
     panel.classList.add('is-active');
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   currentStep = step;
   renderProgress(step);
@@ -1099,20 +1099,23 @@ $('next-8').addEventListener('click', async () => {
       });
 
       if (!rpcErr) {
-        if (!rpcResult?.ok) {
+        // ok===false significa esgotado; ok===null/undefined significa RPC retornou resultado inválido → trata como fallback
+        if (rpcResult?.ok === false) {
           // RPC rejeitou (capacidade esgotada) — bloqueia antes de avançar
           setProcessing(false);
           showError(rpcResult?.error ?? 'Não foi possível reservar: saída esgotada ou sem vagas disponíveis.');
           return;
         }
-        rpcReservationId = rpcResult.reservation_id;
-        console.log('[reserva] Reserva criada via RPC ✓ id:', rpcReservationId);
+        if (rpcResult?.ok === true) {
+          rpcReservationId = rpcResult.reservation_id;
+          console.log('[reserva] Reserva criada via RPC ✓ id:', rpcReservationId);
+        } else {
+          console.warn('[reserva] RPC retornou resultado inesperado — usando fallback manual:', rpcResult);
+        }
       } else if (rpcErr.code !== '42883') {
-        // Erro inesperado (não é "função não existe") — bloqueia
-        setProcessing(false);
-        showError('Erro ao verificar disponibilidade. Tente novamente.');
-        console.error('[reserva] RPC reserve_departure falhou:', rpcErr);
-        return;
+        // Erro inesperado (não é "função não existe") — loga mas não bloqueia
+        console.warn('[reserva] RPC reserve_departure falhou (não crítico, prosseguindo):', rpcErr.code, rpcErr.message);
+        // Segue sem rpcReservationId; insertReservation manual será usado abaixo
       }
       // code 42883 = function not found → fallback para inserção manual abaixo
     }
