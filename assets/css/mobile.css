@@ -1,0 +1,837 @@
+/* =========================================================
+   ANAUÁ ECOTURISMO — Mobile-first responsive layer
+   Carregado APÓS todos os outros CSS.
+   Alvo primário: 430px (iPhone Pro Max). Válido de 360px a 767px.
+   Não altera lógica JS/Supabase.
+   ========================================================= */
+
+/* ── 1. Fundações globais ────────────────────────────────── */
+
+/* Garante que nada ultrapasse a largura do viewport */
+html, body {
+  overflow-x: hidden;
+}
+
+/* Imagens sempre contidas */
+img, video, iframe {
+  max-width: 100%;
+}
+
+/* Inputs e botões herdam a fonte e não causam zoom no iOS */
+input, select, textarea, button {
+  font-size: max(16px, 1em); /* impede auto-zoom iOS quando < 16px */
+}
+
+/* Parágrafos não forçam overflow em containers estreitos */
+p {
+  max-width: 100%;
+}
+
+/* Safe area para dispositivos com notch/Dynamic Island */
+.sticky-cta,
+.nav-drawer {
+  padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom));
+}
+
+.footer {
+  padding-bottom: max(var(--sp-6), env(safe-area-inset-bottom));
+}
+
+
+/* ── 2. Header / Navegação ───────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* Espaçamento lateral menor no header em telas compactas */
+  .header__inner {
+    padding-inline: var(--sp-4);
+  }
+
+  /* Logo: esconde subtítulo "ECOTURISMO" em <380px para não apertar */
+  @media (max-width: 379px) {
+    .header__logo-sub { display: none; }
+    .header__logo-text { font-size: var(--text-md); }
+  }
+
+  /* Botão reservar no header — compacto */
+  .header__actions .btn {
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--text-xs);
+  }
+
+  /* Nav-drawer full-screen, melhor espaçamento */
+  .nav-drawer {
+    gap: var(--sp-1);
+    padding: var(--sp-4) var(--sp-4);
+    /* Safe area inset no topo (header já empurra pelo top: var(--header-h)) */
+  }
+
+  .nav-drawer__link {
+    min-height: 52px;            /* touch target WCAG 2.5.8 */
+    display: flex;
+    align-items: center;
+    padding: var(--sp-3) var(--sp-4);
+    font-size: var(--text-md);
+    border-radius: var(--radius-lg);
+  }
+
+  /* Divisor visual dentro do drawer */
+  .nav-drawer__divider {
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    margin-block: var(--sp-3);
+  }
+
+  /* CTA dentro do drawer */
+  .nav-drawer__cta {
+    margin-top: var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+
+  .nav-drawer__cta .btn {
+    width: 100%;
+    min-height: 52px;
+    font-size: var(--text-md);
+    justify-content: center;
+  }
+}
+
+
+/* ── 3. Container e seções ───────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  .container {
+    padding-inline: var(--sp-4);
+  }
+
+  .section {
+    padding-block: var(--sp-10);
+  }
+
+  .section--sm {
+    padding-block: var(--sp-6);
+  }
+
+  /* Section-header: centralizado no mobile */
+  .section-header {
+    gap: var(--sp-3);
+  }
+
+  .section-header__title {
+    font-size: clamp(1.5rem, 7vw, 2rem);
+  }
+
+  .section-header__desc {
+    font-size: var(--text-sm);
+    max-width: 100%;
+  }
+}
+
+
+/* ── 4. Cards de experiência ─────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* 1 coluna no mobile, 2 quando couber */
+  .grid-cards {
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 480px) {
+    .grid-cards { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* Card CTA — botão de reserva totalmente legível */
+  .card__cta {
+    min-height: 52px;
+    font-size: var(--text-sm);
+  }
+
+  /* Meta do card: não quebra de forma estranha */
+  .card__meta {
+    gap: var(--sp-2);
+    flex-wrap: wrap;
+  }
+
+  .card__meta-item {
+    font-size: var(--text-xs);
+  }
+
+  .card__next-exit {
+    font-size: var(--text-xs);
+  }
+}
+
+
+/* ── 5. Listing page ─────────────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* Barra de filtros: scroll horizontal com fade lateral */
+  .filters {
+    /* Fade mascarando o scroll */
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
+  }
+
+  .filters__inner {
+    padding-inline: var(--sp-4);
+    gap: var(--sp-2);
+  }
+
+  .filter-chip {
+    min-height: 40px;
+    padding: var(--sp-1) var(--sp-3);
+    font-size: var(--text-xs);
+  }
+
+  /* Toolbar: contagem e select de ordenação empilhados */
+  .listing-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-6);
+  }
+
+  .listing-sort select {
+    width: 100%;
+  }
+
+  /* Paginação com espaço adequado */
+  .listing-pagination {
+    margin-top: var(--sp-8);
+    gap: var(--sp-1);
+  }
+
+  .page-btn {
+    width: 36px;
+    height: 36px;
+    font-size: var(--text-xs);
+  }
+}
+
+
+/* ── 6. Página de detalhe da experiência ─────────────────── */
+
+@media (max-width: 1023px) {
+
+  /* Hero mais alto no mobile para impressionar */
+  .detail-hero {
+    height: clamp(240px, 56vw, 400px);
+  }
+
+  /* Layout principal: 1 coluna */
+  .detail-layout {
+    gap: var(--sp-8);
+  }
+
+  /* Sidebar oculta no mobile, reservas via sticky CTA */
+  /* (já estava display:none — mantido) */
+
+  /* Conteúdo: menos espação entre blocos */
+  .detail-content {
+    gap: var(--sp-8);
+  }
+
+  /* Título menor para caber em 1 linha */
+  .detail-header__title {
+    font-size: clamp(1.5rem, 6vw, 2.25rem);
+  }
+
+  /* Meta: empilhado verticalmente */
+  .detail-header__meta {
+    gap: var(--sp-3);
+    flex-direction: column;
+  }
+
+  /* Highlights: 1 coluna em mobile, 2 em tablets */
+  .detail-highlights {
+    grid-template-columns: 1fr;
+    gap: var(--sp-3);
+  }
+
+  @media (min-width: 480px) {
+    .detail-highlights { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* Seções de detalhe: espaçamento menor */
+  .detail-block {
+    padding-top: var(--sp-6);
+  }
+
+  .detail-block__title {
+    font-size: var(--text-lg);
+    margin-bottom: var(--sp-4);
+  }
+
+  /* Exit items (saídas): mais compactos */
+  .exit-item {
+    padding: var(--sp-3);
+  }
+
+  .exit-item__date {
+    font-size: var(--text-sm);
+  }
+
+  .exit-item__price-subtle {
+    font-size: var(--text-sm);
+  }
+
+  /* Boardig point chips: scroll horizontal */
+  .bp-selector__chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .bp-selector__chips::-webkit-scrollbar { display: none; }
+
+  /* Galeria de fotos: 2 colunas no mobile */
+  .gc {
+    border-radius: 0; /* full-bleed no mobile */
+  }
+
+  /* Gallery carousel control buttons: maiores */
+  .gc__btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Sticky CTA: safe-area */
+  .sticky-cta {
+    padding-inline: var(--sp-4);
+    padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom));
+  }
+
+  .sticky-cta__value {
+    font-size: var(--text-xl);
+  }
+}
+
+/* Extra pequeno: inclusions lado-a-lado colapsa */
+@media (max-width: 479px) {
+  .detail-inclusions {
+    grid-template-columns: 1fr;
+  }
+  .bring-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ── 7. Checkout / Wizard de reserva ─────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* Reduz padding do container do wizard */
+  .wizard-wrap {
+    padding-block: var(--sp-6);
+    padding-inline: 0; /* container já cuida das margens */
+  }
+
+  /* Stepper: compacto — apenas dots e label do passo atual */
+  .wizard-progress {
+    margin-block-end: var(--sp-6);
+    justify-content: flex-start;
+    padding-inline: var(--sp-4);
+    gap: 0;
+  }
+
+  .wiz-step__label {
+    font-size: 9px;
+    max-width: 48px;
+  }
+
+  /* Esconde labels de passos não-ativos em telas < 430px */
+  @media (max-width: 429px) {
+    .wiz-step:not(.is-active) .wiz-step__label {
+      display: none;
+    }
+  }
+
+  /* Contexto de booking: empilhado verticalmente */
+  .booking-context {
+    padding: var(--sp-3) var(--sp-4);
+    gap: var(--sp-2);
+    border-radius: var(--radius-md);
+  }
+
+  .booking-context__title {
+    font-size: var(--text-md);
+    flex: 1 1 auto;
+  }
+
+  .booking-context__meta {
+    gap: var(--sp-2);
+    font-size: var(--text-xs);
+    flex-wrap: wrap;
+  }
+
+  /* Formulário de participantes: 1 coluna */
+  .participant-card__body {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Campo de formulário: altura mínima confortável para touch */
+  .form-input,
+  .form-select,
+  .adm-input {
+    min-height: 48px;
+  }
+
+  /* Linhas de formulário: empilhadas */
+  .form-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* PIX box: empilhado verticalmente */
+  .pix-box {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--sp-4);
+  }
+
+  .pix-box__qr {
+    max-width: 180px;
+  }
+
+  /* Voucher: padding reduzido */
+  .voucher__header {
+    padding: var(--sp-4) var(--sp-4);
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+  }
+
+  .voucher__grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Resumo da reserva no checkout: compacto */
+  .checkout-summary__row {
+    flex-wrap: wrap;
+    gap: var(--sp-1);
+  }
+
+  /* Botões do wizard: full-width */
+  .wizard-nav {
+    flex-direction: column-reverse;
+    gap: var(--sp-3);
+  }
+
+  .wizard-nav .btn {
+    width: 100%;
+    min-height: 52px;
+    justify-content: center;
+  }
+}
+
+/* Modal de confirmação/PIX: bottom-sheet no mobile */
+@media (max-width: 767px) {
+
+  .modal-overlay {
+    align-items: flex-end; /* ancora modal no fundo */
+    padding: 0;
+  }
+
+  .modal {
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    max-height: 92svh;
+    width: 100%;
+    max-width: 100%;
+    animation: slideUp 300ms var(--ease-out) both;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  /* Indicador de arraste (drag handle) */
+  .modal::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: var(--color-stone);
+    border-radius: var(--radius-full);
+    margin: var(--sp-3) auto var(--sp-1);
+  }
+
+  .modal__header {
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  .modal__body {
+    padding: var(--sp-4);
+  }
+
+  .modal__footer {
+    padding: var(--sp-3) var(--sp-4);
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding-bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+  }
+
+  .modal__footer .btn {
+    width: 100%;
+    min-height: 52px;
+    justify-content: center;
+  }
+
+  .modal__footer .btn--secondary {
+    margin-inline-end: 0;
+    order: 1;
+  }
+}
+
+
+/* ── 8. Minha Conta ──────────────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* Padding do container da conta */
+  .acc-wrap {
+    padding-inline: var(--sp-4) !important;
+  }
+
+  /* Tabs: scroll horizontal */
+  .dash-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .dash-tabs::-webkit-scrollbar { display: none; }
+
+  .dash-tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--text-sm);
+  }
+
+  /* Cards de reserva: empilhados */
+  .booking-card {
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+
+  .booking-card__thumb {
+    width: 100%;
+    aspect-ratio: 16/7;
+    flex-shrink: 0;
+  }
+
+  .booking-card__actions {
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .booking-card__actions .btn {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+  }
+
+  /* Tabelas: scroll horizontal */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+
+/* ── 9. Backoffice (admin) ───────────────────────────────── */
+
+@media (max-width: 1023px) {
+
+  /* Container principal do admin */
+  .adm-shell {
+    flex-direction: column;
+  }
+
+  /* Sidebar do admin: oculta por padrão, drawer toggle */
+  .adm-sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: visible;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    padding: var(--sp-2) var(--sp-4);
+    border-right: none;
+    border-bottom: 1px solid var(--adm-border);
+  }
+
+  .adm-sidebar__section {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .adm-sidebar__label { display: none; } /* oculta labels de grupo */
+
+  .adm-nav-item {
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-height: 40px;
+    border-radius: var(--radius-md);
+    padding-inline: var(--sp-3);
+    font-size: var(--text-sm);
+  }
+
+  /* Conteúdo principal: sem margens laterais do sidebar */
+  .adm-main {
+    min-height: auto;
+    width: 100%;
+  }
+
+  /* Tabelas admin: scroll horizontal */
+  .adm-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-md);
+  }
+
+  .adm-table {
+    min-width: 600px;
+  }
+
+  /* Forms do admin: 1 coluna */
+  .adm-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Toolbar do admin: empilhada */
+  .adm-toolbar {
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+
+  .adm-toolbar__actions {
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    width: 100%;
+  }
+
+  .adm-toolbar__actions .adm-btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  /* Seções de formulário do admin: espaçamento reduzido */
+  .adm-section {
+    padding: var(--sp-4);
+  }
+
+  .adm-section-title {
+    font-size: var(--text-md);
+    margin-bottom: var(--sp-3);
+  }
+}
+
+
+/* ── 10. Formulários globais (contato, etc.) ─────────────── */
+
+@media (max-width: 767px) {
+
+  .form-group {
+    margin-bottom: var(--sp-4);
+  }
+
+  .form-label {
+    font-size: var(--text-sm);
+    margin-bottom: var(--sp-1);
+  }
+
+  /* Inputs full-width garantido */
+  .form-input,
+  .form-select,
+  .form-textarea,
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="password"],
+  select,
+  textarea {
+    width: 100%;
+    min-height: 48px;
+    padding-inline: var(--sp-3);
+  }
+
+  textarea {
+    min-height: 120px;
+  }
+}
+
+
+/* ── 11. Footer ──────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  .footer {
+    padding-block-start: var(--sp-10);
+  }
+
+  .footer__grid {
+    gap: var(--sp-8);
+  }
+
+  .footer__brand {
+    max-width: 100%;
+  }
+
+  /* Links do footer: maior touch target */
+  .footer__link {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    padding-block: var(--sp-1);
+  }
+
+  .footer__bottom {
+    flex-direction: column;
+    text-align: center;
+    gap: var(--sp-2);
+  }
+}
+
+
+/* ── 12. Page headers ────────────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  .page-header {
+    min-height: 200px;
+    padding-block: var(--sp-10) var(--sp-8);
+  }
+
+  .page-header__eyebrow {
+    font-size: var(--text-xs);
+  }
+
+  .page-header__title {
+    font-size: clamp(1.75rem, 8vw, 2.5rem);
+  }
+
+  .page-header__desc {
+    font-size: var(--text-sm);
+    max-width: 100%;
+  }
+}
+
+
+/* ── 13. Home page ───────────────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* Hero: altura mínima razoável */
+  .hero {
+    min-height: min(100svh, 680px);
+  }
+
+  .hero__title {
+    font-size: clamp(2rem, 9vw, 3rem);
+  }
+
+  .hero__desc {
+    font-size: var(--text-md);
+    max-width: 100%;
+  }
+
+  /* CTA buttons: full-width em mobile */
+  .hero__actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .hero__actions .btn {
+    width: 100%;
+    min-height: 52px;
+    justify-content: center;
+  }
+
+  /* Stats strip: 2x2 em mobile */
+  .stats-strip__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stat__value {
+    font-size: clamp(2rem, 8vw, 3rem);
+  }
+}
+
+
+/* ── 14. Sobre / Contato ─────────────────────────────────── */
+
+@media (max-width: 767px) {
+
+  /* Layout de 2 colunas: colapsa para 1 */
+  .about-layout,
+  .contact-layout,
+  .team-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--sp-8);
+  }
+
+  /* Imagem about: ratio fixo */
+  .about-img {
+    aspect-ratio: 4/3;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Formulário de contato full-width */
+  .contact-form {
+    padding: var(--sp-5);
+  }
+}
+
+
+/* ── 15. Toasts / Notificações ───────────────────────────── */
+
+@media (max-width: 767px) {
+
+  .toast-stack {
+    bottom: max(var(--sp-4), env(safe-area-inset-bottom));
+    left: var(--sp-4);
+    right: var(--sp-4);
+    top: auto;
+  }
+
+  .toast {
+    width: 100%;
+    max-width: 100%;
+    font-size: var(--text-sm);
+  }
+}
+
+
+/* ── 16. Meeting cards / Pontos de embarque ──────────────── */
+
+@media (max-width: 767px) {
+
+  .meeting-card {
+    padding: var(--sp-4);
+  }
+
+  .meeting-card__header {
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+}

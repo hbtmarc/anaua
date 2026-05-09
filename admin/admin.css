@@ -2965,3 +2965,20 @@ label.exp-check input[type="checkbox"] {
 }
 .gallery-thumb__remove:hover { background: var(--adm-danger, #d32f2f); }
 .gallery-upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* ── Mobile refinements (430px target) ──────────────────────────────────── */
+@media (max-width: 600px) {
+  .adm-topbar { padding: 0 12px; gap: 8px; }
+  .adm-search { display: none; }
+  .adm-table-wrap { max-width: calc(100vw - 24px); overflow-x: auto; }
+  .adm-filter-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
+  .adm-filter-bar::-webkit-scrollbar { display: none; }
+  .adm-filter-bar .adm-input { min-width: 150px; }
+  .adm-input, .adm-select { min-height: 44px; }
+  .adm-btn-group .adm-btn { padding: 6px 10px; font-size: 12px; }
+  .adm-drawer { width: 100vw; max-width: 100vw; }
+  .adm-modal { width: 96vw; max-width: 96vw; }
+  .adm-kpi-row { gap: 8px; }
+  .adm-kpi { padding: 12px; }
+  .adm-kpi__value { font-size: 22px; }
+  .adm-main { padding: 12px; }
+}
