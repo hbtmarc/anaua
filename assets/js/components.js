@@ -259,7 +259,7 @@ export function renderExperienceCard(exp) {
           src="${getExperienceCoverUrl(exp.coverImage ?? exp.cover_image_url)}"
           alt=""
           loading="lazy"
-          onerror="this.src='assets/img/placeholder.svg'"
+          onerror="this.onerror=null;this.src='assets/img/placeholder.svg'"
         />
         <div class="card__thumb-badges">
           ${levelBadge}
